@@ -128,6 +128,29 @@ test('sin GetItemSpell: hasUseOrEquipSpell = true (conservador)', function()
     eq(ns.Player.ReadLink(FAKE.linkOf(703)).hasUseOrEquipSpell, true)
 end)
 
+-- Item 6 de la ola final: el ID del hechizo cuenta aunque el nombre no haya llegado, y un
+-- error de la API es "no se sabe" (conservador).
+test('GetItemSpell con nombre nil e ID -> hasUseOrEquipSpell = true', function()
+    GetItemSpell = function() return nil, 99004 end
+    addItem(705, { classID = 4, subclassID = 4, quality = 2 })
+    local item = ns.Player.ReadLink(FAKE.linkOf(705))
+    eq(item.hasUseOrEquipSpell, true)
+    local ctx = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
+        isQuestDone = function() return false end }
+    eq(ns.Classify(item, ctx).mark, nil, 'placas con hechizo por ID: sin moneda')
+end)
+
+test('C_Item.GetItemSpell con ID solo o con error -> conservador', function()
+    C_Item = { GetItemSpell = function() return nil, 99004 end }
+    addItem(706, {})
+    eq(ns.Player.ReadLink(FAKE.linkOf(706)).hasUseOrEquipSpell, true, 'solo ID')
+    C_Item = { GetItemSpell = function() error('API rota') end }
+    eq(ns.Player.ReadLink(FAKE.linkOf(706)).hasUseOrEquipSpell, true, 'error')
+    C_Item = { GetItemSpell = function() return nil, nil end }
+    eq(ns.Player.ReadLink(FAKE.linkOf(706)).hasUseOrEquipSpell, false, 'sin hechizo')
+    C_Item = nil
+end)
+
 test('ReadItem con GetContainerItemLink si no hay C_Container', function()
     FAKE.Remove('C_Container.GetContainerItemInfo')
     addItem(704, {})

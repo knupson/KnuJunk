@@ -352,11 +352,19 @@ end
 -- Items
 -- ---------------------------------------------------------------------------
 
--- Devuelve el spell del item, o false si el cliente no tiene ninguna API para preguntarlo.
-local function spellOf(id)
-    if C_Item and type(C_Item.GetItemSpell) == 'function' then return (C_Item.GetItemSpell(id)) end
-    if type(GetItemSpell) == 'function' then return (GetItemSpell(id)) end
-    return false
+-- true si el item tiene (o puede tener) hechizo de uso/equipar; false solo si la API
+-- respondio sin nombre NI id. Se conservan los dos retornos: el nombre puede llegar tarde y el
+-- id solo ya es evidencia. Sin API, o si la API falla, no se sabe: true (conservador, ninguna
+-- moneda automatica). Que GetItemSpell informe efectos SOLO de equipar en Forever no esta
+-- verificado en el juego.
+local function hasItemSpell(id)
+    local api
+    if C_Item and type(C_Item.GetItemSpell) == 'function' then api = C_Item.GetItemSpell
+    elseif type(GetItemSpell) == 'function' then api = GetItemSpell end
+    if not api then return true end
+    local success, name, spellID = pcall(api, id)
+    if not success then return true end
+    return name ~= nil or spellID ~= nil
 end
 
 -- item = { id, quality, price, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece };
@@ -369,9 +377,7 @@ function Player.ReadLink(link)
     if not id then return nil end
     local _, _, quality, _, _, _, _, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
-    local spell = spellOf(id)
-    -- Sin API de hechizos: conservador (true = nunca monedita por "clase no puede usarlo").
-    local hasSpell = spell == false or spell ~= nil
+    local hasSpell = hasItemSpell(id)
     return {
         id = id,
         quality = quality,
