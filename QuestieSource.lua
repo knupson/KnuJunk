@@ -203,23 +203,27 @@ local function indexQuest(source, items, questID)
         for _, itemID in ipairs(startedBy[3]) do ids[#ids + 1] = itemID end
     end
     -- Objetivos ocultos: { spawns?, icono, texto?, indice, { {'item'|'monster'|'object', id}, ... }? }.
-    -- Si no se pueden leer, un uso del item podria perderse y dar un quest_done falso: se lanza
-    -- error y el indice entero queda 'failed' (sin datos de Questie, nunca moneda por Questie).
+    -- Cada entrada se lee aparte: una ilegible se saltea SOLA (sus ids no se agregan) y el resto de
+    -- la mision y del indice sigue valiendo. Asi una referencia rota nunca degrada a "sin Questie".
     local extra = get(questID, 'extraObjectives')
-    if extra ~= nil then
-        if type(extra) ~= 'table' then error('extraObjectives ilegible') end
+    if type(extra) == 'table' then
         for _, objective in pairs(extra) do
-            if type(objective) ~= 'table' then error('extraObjectives ilegible') end
-            local refs = objective[5]
-            if refs ~= nil then
-                if type(refs) ~= 'table' then error('extraObjectives ilegible') end
+            local found = {}
+            local readable = pcall(function()
+                if type(objective) ~= 'table' then error('entrada ilegible') end
+                local refs = objective[5]
+                if refs == nil then return end
+                if type(refs) ~= 'table' then error('referencias ilegibles') end
                 for _, ref in pairs(refs) do
-                    if type(ref) ~= 'table' then error('extraObjectives ilegible') end
+                    if type(ref) ~= 'table' then error('referencia ilegible') end
                     if ref[1] == 'item' then
-                        if not validID(ref[2]) then error('extraObjectives ilegible') end
-                        ids[#ids + 1] = ref[2]
+                        if not validID(ref[2]) then error('item ilegible') end
+                        found[#found + 1] = ref[2]
                     end
                 end
+            end)
+            if readable then
+                for _, itemID in ipairs(found) do ids[#ids + 1] = itemID end
             end
         end
     end

@@ -377,11 +377,33 @@ test('extraObjectives: un item referenciado cuenta como uso de la mision', funct
     eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'quest')
 end)
 
-test('extraObjectives ilegible: sin datos de Questie (nunca quest_done por Questie)', function()
-    install({
-        [10] = { objectives = { nil, nil, { { 500 } } } },
-        [20] = { extraObjectives = { { nil, 5, 'Roto', 1, { { 'item', 'x' } } } } },
-    })
-    eq(ns.Questie.Uses(500), nil)
-    eq(ns.Questie.Pending(), false)
+-- Re-revision: una referencia ilegible en extraObjectives se saltea SOLA; el indice queda listo y
+-- los demas usos (otras misiones, iniciador repetible) siguen protegiendo.
+test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo', function()
+    FAKE.items[99012] = { name = 'Item99012', quality = 0, price = 10, classID = 15, subclassID = 0 }
+    FAKE.items[99013] = { name = 'Item99013', quality = 1, price = 10, classID = 15, subclassID = 0 }
+    FAKE.bags['0:1'] = 99012
+    local savedStarters = ns.Data.starters
+    ns.Data.starters = setmetatable({ [99013] = 30 }, { __index = savedStarters })
+    FAKE.completed[30] = true
+    local success, err = pcall(function()
+        install({
+            [10] = { objectives = { nil, nil, { { 99012 } } } },
+            [20] = { extraObjectives = { { nil, 5, 'Ilegible', 1, { { 'item', 'x' } } }, 'basura' } },
+            [30] = { startedBy = { nil, nil, { 99013 } }, specialFlags = 1 },
+        })
+        eq(ns.Questie.Pending(), false)
+        eq(questIDs(ns.Questie.Uses(99012)), '10', 'el indice sigue listo')
+        FAKE.Fire('QUEST_LOG_UPDATE')
+        local ctx = ns.Player.GetContext()
+        local gray = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99012)), ctx)
+        eq(gray.mark, 'quest'); eq(gray.reasons[1].kind, 'quest_active')
+        local starter = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99013)), ctx)
+        eq(starter.mark, nil); eq(starter.reasons[1].kind, 'quest_repeatable')
+        local button = CreateFrame('Button', nil, UIParent)
+        ns.Marks.Update(button, 0, 1)
+        ok(not (button.KnuJunkMark and button.KnuJunkMark:IsShown()), 'sin moneda visible en 0:1')
+    end)
+    ns.Data.starters = savedStarters
+    if not success then error(err, 0) end
 end)
