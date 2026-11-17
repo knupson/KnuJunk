@@ -14,3 +14,5 @@ Locales\Locales.lua
 Core.lua
 Data\Reagents.lua
 Data\Starters.lua
+Data\ClassGear.lua
+Classify.lua
