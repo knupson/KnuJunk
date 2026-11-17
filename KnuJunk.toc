@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cffecd9bdKNU|r|cffffa82eJunk|r
+## Notes: Sell junk, quest leftovers and profession mats: icons in your bags and loot.
+## Notes-esES: Basura, sobrantes de misión y materiales de profesión: iconos en tus bolsas y en el botín.
+## Notes-esMX: Basura, sobrantes de misión y materiales de profesión: iconos en tus bolsas y en el botín.
+## Author: Alejandro Benzoni (KnuPwns)
+## SavedVariables: KnuJunkDB
+## Version: 0.1.0
+## X-License: MIT
+## X-Website: https://knunet.com
+
+Libs\KnuLib\KnuLib.xml
+Locales\Locales.lua
+Core.lua

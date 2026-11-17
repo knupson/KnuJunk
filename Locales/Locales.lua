@@ -1,0 +1,3 @@
+local _, ns = ...
+ns.L = LibStub('KnuLib-1.0'):NewLocale({
+})

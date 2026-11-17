@@ -1,0 +1,14 @@
+package-as: KnuJunk
+
+ignore:
+  - tests
+  - tools
+  - docs
+  - data-raw
+  - .github
+  - dist
+  - "*.py"
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
