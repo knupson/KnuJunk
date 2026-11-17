@@ -50,6 +50,8 @@ local function withScrollUtil(fn)
     local callbacks = {}
     ScrollUtil = { AddInitializedFrameCallback = function(scrollBox, callback, owner, iterate)
         callbacks[#callbacks + 1] = { scrollBox = scrollBox, callback = callback, owner = owner, iterate = iterate }
+        -- como Blizzard: con iterate = true se inicializan YA las filas existentes
+        if iterate then scrollBox:ForEachFrame(function(row) callback(owner, row) end) end
     end }
     fn(callbacks)
 end
@@ -302,4 +304,130 @@ test('Loot: Bags.RefreshAll repinta la ventana abierta', function()
     ns.Bags.InstallAll()
     FAKE.Advance(1)
     ok(visible(buttons[1]))
+end)
+
+test('Loot moderno: la inicializacion inicial (iterate = true) marca las filas ya existentes', function()
+    installLoot()
+    withScrollUtil(function()
+        local rows = modernWindow({ 1, 2 })
+        addItem(100); FAKE.loot[1] = 100         -- el slot 2 es dinero
+        ns.Bags.InstallAll()                     -- sin LOOT_OPENED ni refresco: solo la iteracion inicial
+        ok(visible(rows[1].Item), 'fila existente marcada al instalar')
+        ok(not visible(rows[2].Item), 'dinero: sin marca')
+    end)
+end)
+
+test('Loot moderno sin ScrollUtil: fila creada ANTES del hook, row:Init() al reciclar limpia sola', function()
+    installLoot()
+    LootFrameElementMixin = { Init = function() end }
+    local rows = modernWindow({ 1 })
+    rows[1].Init = LootFrameElementMixin.Init    -- la fila copio el Init original antes de instalar
+    addItem(100); addItem(101, { quality = 1, classID = 2, subclassID = 0, spell = true })
+    FAKE.loot[1] = 100
+    ns.Bags.InstallAll()                         -- engancha el mixin Y el Init efectivo de la fila
+    open()
+    ok(visible(rows[1].Item), 'control: gris -> coin')
+    FAKE.loot[1] = 101; rows[1].slotIndex = 1
+    rows[1]:Init()                               -- Blizzard recicla la fila; ningun otro evento ni refresco
+    ok(not visible(rows[1].Item), 'gris -> item util: sin marca')
+    FAKE.loot[1] = 100
+    rows[1]:Init()
+    ok(visible(rows[1].Item), 'control: vuelve a gris, coin')
+    FAKE.loot[1] = nil                           -- ahora dinero
+    rows[1]:Init()
+    ok(not visible(rows[1].Item), 'gris -> dinero: sin marca')
+    -- idempotente: no se engancha dos veces (un solo updateRow por Init)
+    local count, saved = 0, ns.Marks.UpdateLink
+    ns.Marks.UpdateLink = function(...) count = count + 1; return saved(...) end
+    FAKE.loot[1] = 100
+    ns.Loot.Refresh(); ns.Loot.Refresh()
+    count = 0
+    rows[1]:Init()
+    ns.Marks.UpdateLink = saved
+    eq(count, 1, 'una sola actualizacion por Init')
+end)
+
+test('Loot: martillo verde y gris en el botin; el tinte no se hereda al reciclar', function()
+    installLoot()
+    local buttons = classicWindow(4)
+    addItem(100); FAKE.loot[1] = 100
+    ns.Bags.InstallAll()
+    local function with(mark, fn)
+        local saved = ns.Classify
+        ns.Classify = function() return { mark = mark, reasons = {} } end
+        local success, err = pcall(fn)
+        ns.Classify = saved
+        if not success then error(err, 0) end
+    end
+    with('hammer_mine', open)
+    local texture = buttons[1].KnuJunkMark
+    ok(visible(buttons[1])); eq(texture.texture, 'Interface\\Icons\\Trade_BlackSmithing')
+    eq(texture.vertex[1], 0.25); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.35)
+    ok(not texture.desaturated)
+    with('hammer_other', function() LootFrame_Update() end)
+    eq(texture.desaturated, true); eq(texture.alpha, 0.7)
+    with('hammer_mine', function() LootFrame_Update() end)
+    ok(not texture.desaturated, 'verde no hereda el desaturado del gris')
+    eq(texture.alpha, 1)
+    with('coin', function() LootFrame_Update() end)
+    eq(texture.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
+    eq(texture.vertex[1], 1, 'la moneda no hereda el tinte verde')
+    eq(texture.alpha, 1)
+end)
+
+-- Fila protegida: crear la textura en combate falla como en el cliente.
+local function protectedWindow()
+    local rows = modernWindow({ 1 })
+    local item = rows[1].Item
+    function item:IsProtected() return true end
+    function item:CreateTexture(...)
+        if FAKE.inCombat then error('accion bloqueada: CreateTexture en combate') end
+        return CreateFrame('Texture', ...)
+    end
+    return rows
+end
+
+test('Loot: fila protegida que cambia de item en combate no recibe la marca vieja', function()
+    installLoot()
+    withScrollUtil(function()
+        local rows = protectedWindow()
+        addItem(100); addItem(101, { quality = 1, classID = 2, subclassID = 0, spell = true })
+        FAKE.loot[1] = 100
+        FAKE.inCombat = true
+        open()
+        ok(rows[1].Item.KnuJunkMark == nil, 'en combate no se crea la textura')
+        FAKE.loot[1] = 101                       -- la fila pasa a mostrar un item util durante el combate
+        FAKE.inCombat = false
+        FAKE.Fire('PLAYER_REGEN_ENABLED')
+        ok(not visible(rows[1].Item), 'sin moneda falsa sobre el item util')
+    end)
+end)
+
+test('Loot: fila protegida que sigue igual se marca al salir del combate', function()
+    installLoot()
+    withScrollUtil(function()
+        local rows = protectedWindow()
+        addItem(100); FAKE.loot[1] = 100
+        FAKE.inCombat = true
+        open()
+        FAKE.inCombat = false
+        FAKE.Fire('PLAYER_REGEN_ENABLED')
+        ok(visible(rows[1].Item), 'control: mismo item, marca')
+        eq(rows[1].Item.KnuJunkOwner, 'Loot')
+    end)
+end)
+
+test('Loot: LOOT_CLOSED antes de PLAYER_REGEN_ENABLED: no se marca lo diferido', function()
+    installLoot()
+    withScrollUtil(function()
+        local rows = protectedWindow()
+        addItem(100); FAKE.loot[1] = 100
+        FAKE.inCombat = true
+        open()
+        FAKE.Fire('LOOT_CLOSED')
+        FAKE.inCombat = false
+        FAKE.Fire('PLAYER_REGEN_ENABLED')
+        ok(not visible(rows[1].Item), 'botin cerrado: sin marca')
+        ok(rows[1].Item.KnuJunkMark == nil, 'ni se creo la textura')
+    end)
 end)

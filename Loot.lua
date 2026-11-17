@@ -18,6 +18,8 @@ ns.Loot = Loot
 
 local OWNER = 'Loot'
 local DEFAULT_BUTTONS = 4
+local hookedRows = setmetatable({}, { __mode = 'k' })  -- filas con su Init enganchado (fallback por mixin)
+local mixinInit                                        -- el Init del mixin ya enganchado
 local closed = false                                   -- LOOT_CLOSED visto y aun no hay LOOT_OPENED
 local ownerToken = {}                                  -- "dueno" de los callbacks de la lista
 local hooked = { list = false, mixin = false, classic = false }
@@ -113,6 +115,18 @@ function Loot.ClearAll()
     eachRow(function(row) pcall(clearRow, row) end)
 end
 
+-- Fallback por mixin: las filas copian los metodos del mixin al crearse, asi que una fila creada ANTES
+-- de enganchar conserva el Init original y reciclarla (row:Init()) no pasaria por el hook global.
+-- Se engancha el Init efectivo de cada fila existente (una sola vez por fila). Las filas nacidas despues
+-- ya copian el Init enganchado (mixinInit) y no se enganchan de nuevo.
+local function hookRow(row)
+    if type(row) ~= 'table' or hookedRows[row] then return end
+    local init = rawget(row, 'Init')
+    if type(init) ~= 'function' or init == mixinInit then return end
+    hookedRows[row] = true
+    if not pcall(hooksecurefunc, row, 'Init', updateRow) then hookedRows[row] = nil end
+end
+
 -- Engancha lo que exista y no este enganchado; true si hay algo enganchado. Idempotente.
 function Loot.Hook()
     local frame = _G.LootFrame
@@ -126,9 +140,11 @@ function Loot.Hook()
         local mixin = _G.LootFrameItemElementMixin or _G.LootFrameElementMixin
         if type(mixin) == 'table' and type(mixin.Init) == 'function' then
             hooksecurefunc(mixin, 'Init', updateRow)
+            mixinInit = mixin.Init
             hooked.mixin = true
         end
     end
+    if hooked.mixin then eachRow(hookRow) end
     if not hooked.classic and type(_G.LootFrame_Update) == 'function' then
         hooksecurefunc('LootFrame_Update', function() eachRow(updateRow) end)
         hooked.classic = true
@@ -147,6 +163,8 @@ end
 function Loot.ResetState()
     hooked = { list = false, mixin = false, classic = false }
     closed = false
+    mixinInit = nil
+    hookedRows = setmetatable({}, { __mode = 'k' })
     rowOfMark = setmetatable({}, { __mode = 'k' })
     seen = setmetatable({}, { __mode = 'k' })
 end
