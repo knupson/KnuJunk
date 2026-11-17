@@ -14,6 +14,10 @@ local scanning = false -- true mientras se expanden/pliegan encabezados: sus eve
 local pending = false -- hay una reconstruccion diferida programada
 local changedCallbacks = {}
 local signatures = setmetatable({}, { __mode = 'k' }) -- [ctx] = firma de contenido
+-- Sube con cada alta, baja o entrega de mision: isQuestDone puede responder distinto aunque
+-- el resto del contexto sea igual, y eso tiene que avisar por OnChanged. Los ecos de expandir
+-- el diario (QUEST_LOG_UPDATE) no la tocan, asi que no reabren aquel bucle.
+local questRevision = 0
 
 local function markDirty()
     if cache then previous = cache end
@@ -23,7 +27,7 @@ end
 function Player.Invalidate() markDirty() end
 
 -- fn(ctx) se llama tras una reconstruccion SOLO si el contenido del contexto cambio
--- (clase, profesiones, items de misiones, questLogIncomplete).
+-- (clase, profesiones, items de misiones, questLogIncomplete, revision de misiones).
 function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 
 -- Solo para pruebas: deja el modulo como recien cargado.
@@ -54,11 +58,13 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
         end
     end
     if not any then scan(); return true end
-    if inCombat() or not expand or not collapse then scan(); return false end
+    -- La huella de la ultima expansion completa certifica lo escaneado aunque ahora no se
+    -- pueda expandir (combate): mismo diario visible y mismo total. Aceptar, abandonar o
+    -- entregar una mision borra memo.fp, asi que despues de esos eventos no certifica.
     local before = fingerprint and fingerprint()
-    if before then
-        if memo and memo.fp == before then return true, 'cached' end
-    elseif memo and memo.at and now() < memo.at + MIN_EXPAND_INTERVAL then
+    if before and memo and memo.fp == before then return true, 'cached' end
+    if inCombat() or not expand or not collapse then scan(); return false end
+    if not before and memo and memo.at and now() < memo.at + MIN_EXPAND_INTERVAL then
         -- Sin huella no se puede saber si algo cambio: se limita el ritmo de expansiones
         -- (acota el bucle expandir -> evento -> reconstruir) y mientras tanto se reusa lo ultimo.
         if memo.data then return true, 'cached' end
@@ -267,20 +273,19 @@ local function scanQuestLog()
 end
 
 -- Devuelve questItemsInLog = {[itemID]=true} y si el diario quedo incompleto. Un escaneo
--- incompleto no reemplaza al ultimo completo: se unen (lo ya visto sigue valiendo). Sin
--- ningun escaneo completo previo, el contexto queda marcado questLogIncomplete.
+-- incompleto no reemplaza al ultimo completo: se unen (lo ya visto sigue protegiendo), pero
+-- el contexto queda questLogIncomplete igual: el escaneo anterior no certifica misiones
+-- nuevas que no se pudieron leer. Se certifica de nuevo solo con un escaneo completo.
 -- Los objetivos traen el nombre, no el id: se resuelve con GetItemInfo(nombre) y, para lo
 -- que no se pudo resolver, __index compara por el nombre del item consultado (un item de
 -- mision gris no debe quedar con monedita por no haberse resuelto a tiempo).
 local function buildQuestItems()
     local names, complete = scanQuestLog()
-    local incomplete = false
+    local incomplete = not complete
     if complete then
         lastQuestNames = names
     elseif lastQuestNames then
         for key, name in pairs(lastQuestNames) do names[key] = names[key] or name end
-    else
-        incomplete = true
     end
     local ids = {}
     for _, name in pairs(names) do
@@ -327,7 +332,7 @@ local function buildContext()
         overrides = ns.DB and ns.DB.overrides or {},
     }
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
-    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), sortedKeys(professions),
+    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), tostring(questRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(names) }, '|')
     return ctx
 end
@@ -434,6 +439,7 @@ frame:SetScript('OnEvent', function(_, event)
     -- tambien el eco de nuestra propia expansion.
     if event == 'QUEST_ACCEPTED' or event == 'QUEST_REMOVED' or event == 'QUEST_TURNED_IN' then
         questMemo.fp, questMemo.at = nil, nil
+        questRevision = questRevision + 1
     end
     markDirty()
     scheduleCheck()

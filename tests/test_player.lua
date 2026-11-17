@@ -256,6 +256,41 @@ test('en combate con encabezado plegado usa el ultimo escaneo completo', functio
     eq(FAKE.questLog[1].isCollapsed, true)
 end)
 
+-- Item 3 de la ola final: un escaneo anterior no certifica un diario que cambio y no se
+-- puede releer (combate). La certificacion vuelve solo con un escaneo completo.
+test('mision aceptada en combate bajo encabezado plegado -> questLogIncomplete hasta reescanear', function()
+    collapsedLog()
+    ns.Player.GetContext() -- escaneo completo fuera de combate
+    FAKE.inCombat = true
+    addItem(502, { name = 'Colmillo nuevo', quality = 0, price = 5 })
+    table.insert(FAKE.questLog, 2, { title = 'Colmillos', questID = 5,
+        objectives = { { text = 'Colmillo nuevo: 0/3', type = 'item' } } })
+    FAKE.Fire('QUEST_ACCEPTED')
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questLogIncomplete, true, 'diario cambiado sin poder releerlo')
+    eq(ctx.questItemsInLog[500], true, 'lo del ultimo escaneo sigue protegiendo')
+    eq(ns.Classify(ns.Player.ReadLink(FAKE.linkOf(502)), ctx).mark, nil, 'gris nuevo sin moneda')
+    eq(FAKE.calls.expand, 1, 'no expande en combate')
+    -- Otro evento cualquiera en combate no devuelve la certificacion.
+    FAKE.Fire('QUEST_LOG_UPDATE')
+    eq(ns.Player.GetContext().questLogIncomplete, true, 'sigue sin certificar')
+    -- Fuera de combate se reescanea completo y se recupera.
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    local after = ns.Player.GetContext()
+    eq(after.questLogIncomplete, nil)
+    eq(after.questItemsInLog[502], true)
+end)
+
+test('sin total y en combate: el escaneo anterior no certifica', function()
+    collapsedLog()
+    FAKE.noTotal = true
+    ns.Player.GetContext()
+    FAKE.inCombat = true
+    FAKE.Fire('QUEST_ACCEPTED')
+    eq(ns.Player.GetContext().questLogIncomplete, true)
+end)
+
 test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris sin moneda', function()
     collapsedLog()
     FAKE.inCombat = true
@@ -395,6 +430,20 @@ test('un cambio real avisa por OnChanged con la reconstruccion diferida', functi
     eq(fired, 1)
     eq(last.professions[186], true)
     FAKE.Advance(1); eq(fired, 1)
+end)
+
+-- Item 8: cambiar solo el estado de una mision completada avisa por OnChanged.
+test('QUEST_TURNED_IN que solo cambia misiones completadas avisa por OnChanged', function()
+    local fired = 0
+    ns.Player.OnChanged(function() fired = fired + 1 end)
+    ns.Player.GetContext()
+    FAKE.completed[100] = true
+    FAKE.Fire('QUEST_TURNED_IN')
+    FAKE.Advance(1)
+    eq(fired, 1)
+    -- Los ecos del diario sin cambios no vuelven a avisar.
+    FAKE.Fire('QUEST_LOG_UPDATE'); FAKE.Advance(1)
+    eq(fired, 1)
 end)
 
 test('los eventos pendientes se agrupan en una sola reconstruccion diferida', function()
