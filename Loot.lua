@@ -160,6 +160,8 @@ local function revalidate(button)
     return currentLink(slotOf(row))
 end
 
+local soonPending = false -- hay una pasada diferida agendada (ver refreshSoon)
+
 function Loot.ResetState()
     hooked = { list = false, mixin = false, classic = false }
     closed = false
@@ -167,14 +169,21 @@ function Loot.ResetState()
     hookedRows = setmetatable({}, { __mode = 'k' })
     rowOfMark = setmetatable({}, { __mode = 'k' })
     seen = setmetatable({}, { __mode = 'k' })
+    soonPending = false
 end
 
 ns.Bags.Register(OWNER, { install = Loot.Hook, refresh = Loot.Refresh, revalidate = revalidate })
 
 -- Eventos del botin: cerrar limpia; abrir/cambiar/vaciar repinta desde los slots actuales, en el acto y
--- otra vez al siguiente cuadro (cuando Blizzard ya dibujo las filas).
+-- otra vez al siguiente cuadro (cuando Blizzard ya dibujo las filas). La pasada diferida es una sola
+-- por rafaga de eventos.
 local function refreshSoon()
-    if C_Timer and C_Timer.After then C_Timer.After(0, Loot.Refresh) end
+    if soonPending or not (C_Timer and C_Timer.After) then return end
+    soonPending = true
+    C_Timer.After(0, function()
+        soonPending = false
+        Loot.Refresh()
+    end)
 end
 
 local frame = CreateFrame('Frame')

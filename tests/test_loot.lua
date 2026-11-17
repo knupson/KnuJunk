@@ -431,3 +431,26 @@ test('Loot: LOOT_CLOSED antes de PLAYER_REGEN_ENABLED: no se marca lo diferido',
         ok(rows[1].Item.KnuJunkMark == nil, 'ni se creo la textura')
     end)
 end)
+
+-- Item 12 de la ola final: una rafaga de eventos de botin agenda UNA sola pasada diferida (cada
+-- evento sigue repintando en el acto, asi una fila vaciada se limpia ya).
+test('Loot: rafaga de LOOT_SLOT_CHANGED -> un solo repintado diferido', function()
+    installLoot()
+    classicWindow(4)
+    addItem(100); FAKE.loot[1] = 100
+    open()
+    FAKE.Advance(1)
+    local calls = 0
+    local original = ns.Loot.Refresh
+    ns.Loot.Refresh = function(...) calls = calls + 1; return original(...) end
+    local timersBefore = #FAKE.timers
+    for _ = 1, 10 do FAKE.Fire('LOOT_SLOT_CHANGED', 1) end
+    local scheduled = #FAKE.timers - timersBefore
+    FAKE.Advance(1)
+    ns.Loot.Refresh = original
+    eq(scheduled, 1, 'un temporizador por rafaga')
+    eq(calls, 11, '10 inmediatos + 1 diferido')
+    -- La rafaga siguiente vuelve a agendar.
+    FAKE.Fire('LOOT_SLOT_CHANGED', 1)
+    eq(#FAKE.timers, 1)
+end)
