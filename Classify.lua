@@ -108,13 +108,7 @@ function ns.Classify(item, ctx)
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
-        -- Diario con misiones sin leer (encabezado plegado en combate): un gris podria ser
-        -- objetivo de mision, asi que no se da monedita por gris.
-        if ctx.questLogIncomplete then
-            reasons[#reasons + 1] = { kind = 'quest_log_incomplete' }
-        else
-            reasons[#reasons + 1] = { kind = 'gray' }
-        end
+        reasons[#reasons + 1] = { kind = 'gray' }
     end
     if starterQuest and questDone(ctx, starterQuest) then
         reasons[#reasons + 1] = { kind = 'quest_done', questID = starterQuest }
@@ -129,9 +123,12 @@ function ns.Classify(item, ctx)
     if classCannotUse(item, ctx) then
         reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID }
     end
-    -- 'quest_log_incomplete' solo explica por que falta la moneda: no cuenta como motivo.
-    for _, reason in ipairs(reasons) do
-        if reason.kind ~= 'quest_log_incomplete' then result.mark = 'coin'; break end
+    -- Diario con misiones sin leer (encabezado plegado en combate, sin API): el item podria ser
+    -- un objetivo de mision, asi que no se da NINGUNA moneda (salvo override_sell, ya resuelto arriba).
+    if #reasons > 0 and ctx.questLogIncomplete then
+        result.reasons = { { kind = 'quest_log_incomplete' } }
+        return result
     end
+    if #reasons > 0 then result.mark = 'coin' end
     return result
 end

@@ -6,54 +6,82 @@ local _, ns = ...
 local Player = {}
 ns.Player = Player
 
-local cache
+local cache    -- contexto vigente (nil = sucio, se reconstruye en el proximo GetContext)
+local previous -- ultimo contexto antes de ensuciarse: para avisar a OnChanged si cambio de contenido
 local lastQuestNames -- {[nombre normalizado] = nombre} del ultimo escaneo COMPLETO del diario
-local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos se ignoran
-local selfChangeUntil = 0 -- los eventos que provocan esas expansiones llegan despues; se ignoran un rato
-local SELF_EVENT_WINDOW = 2
+local questMemo, skillMemo = {}, {} -- {fp=, data=}: resultado del ultimo escaneo con expansion
+local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos sincronicos se ignoran
+local pending = false -- hay una reconstruccion diferida programada
+local changedCallbacks = {}
+local signatures = setmetatable({}, { __mode = 'k' }) -- [ctx] = firma de contenido
 
-function Player.Invalidate() cache = nil end
+local function markDirty()
+    if cache then previous = cache end
+    cache = nil
+end
+
+function Player.Invalidate() markDirty() end
+
+-- fn(ctx) se llama tras una reconstruccion SOLO si el contenido del contexto cambio
+-- (clase, profesiones, items de misiones, questLogIncomplete).
+function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Player.ResetState()
-    cache, lastQuestNames, scanning, selfChangeUntil = nil, nil, false, 0
+    cache, previous, lastQuestNames, scanning, pending = nil, nil, nil, false, false
+    questMemo, skillMemo, changedCallbacks = {}, {}, {}
 end
 
-local function now() return GetTime and GetTime() or 0 end
 local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
 
 -- Lee una lista con encabezados plegables (diario de misiones, habilidades). Si hay
 -- encabezados plegados los expande (fuera de combate), llama scan() y los vuelve a plegar
--- exactamente igual. Devuelve true si scan() vio la lista completa.
+-- exactamente igual.
 --   count() -> n ; entry(i) -> title, isHeader, isCollapsed ; expand(i), collapse(i) pueden ser nil.
-local function scanExpanded(count, entry, expand, collapse, scan, saveState, restoreState)
+--   fingerprint() -> string|nil describe lo visible; si coincide con la de la ultima expansion
+--   (memo.fp) no se expande de nuevo: es lo que corta el bucle expandir -> evento -> reconstruir.
+-- Devuelve complete, how: how = 'expanded' (scan() corrio con todo expandido), 'cached'
+-- (memo.fp coincide: scan() NO corrio) o nil.
+local function scanExpanded(count, entry, expand, collapse, scan, saveState, restoreState, fingerprint, memo)
     local collapsedTitles, any = {}, false
     for index = 1, count() do
         local title, isHeader, isCollapsed = entry(index)
-        if isHeader and isCollapsed then collapsedTitles[title] = true; any = true end
+        if isHeader and isCollapsed then
+            any = true
+            if title then collapsedTitles[title] = true end
+        end
     end
     if not any then scan(); return true end
     if inCombat() or not expand or not collapse then scan(); return false end
+    local before = fingerprint and fingerprint()
+    if before and memo and memo.fp == before then return true, 'cached' end
+    local complete, state = false, nil
     scanning = true
-    local state = saveState and saveState()
-    local scanned = pcall(function()
+    pcall(function()
+        state = saveState and saveState()
         -- De abajo hacia arriba: expandir un encabezado no mueve los indices de los de arriba.
         for index = count(), 1, -1 do
             local _, isHeader, isCollapsed = entry(index)
             if isHeader and isCollapsed then expand(index) end
         end
+        local stillCollapsed = false
+        for index = 1, count() do
+            local _, isHeader, isCollapsed = entry(index)
+            if isHeader and isCollapsed then stillCollapsed = true; break end
+        end
         scan()
+        complete = not stillCollapsed
     end)
     pcall(function()
         for index = count(), 1, -1 do
             local title, isHeader, isCollapsed = entry(index)
-            if isHeader and not isCollapsed and collapsedTitles[title] then collapse(index) end
+            if isHeader and not isCollapsed and title and collapsedTitles[title] then collapse(index) end
         end
     end)
     if restoreState then pcall(restoreState, state) end
     scanning = false
-    selfChangeUntil = now() + SELF_EVENT_WINDOW
-    return scanned
+    if complete and memo and before then memo.fp = fingerprint() end
+    return complete, complete and 'expanded' or nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -83,8 +111,16 @@ local function readProfessions()
             -- Plegado solo si el cliente lo dice con false/0: ante un nil no se toca nada.
             return name, isHeader, isHeader and (isExpanded == false or isExpanded == 0)
         end
+        local function fingerprint()
+            local parts = { GetNumSkillLines() or 0 }
+            for index = 1, parts[1] do
+                local name, isHeader, isExpanded = GetSkillLineInfo(index)
+                parts[#parts + 1] = tostring(name) .. ':' .. tostring(isHeader) .. ':' .. tostring(isExpanded)
+            end
+            return table.concat(parts, '|')
+        end
         -- Si no se puede expandir (combate o sin API) quedan las visibles: peor caso hammer_other.
-        scanExpanded(function() return GetNumSkillLines() or 0 end, entry,
+        local _, how = scanExpanded(function() return GetNumSkillLines() or 0 end, entry,
             type(ExpandSkillHeader) == 'function' and ExpandSkillHeader or nil,
             type(CollapseSkillHeader) == 'function' and CollapseSkillHeader or nil,
             function()
@@ -95,7 +131,13 @@ local function readProfessions()
                         if id and ns.PROFESSIONS[id] then professions[id] = true end
                     end
                 end
-            end)
+            end, nil, nil, fingerprint, skillMemo)
+        if how == 'cached' then
+            for id in pairs(skillMemo.data or {}) do professions[id] = true end
+        elseif how == 'expanded' then
+            skillMemo.data = {}
+            for id in pairs(professions) do skillMemo.data[id] = true end
+        end
     end
     return professions
 end
@@ -143,12 +185,22 @@ local function scanQuestLog()
             if not info then return nil end
             return info.title, info.isHeader, info.isCollapsed and info.isCollapsed ~= 0
         end
+        local function fingerprint()
+            local shown, total = C_QuestLog.GetNumQuestLogEntries()
+            if total == nil then return nil end -- sin total no se detectan cambios ocultos
+            local parts = { tostring(shown), tostring(total) }
+            for index = 1, shown or 0 do
+                local title, isHeader, isCollapsed = entry(index)
+                parts[#parts + 1] = tostring(title) .. ':' .. tostring(isHeader) .. ':' .. tostring(isCollapsed)
+            end
+            return table.concat(parts, '|')
+        end
         local save, restore
         if type(C_QuestLog.GetSelectedQuest) == 'function' and type(C_QuestLog.SetSelectedQuest) == 'function' then
             save = C_QuestLog.GetSelectedQuest
             restore = function(questID) if questID and questID ~= 0 then C_QuestLog.SetSelectedQuest(questID) end end
         end
-        local complete = scanExpanded(count, entry, expand, collapse, function()
+        local complete, how = scanExpanded(count, entry, expand, collapse, function()
             for index = 1, count() do
                 local info = C_QuestLog.GetInfo(index)
                 if info and not info.isHeader and info.questID then
@@ -157,7 +209,9 @@ local function scanQuestLog()
                     end
                 end
             end
-        end, save, restore)
+        end, save, restore, fingerprint, questMemo)
+        if how == 'cached' then return questMemo.data, true end
+        if how == 'expanded' then questMemo.data = names end
         return names, complete
     elseif type(GetNumQuestLogEntries) == 'function' and type(GetQuestLogTitle) == 'function'
         and type(GetNumQuestLeaderBoards) == 'function' and type(GetQuestLogLeaderBoard) == 'function' then
@@ -166,12 +220,22 @@ local function scanQuestLog()
             local title, _, _, isHeader, isCollapsed = GetQuestLogTitle(index)
             return title, isHeader, isCollapsed and isCollapsed ~= 0
         end
+        local function fingerprint()
+            local shown, total = GetNumQuestLogEntries()
+            if total == nil then return nil end
+            local parts = { tostring(shown), tostring(total) }
+            for index = 1, shown or 0 do
+                local title, isHeader, isCollapsed = entry(index)
+                parts[#parts + 1] = tostring(title) .. ':' .. tostring(isHeader) .. ':' .. tostring(isCollapsed)
+            end
+            return table.concat(parts, '|')
+        end
         local save, restore
         if type(GetQuestLogSelection) == 'function' and type(SelectQuestLogEntry) == 'function' then
             save = GetQuestLogSelection
             restore = function(selected) if selected and selected > 0 then SelectQuestLogEntry(selected) end end
         end
-        local complete = scanExpanded(count, entry,
+        local complete, how = scanExpanded(count, entry,
             type(ExpandQuestHeader) == 'function' and ExpandQuestHeader or nil,
             type(CollapseQuestHeader) == 'function' and CollapseQuestHeader or nil,
             function()
@@ -184,7 +248,9 @@ local function scanQuestLog()
                         end
                     end
                 end
-            end, save, restore)
+            end, save, restore, fingerprint, questMemo)
+        if how == 'cached' then return questMemo.data, true end
+        if how == 'expanded' then questMemo.data = names end
         return names, complete
     end
     return names, false
@@ -219,19 +285,26 @@ local function buildQuestItems()
         local name = GetItemInfo(id)
         if type(name) == 'string' and names[ns.NormalizeName(name)] then return true end
         return nil
-    end }), incomplete
+    end }), incomplete, names
 end
 
 -- ---------------------------------------------------------------------------
 -- Contexto
 -- ---------------------------------------------------------------------------
 
+local function sortedKeys(set)
+    local list = {}
+    for key in pairs(set) do list[#list + 1] = key end
+    table.sort(list, function(x, y) return tostring(x) < tostring(y) end)
+    return table.concat(list, ',')
+end
+
 local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
     local professions = readProfessions()
-    local questItems, incomplete = buildQuestItems()
-    return {
+    local questItems, incomplete, names = buildQuestItems()
+    local ctx = {
         class = class,
         professions = professions,
         isQuestDone = isQuestDone,
@@ -240,13 +313,25 @@ local function buildContext()
         questieUses = ns.Questie and ns.Questie.Uses or nil,
         overrides = ns.DB and ns.DB.overrides or {},
     }
+    -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
+    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), sortedKeys(professions),
+        sortedKeys(questItems), sortedKeys(names) }, '|')
+    return ctx
 end
 
 function Player.GetContext()
     -- ns.DB puede reemplazarse (primer login, pruebas): si cambio el origen, se reconstruye.
     local overrides = ns.DB and ns.DB.overrides
-    if cache and overrides and cache.overrides ~= overrides then cache = nil end
-    if not cache then cache = buildContext() end
+    if cache and overrides and cache.overrides ~= overrides then markDirty() end
+    if not cache then
+        local old = previous
+        previous = nil
+        cache = buildContext()
+        if old and signatures[old] ~= signatures[cache] then
+            local fresh = cache
+            for _, fn in ipairs(changedCallbacks) do pcall(fn, fresh) end
+        end
+    end
     return cache
 end
 
@@ -304,14 +389,27 @@ end
 -- ---------------------------------------------------------------------------
 
 local frame = CreateFrame('Frame')
--- Un evento que el cliente no conozca no debe romper la carga.
-for _, event in ipairs({ 'SKILL_LINES_CHANGED', 'QUEST_LOG_UPDATE', 'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP' }) do
+-- Todo evento que pueda cambiar el contexto lo ensucia; la reconstruccion es perezosa. Un
+-- evento que el cliente no conozca no debe romper la carga.
+for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
+    'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
-frame:SetScript('OnEvent', function(_, event)
-    if scanning then return end
-    -- Expandir/plegar encabezados dispara estos dos eventos (a veces un frame despues):
-    -- no son un cambio real, y reaccionar armaria un bucle.
-    if (event == 'QUEST_LOG_UPDATE' or event == 'SKILL_LINES_CHANGED') and now() < selfChangeUntil then return end
-    Player.Invalidate()
+
+-- Una reconstruccion diferida (agrupada) para que OnChanged se entere de cambios reales aunque
+-- nadie pida el contexto. Expandir encabezados provoca otro evento, pero esa segunda
+-- reconstruccion no expande (misma huella) y no cambia el contenido: no avisa y se corta ahi.
+local function scheduleCheck()
+    if pending or #changedCallbacks == 0 or not (C_Timer and C_Timer.After) then return end
+    pending = true
+    C_Timer.After(0.2, function()
+        pending = false
+        if #changedCallbacks > 0 then Player.GetContext() end
+    end)
+end
+
+frame:SetScript('OnEvent', function()
+    if scanning then return end -- eco sincronico de nuestra propia expansion
+    markDirty()
+    scheduleCheck()
 end)

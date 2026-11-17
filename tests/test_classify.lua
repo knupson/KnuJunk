@@ -194,14 +194,19 @@ test('item sin quality (datos no cargados) -> nil', function()
     end)
 end)
 
-test('questLogIncomplete: el gris no da monedita; otras reglas siguen', function()
+test('questLogIncomplete: ninguna moneda salvo override_sell', function()
     withData({}, {}, function()
-        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { questLogIncomplete = true })
-        eq(result.mark, nil); ok(hasReason(result, 'quest_log_incomplete'), 'reason')
-        ok(not hasReason(result, 'gray'), 'sin reason gray')
-        -- Otra regla de monedita sigue valiendo.
+        local incomplete = ctx { questLogIncomplete = true }
+        local gray = ns.Classify(item { quality = 0, price = 5 }, incomplete)
+        eq(gray.mark, nil); ok(hasReason(gray, 'quest_log_incomplete'), 'reason')
+        ok(not hasReason(gray, 'gray'), 'sin reason gray')
         local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false }
-        local second = ns.Classify(armor, ctx { questLogIncomplete = true })
-        eq(second.mark, 'coin'); ok(hasReason(second, 'class_cannot_use'), 'class_cannot_use')
+        local second = ns.Classify(armor, incomplete)
+        eq(second.mark, nil); ok(hasReason(second, 'quest_log_incomplete'), 'class_cannot_use tampoco da moneda')
+        -- Sin motivos de moneda no se agrega nada.
+        eq(#ns.Classify(item { quality = 1 }, incomplete).reasons, 0)
+        -- override_sell sigue valiendo.
+        local sold = ns.Classify(item { quality = 1, id = 77 }, ctx { questLogIncomplete = true, overrides = { [77] = 'sell' } })
+        eq(sold.mark, 'coin'); ok(hasReason(sold, 'override_sell'), 'override_sell')
     end)
 end)

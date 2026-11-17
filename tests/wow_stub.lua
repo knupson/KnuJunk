@@ -139,6 +139,11 @@ local function installClient()
         end
         return result
     end
+    local function totalQuests()
+        local total = 0
+        for _, entry in ipairs(FAKE.questLog) do if not entry.isHeader then total = total + 1 end end
+        return total
+    end
     local function skillCollapsed(entry) return entry.isExpanded == false end
     local function questCollapsed(entry) return entry.isCollapsed == true end
     local function setCollapsed(list, isCollapsed, index, collapsed, field, event, counter, inverse)
@@ -171,7 +176,7 @@ local function installClient()
     ExpandQuestHeader, CollapseQuestHeader = expandQuest, collapseQuest
     C_QuestLog = {
         IsQuestFlaggedCompleted = function(questID) return FAKE.completed[questID] == true end,
-        GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed) end,
+        GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed), totalQuests() end,
         GetInfo = function(index) return visible(FAKE.questLog, questCollapsed)[index] end,
         GetQuestObjectives = function(questID)
             for _, q in ipairs(FAKE.questLog) do if q.questID == questID then return q.objectives or {} end end
@@ -183,7 +188,7 @@ local function installClient()
         SetSelectedQuest = function(questID) FAKE.selected = questID end,
     }
     -- API clasica del diario (la usa el cliente cuando falta C_QuestLog.GetInfo).
-    GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed) end
+    GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed), totalQuests() end
     GetQuestLogTitle = function(index)
         local q = visible(FAKE.questLog, questCollapsed)[index]
         if not q then return nil end

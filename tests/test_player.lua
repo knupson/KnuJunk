@@ -162,7 +162,7 @@ test('Invalidate tras QUEST_TURNED_IN recalcula', function()
 end)
 
 test('los otros eventos tambien invalidan', function()
-    for _, event in ipairs({ 'SKILL_LINES_CHANGED', 'QUEST_LOG_UPDATE', 'PLAYER_LEVEL_UP' }) do
+    for _, event in ipairs({ 'SKILL_LINES_CHANGED', 'QUEST_LOG_UPDATE', 'PLAYER_LEVEL_UP', 'QUEST_ACCEPTED' }) do
         local before = ns.Player.GetContext()
         FAKE.Fire(event)
         ok(ns.Player.GetContext() ~= before, event)
@@ -260,26 +260,93 @@ end)
 
 test('no entra en bucle con QUEST_LOG_UPDATE al expandir', function()
     collapsedLog()
-    local ctx = ns.Player.GetContext()
-    -- Los eventos sincronicos de expandir/plegar no invalidaron el cache.
-    eq(ns.Player.GetContext(), ctx)
+    local changes = 0
+    ns.Player.OnChanged(function() changes = changes + 1 end)
+    ns.Player.GetContext()
     eq(FAKE.calls.expand, 1)
-    -- Llegada diferida del evento (mismo instante): se ignora.
-    FAKE.Fire('QUEST_LOG_UPDATE')
-    eq(ns.Player.GetContext(), ctx)
-    eq(FAKE.calls.expand, 1)
-    -- Pasada la ventana, un QUEST_LOG_UPDATE real si invalida.
-    FAKE.Advance(3)
-    FAKE.Fire('QUEST_LOG_UPDATE')
-    ok(ns.Player.GetContext() ~= ctx, 'invalida')
-    eq(FAKE.calls.expand, 2)
+    -- Ecos del propio expandir (llegan despues del escaneo), con reconstruccion diferida.
+    for _ = 1, 5 do
+        FAKE.Fire('QUEST_LOG_UPDATE')
+        FAKE.Advance(1)
+        ns.Player.GetContext()
+    end
+    eq(FAKE.calls.expand, 1, 'no vuelve a expandir')
+    eq(FAKE.calls.collapse, 1)
+    eq(changes, 0, 'el contenido no cambio: OnChanged no avisa')
+    eq(#FAKE.timers, 0, 'no queda nada programado')
 end)
 
-test('QUEST_TURNED_IN invalida aunque sea dentro de la ventana', function()
+test('una mision aceptada justo despues de expandir se detecta (sin ventana ciega)', function()
     collapsedLog()
+    local fired = 0
+    ns.Player.OnChanged(function() fired = fired + 1 end)
+    ns.Player.GetContext()
+    FAKE.Fire('QUEST_LOG_UPDATE') -- eco de la expansion
+    FAKE.Advance(1)
+    -- Sin pasar tiempo: el jugador acepta una mision bajo el encabezado plegado.
+    addItem(501, { name = 'Piel de jabali', quality = 0 })
+    table.insert(FAKE.questLog, 3, { title = 'Jabalies', questID = 4,
+        objectives = { { text = 'Piel de jabali: 0/3', type = 'item' } } })
+    FAKE.Fire('QUEST_ACCEPTED')
     local ctx = ns.Player.GetContext()
-    FAKE.Fire('QUEST_TURNED_IN')
-    ok(ns.Player.GetContext() ~= ctx)
+    eq(ctx.questItemsInLog[501], true, 'item de la mision nueva')
+    eq(ctx.questItemsInLog[500], true)
+    eq(FAKE.calls.expand, 2, 'reescaneo porque cambio el total de misiones')
+    eq(fired, 1)
+    eq(FAKE.questLog[1].isCollapsed, true)
+    -- Y su propio eco tampoco entra en bucle.
+    FAKE.Fire('QUEST_LOG_UPDATE')
+    FAKE.Advance(1)
+    ns.Player.GetContext()
+    eq(FAKE.calls.expand, 2); eq(fired, 1)
+end)
+
+test('un cambio real avisa por OnChanged con la reconstruccion diferida', function()
+    local fired, last = 0, nil
+    ns.Player.OnChanged(function(ctx) fired = fired + 1; last = ctx end)
+    ns.Player.GetContext()
+    FAKE.professions = { { name = 'Mining', skillLine = 186 } }
+    FAKE.Fire('SKILL_LINES_CHANGED')
+    eq(fired, 0, 'todavia no: la reconstruccion es diferida')
+    FAKE.Advance(1)
+    eq(fired, 1)
+    eq(last.professions[186], true)
+    FAKE.Advance(1); eq(fired, 1)
+end)
+
+test('los eventos pendientes se agrupan en una sola reconstruccion diferida', function()
+    ns.Player.OnChanged(function() end)
+    ns.Player.GetContext()
+    FAKE.Fire('QUEST_LOG_UPDATE'); FAKE.Fire('QUEST_ACCEPTED'); FAKE.Fire('QUEST_REMOVED')
+    eq(#FAKE.timers, 1)
+end)
+
+test('QUEST_TURNED_IN y los demas eventos invalidan', function()
+    collapsedLog()
+    for _, event in ipairs({ 'QUEST_TURNED_IN', 'QUEST_ACCEPTED', 'QUEST_REMOVED', 'PLAYER_REGEN_ENABLED' }) do
+        local ctx = ns.Player.GetContext()
+        FAKE.Fire(event)
+        ok(ns.Player.GetContext() ~= ctx, event)
+    end
+end)
+
+test('si expandir no surte efecto, el diario queda incompleto y scanning no se traba', function()
+    collapsedLog()
+    FAKE.Remove('C_QuestLog.ExpandQuestHeader')
+    C_QuestLog.ExpandQuestHeader = function() end -- no hace nada
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questLogIncomplete, true)
+    FAKE.Fire('QUEST_TURNED_IN') -- si scanning quedara en true, esto se ignoraria
+    ok(ns.Player.GetContext() ~= ctx, 'scanning se libero')
+end)
+
+test('un encabezado plegado sin titulo no rompe el escaneo', function()
+    addItem(500, { name = 'Garra de lobo', quality = 0 })
+    FAKE.questLog = {
+        { isHeader = true, isCollapsed = true },
+        { title = 'Lobos', questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } },
+    }
+    eq(ns.Player.GetContext().questItemsInLog[500], true)
 end)
 
 -- Encabezados de habilidades plegados.
@@ -300,9 +367,10 @@ test('habilidades con encabezado plegado: expande, lee la profesion y vuelve a p
     eq(FAKE.skillLines[3].isExpanded, false, 'Profesiones vuelve a plegado')
     eq(FAKE.skillLines[1].isExpanded, true)
     eq(FAKE.calls.expand, 1); eq(FAKE.calls.collapse, 1)
-    local ctx = ns.Player.GetContext()
-    FAKE.Fire('SKILL_LINES_CHANGED') -- eco del propio expandir: no invalida
-    eq(ns.Player.GetContext(), ctx)
+    -- Eco del propio expandir: se reconstruye pero sin volver a expandir (misma huella).
+    FAKE.Fire('SKILL_LINES_CHANGED')
+    eq(ns.Player.GetContext().professions[164], true)
+    eq(FAKE.calls.expand, 1)
 end)
 
 test('habilidades plegadas en combate: no toca nada y no hay profesion', function()
