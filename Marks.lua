@@ -64,17 +64,18 @@ local function ensureTexture(button)
     return texture
 end
 
--- mark = veredicto del clasificador; allowQuest solo en el botin.
-local function paint(button, mark, allowQuest)
-    local kind
-    if mark == 'coin' then kind = 'coin'
-    elseif mark == 'hammer_mine' or mark == 'hammer_other' then kind = 'hammer'
-    elseif mark == 'quest' and allowQuest then kind = 'quest' end
-    if not kind or not shows(kind == 'quest' and 'loot' or kind) then return hide(button) end
-    local texture = ensureTexture(button)
+local function kindOf(mark, allowQuest)
+    if mark == 'coin' then return 'coin' end
+    if mark == 'hammer_mine' or mark == 'hammer_other' then return 'hammer' end
+    if mark == 'quest' and allowQuest then return 'quest' end
+end
+
+-- Deja `texture` con el aspecto de la marca (textura, tinte, desaturado). Los botones se reciclan:
+-- cada dibujo parte de un estado limpio. Tambien lo usan los adaptadores que dibujan en sus propias
+-- esquinas (Baganator).
+local function style(texture, kind, mark)
     texture:SetTexture(TEXTURES[kind])
     if kind == 'hammer' then texture:SetTexCoord(0.08, 0.92, 0.08, 0.92) else texture:SetTexCoord(0, 1, 0, 1) end
-    -- Los botones se reciclan: cada dibujo parte de un estado limpio.
     texture:SetVertexColor(1, 1, 1)
     texture:SetAlpha(1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end
@@ -84,6 +85,14 @@ local function paint(button, mark, allowQuest)
         if texture.SetDesaturated then texture:SetDesaturated(true) end
         texture:SetAlpha(OTHER_ALPHA)
     end
+end
+
+-- mark = veredicto del clasificador; allowQuest solo en el botin.
+local function paint(button, mark, allowQuest)
+    local kind = kindOf(mark, allowQuest)
+    if not kind or not shows(kind == 'quest' and 'loot' or kind) then return hide(button) end
+    local texture = ensureTexture(button)
+    style(texture, kind, mark)
     texture:Show()
 end
 
@@ -145,6 +154,32 @@ function Marks.UpdateLink(button, link, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
     safely(button, updateLinkBody, link, owner)
+end
+
+-- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (solo 0-4, del
+-- personaje actual). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
+-- nil si no; el 2.o valor es true cuando el cliente aun no tiene los datos del item (reintentar con
+-- GET_ITEM_INFO_RECEIVED). Si expectedID viene, el slot tiene que contener ese item. Nunca lanza.
+function Marks.Verdict(bag, slot, expectedID)
+    local success, mark, waiting = pcall(function()
+        if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return nil end
+        local id = slotItemID(bag, slot)
+        if not id or (expectedID ~= nil and id ~= expectedID) then return nil end
+        local item = ns.Player.ReadItem(bag, slot)
+        if not item then return nil, true end
+        local found = verdict(item)
+        local kind = kindOf(found, false)
+        if kind and shows(kind) then return found end
+    end)
+    if success then return mark, waiting == true end
+    return nil, false
+end
+
+-- Pinta `texture` (de una esquina ajena) con la marca; false si la marca no es dibujable.
+function Marks.Style(texture, mark)
+    local kind = kindOf(mark, false)
+    if not kind then return false end
+    return pcall(style, texture, kind, mark)
 end
 
 -- Solo para pruebas: deja el modulo como recien cargado.

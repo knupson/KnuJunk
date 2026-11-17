@@ -340,3 +340,21 @@ test('Update que lanza deja la marca oculta', function()
     ns.Player.ReadLink = savedLink
     ok(success and not visible(link), 'UpdateLink tambien queda oculto')
 end)
+
+test('Verdict: marca del slot, pendiente sin datos y nunca lanza', function()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local mark, waiting = ns.Marks.Verdict(0, 1, 100)
+    eq(mark, 'coin'); eq(waiting, false)
+    mark = ns.Marks.Verdict(0, 1, 999)
+    eq(mark, nil, 'el slot tiene otro item')
+    mark = ns.Marks.Verdict(-1, 1)
+    eq(mark, nil, 'fuera de bolsas 0-4')
+    FAKE.bags['0:2'] = 200 -- sin datos todavia
+    mark, waiting = ns.Marks.Verdict(0, 2, 200)
+    eq(mark, nil); eq(waiting, true)
+    local saved = ns.Player.ReadItem
+    ns.Player.ReadItem = function() error('roto') end
+    local success, result = pcall(ns.Marks.Verdict, 0, 1, 100)
+    ns.Player.ReadItem = saved
+    ok(success and result == nil, 'un error devuelve nil')
+end)

@@ -5,7 +5,7 @@
 ## Notes-esMX: Basura, sobrantes de misión y materiales de profesión: iconos en tus bolsas y en el botín.
 ## Author: Alejandro Benzoni (KnuPwns)
 ## SavedVariables: KnuJunkDB
-## OptionalDeps: QuestieDB
+## OptionalDeps: QuestieDB, Baganator
 ## Version: 0.1.0
 ## X-License: MIT
 ## X-Website: https://knunet.com
@@ -22,3 +22,4 @@ QuestieSource.lua
 Marks.lua
 Bags\Registry.lua
 Bags\Blizzard.lua
+Bags\Baganator.lua

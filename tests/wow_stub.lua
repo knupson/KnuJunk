@@ -273,14 +273,41 @@ function FAKE.InstallQuestie(quests, opts)
     }
     return LibQuestieDB
 end
+-- Baganator falso (solo pruebas): graba lo que se registra y deja a la prueba invocar los callbacks.
+-- FAKE.baganator = { junk = {label=, id=, callback=}, widgets = { [id] = {label=, onUpdate=, onInit=} },
+-- refreshes = n, activeJunk = id|nil, activeWidgets = { [id] = true } }.
+function FAKE.InstallBaganator()
+    local state = { junk = {}, widgets = {}, refreshes = 0, activeWidgets = {} }
+    FAKE.baganator = state
+    FAKE.addons.Baganator = true
+    Baganator = { API = {
+        RegisterJunkPlugin = function(label, id, callback)
+            if type(label) ~= 'string' or type(id) ~= 'string' or type(callback) ~= 'function' then error('Bad junk plugin arguments') end
+            state.junk[id] = { label = label, id = id, callback = callback }
+        end,
+        RegisterCornerWidget = function(label, id, onUpdate, onInit, defaultPosition, isFast)
+            assert(id and label and onUpdate and onInit and not state.widgets[id])
+            state.widgets[id] = { label = label, onUpdate = onUpdate, onInit = onInit, defaultPosition = defaultPosition, isFast = isFast }
+        end,
+        RequestItemButtonsRefresh = function() state.refreshes = state.refreshes + 1 end,
+        IsJunkPluginActive = function(id) return state.activeJunk == id end,
+        IsCornerWidgetActive = function(id) return state.activeWidgets[id] == true end,
+    } }
+    return state
+end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
+    for name in pairs(_G) do
+        if type(name) == 'string' and name:sub(1, 9) == 'Baganator' then _G[name] = nil end
+    end
+    FAKE.baganator = nil
     installClient()
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
     if ns and ns.Marks then ns.Marks.ResetState() end
     if ns and ns.Bags then ns.Bags.ResetState() end
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
+    if ns and ns.BaganatorAdapter then ns.BaganatorAdapter.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')
 end
 FAKE.Reset()
