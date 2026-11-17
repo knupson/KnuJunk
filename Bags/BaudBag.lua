@@ -5,10 +5,9 @@ local _, ns = ...
 -- fuente; la forma sale de la competencia (questjunksweeper Bags.lua l.1166-1170: el hook recibe
 -- el boton como 6.o argumento, es decir (BaudBag, a, b, c, d, boton), y bolsa = ID del padre, slot =
 -- ID del boton; peddler Peddler.lua l.321-329: botones BaudBagSubBag<bolsa>Item<slot>).
---   * identidad: si el boton expone el item que muestra (Common.DisplayedID) manda; si no (lo normal),
---     el slot vivo leido DURANTE el callback (Common.Capture): ItemSlot_Updated es el aviso de que
---     BaudBag acaba de actualizar ese slot (SIN VERIFICAR que corra despues de dibujar). Los
---     refrescos posteriores solo remarcan si lo capturado sigue siendo el item vivo.
+--   * identidad: SOLO la que el boton exponga (Common.DisplayedID, via Common.ExposedReader). No se
+--     captura el slot vivo: sin fuente no se puede probar que el hook corra despues de dibujar ni
+--     que la vista sea la viva. Boton sin campo expuesto: sin marca hasta verificar en el juego.
 --   * sin marca: argumento que no es un boton, banco/hermandad/cache (Common.NonCarried) o bolsas
 --     fuera de 0-4 (Marks).
 local OWNER = 'BaudBag'
@@ -28,7 +27,7 @@ local function locate(button)
     return bag, slot
 end
 
-local reader = Common.CapturingReader(locate)
+local reader = Common.ExposedReader(locate)
 
 local function revalidate(button) return tracker:Read(button) end
 
@@ -38,7 +37,7 @@ local function onUpdated(...)
         if type(button) ~= 'table' or type(button.GetID) ~= 'function' or type(button.GetParent) ~= 'function' then return end
         local bag, slot = locate(button)
         if type(bag) ~= 'number' or type(slot) ~= 'number' then return tracker:Release(button) end
-        tracker:Apply(button, reader, Common.Capture(bag, slot))
+        tracker:Apply(button, reader)
     end)
 end
 

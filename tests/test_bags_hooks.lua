@@ -302,51 +302,61 @@ end)
 
 -- BaudBag:ItemSlot_Updated(bagSet, containerId, subContainerId, slotId, button): el boton va 6.o con
 -- self (questjunksweeper Bags.lua l.1166-1170); la bolsa es el ID del padre y el slot el del boton.
-local function baudButton(bag, slot, parentName)
+-- Identidad: solo la que el boton exponga (sin fuente de BaudBag no se captura el slot vivo).
+local function baudButton(bag, slot, parentName, fields)
     local parent = CreateFrame('Frame', parentName or ('BaudBagSubBag' .. bag), UIParent)
     parent.id = bag
     local button = CreateFrame('Button', 'BaudBagSubBag' .. bag .. 'Item' .. slot, parent)
     button.id = slot
+    for key, value in pairs(fields or {}) do button[key] = value end
     return button
 end
 
-test('BaudBag: hook de ItemSlot_Updated; la identidad es la del slot vivo en el callback', function()
+test('BaudBag: hook de ItemSlot_Updated; la identidad es la que el boton expone', function()
     local baud = { ItemSlot_Updated = function() end }
     BaudBag = baud
     local original = baud.ItemSlot_Updated
     junk(100, 0, 3)
     install('BaudBag')
     ok(isInstalled('BaudBag') and baud.ItemSlot_Updated ~= original, 'hook instalado')
-    local button = baudButton(0, 3)
+    local button = baudButton(0, 3, nil, { itemID = 100 })
     baud:ItemSlot_Updated(1, 0, 0, 3, button)
     ok(marked(button), 'marca')
     eq(button.KnuJunkOwner, 'BaudBag')
     FAKE.bags['0:3'] = nil
     ns.Bags.RefreshAll(); FAKE.Advance(1)
-    ok(not marked(button), 'cambio el slot sin callback: sin marca')
-    junk(101, 0, 3)
-    ns.Bags.RefreshAll(); FAKE.Advance(1)
-    ok(not marked(button), 'otro item en el slot y ningun callback: sigue sin marca')
+    ok(not marked(button), 'el slot se vacio y el boton sigue diciendo 100: sin marca')
+end)
+
+test('BaudBag sin identidad expuesta -> sin marca (no se captura el slot vivo)', function()
+    BaudBag = { ItemSlot_Updated = function() end }
+    junk(100, 0, 3)
+    install('BaudBag')
+    local button = baudButton(0, 3)
+    spy(function(updates)
+        BaudBag:ItemSlot_Updated(1, 0, 0, 3, button)
+        eq(#updates, 0, 'nunca Update')
+    end)
+    ok(not marked(button))
 end)
 
 test('BaudBag: banco, bolsa fuera de 0-4, argumentos raros y campos contradictorios -> sin marca', function()
     BaudBag = { ItemSlot_Updated = function() end }
     junk(100, 0, 3); junk(101, 6, 1); junk(102, 1, 1); addItem(103)
     install('BaudBag')
-    local bank = baudButton(6, 1)
+    local bank = baudButton(6, 1, nil, { itemID = 101 })
     BaudBag:ItemSlot_Updated(1, 6, 0, 1, bank)
     ok(not marked(bank), 'bolsa 6')
-    local named = baudButton(1, 1, 'BaudBagBankContainer')
+    local named = baudButton(1, 1, 'BaudBagBankContainer', { itemID = 102 })
     BaudBag:ItemSlot_Updated(1, 1, 0, 1, named)
     ok(not marked(named), 'marco con nombre de banco')
     BaudBag:ItemSlot_Updated(1, 0, 0, 3)
     BaudBag:ItemSlot_Updated(1, 0, 0, 3, 'no soy un boton')
     BaudBag:ItemSlot_Updated(1, 0, 0, 3, {})
-    local clash = baudButton(0, 3)
-    clash.itemID = 103
+    local clash = baudButton(0, 3, nil, { itemID = 103 })
     BaudBag:ItemSlot_Updated(1, 0, 0, 3, clash)
     ok(not marked(clash), 'el boton dice 103 y el slot tiene 100')
-    local ok1 = baudButton(0, 3)
+    local ok1 = baudButton(0, 3, nil, { itemID = 100 })
     BaudBag:ItemSlot_Updated(1, 0, 0, 3, ok1)
     ok(marked(ok1), 'control')
 end)
@@ -377,7 +387,26 @@ local function walk()
     ns.Bags.RefreshAll(); FAKE.Advance(1)
 end
 
-test('Frames: Combuctor encuentra ContainerFrame1Item1', function()
+-- Las entradas sin contenedor conocido no recorren: para probar sus patrones se les asigna un
+-- contenedor VISIBLE de prueba (simula un nombre verificado en el juego) y se restaura al terminar.
+-- Inventorian ya trae el suyo (InventorianBagFrame, Inventorian.lua l.81), que tambien se crea.
+local function withContainers(fn)
+    local saved = {}
+    for _, entry in ipairs(ns.Frames.Entries) do saved[entry] = entry.frame or false end
+    local success, err = pcall(function()
+        for _, entry in ipairs(ns.Frames.Entries) do
+            entry.frame = entry.frame or ('KnuContenedor_' .. entry.name)
+            CreateFrame('Frame', entry.frame, UIParent)
+        end
+        fn()
+    end)
+    for entry, frame in pairs(saved) do entry.frame = frame or nil end
+    if not success then error(err, 0) end
+end
+
+local function ftest(name, fn) test(name, function() withContainers(fn) end) end
+
+ftest('Frames: Combuctor encuentra ContainerFrame1Item1', function()
     local link = junk(100, 0, 3)
     local button = namedButton('ContainerFrame1Item1', 0, 3, { itemLink = link })
     FAKE.addons.Combuctor = true
@@ -390,7 +419,7 @@ test('Frames: Combuctor encuentra ContainerFrame1Item1', function()
     ok(isInstalled('Combuctor'))
 end)
 
-test('Frames: pinta de verdad la moneda del boton encontrado', function()
+ftest('Frames: pinta de verdad la moneda del boton encontrado', function()
     junk(100, 0, 3)
     local button = namedButton('ContainerFrame1Item1', 0, 3, { itemID = 100 })
     FAKE.addons.Combuctor = true
@@ -399,7 +428,7 @@ test('Frames: pinta de verdad la moneda del boton encontrado', function()
     eq(button.KnuJunkOwner, 'Combuctor')
 end)
 
-test('Frames: sin campo de identidad -> sin marca (no se captura sin callback)', function()
+ftest('Frames: sin campo de identidad -> sin marca (no se captura sin callback)', function()
     junk(100, 0, 3)
     local button = namedButton('ContainerFrame1Item1', 0, 3)
     FAKE.addons.Combuctor = true
@@ -410,7 +439,7 @@ test('Frames: sin campo de identidad -> sin marca (no se captura sin callback)',
     ok(not marked(button))
 end)
 
-test('Frames: identidad que no coincide con el slot, cacheada o de banco -> sin marca', function()
+ftest('Frames: identidad que no coincide con el slot, cacheada o de banco -> sin marca', function()
     junk(100, 0, 3); addItem(101); junk(102, 1, 1)
     local stale = namedButton('ContainerFrame1Item1', 0, 3, { itemID = 101 })
     local cached = namedButton('ContainerFrame2Item1', 1, 1, { itemID = 102, isCached = true })
@@ -424,7 +453,7 @@ test('Frames: identidad que no coincide con el slot, cacheada o de banco -> sin 
     ok(not marked(bankSlot), 'bolsa 6')
 end)
 
-test('Frames: boton oculto o con otro dueno no se toca', function()
+ftest('Frames: boton oculto o con otro dueno no se toca', function()
     junk(100, 0, 3); junk(101, 0, 4)
     local hidden = namedButton('ContainerFrame1Item1', 0, 3, { itemID = 100 })
     hidden.shown = false
@@ -438,7 +467,7 @@ test('Frames: boton oculto o con otro dueno no se toca', function()
     end)
 end)
 
-test('Frames: recorrido acotado, se detiene en el primer indice que falta', function()
+ftest('Frames: recorrido acotado, se detiene en el primer indice que falta', function()
     FAKE.addons.cargBags_Nivaya = true
     junk(100, 0, 1); junk(101, 0, 2); junk(102, 0, 4)
     local a = namedButton('NivayaSlot1', 0, 1, { itemID = 100 })
@@ -452,7 +481,7 @@ test('Frames: recorrido acotado, se detiene en el primer indice que falta', func
     walk()
 end)
 
-test('Frames: nombres de cada addon (Peddler.lua l.261-594, Inventorian Item.lua l.22 y l.57-70)', function()
+ftest('Frames: nombres de cada addon (Peddler.lua l.261-594, Inventorian Item.lua l.22 y l.57-70)', function()
     local cases = {
         { 'Combuctor', 'ContainerFrame1Item1' },
         { 'OneBag3', 'OneBagFrameBag0Item1' },
@@ -467,6 +496,7 @@ test('Frames: nombres de cada addon (Peddler.lua l.261-594, Inventorian Item.lua
     }
     for _, case in ipairs(cases) do
         FAKE.Reset()
+        for _, entry in ipairs(ns.Frames.Entries) do CreateFrame('Frame', entry.frame, UIParent) end
         junk(100, 0, 3)
         local fields = case[1] == 'Inventorian' and { itemLink = FAKE.linkOf(100), bag = 0, slot = 3 } or { itemID = 100 }
         local button = namedButton(case[2], 0, 3, fields)
@@ -478,7 +508,7 @@ test('Frames: nombres de cada addon (Peddler.lua l.261-594, Inventorian Item.lua
     end
 end)
 
-test('Frames: sin su addon cargado no se busca nada', function()
+ftest('Frames: sin su addon cargado no se busca nada', function()
     junk(100, 0, 3)
     local button = namedButton('ContainerFrame1Item1', 0, 3, { itemID = 100 })
     walk()
@@ -489,7 +519,7 @@ test('Frames: sin su addon cargado no se busca nada', function()
     end
 end)
 
-test('Frames: Inventorian usa solo itemLink (itemID viejo ignorado), bag/slot propios y su cache', function()
+ftest('Frames: Inventorian usa solo itemLink (itemID viejo ignorado), bag/slot propios y su cache', function()
     FAKE.addons.Inventorian = true
     local link = junk(100, 0, 3); addItem(101)
     -- itemID viejo (Item.lua l.~: self.itemID nunca se limpia) no cuenta: manda itemLink
@@ -513,22 +543,70 @@ test('Frames: Inventorian usa solo itemLink (itemID viejo ignorado), bag/slot pr
     ok(not marked(liar), 'button.bag distinto del ID del padre')
 end)
 
-test('Frames: Inventorian con la ventana de bolsas oculta no se recorre', function()
+ftest('Frames: Inventorian con la ventana de bolsas oculta no se recorre (0 sondeos)', function()
     FAKE.addons.Inventorian = true
     local link = junk(100, 0, 3)
-    local frame = CreateFrame('Frame', 'InventorianBagFrame', UIParent)
-    local parent = CreateFrame('Frame', nil, frame)
-    parent.id = 0
-    local button = CreateFrame('Button', 'InventorianItemButton1', parent)
-    button.id, button.itemLink, button.bag, button.slot = 3, link, 0, 3
-    frame.shown = false
+    local button = namedButton('InventorianItemButton1', 0, 3, { itemLink = link, bag = 0, slot = 3 })
+    InventorianBagFrame.shown = false
+    local before = ns.Frames.probes
     spy(function(updates) walk(); eq(#updates, 0, 'ventana oculta') end)
-    frame.shown = true
+    eq(ns.Frames.probes, before, 'ni un sondeo con la bolsa cerrada')
+    ok(not marked(button))
+    InventorianBagFrame.shown = true
     walk()
     ok(marked(button), 'ventana visible')
+    ok(ns.Frames.probes > before)
 end)
 
-test('Frames: un refresco repinta y quita la marca si el slot cambio', function()
+test('Frames: entradas sin contenedor conocido no recorren (0 sondeos), aunque el addon y el boton esten', function()
+    junk(100, 0, 3)
+    local button = namedButton('ContainerFrame1Item1', 0, 3, { itemID = 100 })
+    FAKE.addons.Combuctor = true
+    local before = ns.Frames.probes
+    walk()
+    eq(ns.Frames.probes, before, 'sin sondeos')
+    ok(not marked(button), 'sin marca hasta verificar el contenedor en el juego')
+    for _, entry in ipairs(ns.Frames.Entries) do
+        ok((entry.name == 'Inventorian') == (entry.frame ~= nil), entry.name .. ': solo Inventorian declara contenedor')
+    end
+end)
+
+test('Frames: Inventorian toma el boton que Generic ya habia marcado y lo reciclado con itemID viejo se lee por itemLink', function()
+    FAKE.addons.Inventorian = true
+    CreateFrame('Frame', 'InventorianBagFrame', UIParent)
+    SetItemButtonQuality = function() end
+    local link100 = junk(100, 0, 3)
+    local link101 = FAKE.linkOf(101); addItem(101)
+    local live = CreateFrame('Frame', nil, UIParent)
+    ns.Bags.DeclareLiveContainer(live)   -- contenedor que Generic acepta
+    local parent = CreateFrame('Frame', nil, live); parent.id = 0
+    local button = CreateFrame('Button', 'InventorianItemButton1', parent)
+    button.id, button.bag, button.slot, button.itemLink, button.itemID = 3, 0, 3, link100, 100
+    function button:GetBagID() return self.bag end
+    ns.Bags.InstallAll()                                   -- instala Generic e Inventorian
+    SetItemButtonQuality(button, 0, link100)               -- 1. hook global durante el redibujado
+    eq(button.KnuJunkOwner, 'GenericHook'); ok(marked(button))
+    walk()                                                 -- 2. barrido dedicado
+    eq(button.KnuJunkOwner, 'Inventorian', 'el dedicado tomo el boton')
+    ok(marked(button))
+    -- 3. reciclado: link y slot pasan a 101 y queda el itemID=100 residual
+    FAKE.bags['0:3'] = 101
+    button.itemLink = link101
+    SetItemButtonQuality(button, 0, link101)
+    walk()
+    ok(marked(button), 'el lector dedicado ignora el itemID viejo y marca el 101')
+    eq(button.KnuJunkOwner, 'Inventorian')
+    -- Generic ya no lo sigue: ni lo limpia ni lo repinta
+    spy(function(updates, clears)
+        SetItemButtonQuality(button, 0, link101)
+        eq(#updates, 0); eq(#clears, 0)
+    end)
+    -- otro dueno dedicado sigue sin poder pisarlo desde Frames
+    button.KnuJunkOwner = 'Bagnon'
+    spy(function(updates) walk(); eq(#updates, 0, 'dueno dedicado ajeno') end)
+end)
+
+ftest('Frames: un refresco repinta y quita la marca si el slot cambio', function()
     junk(100, 0, 1)
     local button = namedButton('StuffingBag0_1', 0, 1, { itemID = 100 })
     FAKE.addons.DerpyStuffing = true
@@ -540,12 +618,22 @@ test('Frames: un refresco repinta y quita la marca si el slot cambio', function(
 end)
 
 -- ---------------------------------------------------------------------------
--- Generico
+-- Generico (adaptador 'GenericHook'; el dueno 'generic' es el valor por defecto de Marks)
 -- ---------------------------------------------------------------------------
 
--- Boton de bolsa de plantilla Blizzard: GetBagID() y GetID().
-local function genericButton(bag, slot, fields)
-    local button = CreateFrame('Button', nil, UIParent)
+local GENERIC = 'GenericHook'
+
+-- Contenedor declarado como ventana viva (lo que hace el adaptador de Blizzard con ContainerFrameN).
+local function liveContainer()
+    local container = CreateFrame('Frame', nil, UIParent)
+    ns.Bags.DeclareLiveContainer(container)
+    return container
+end
+
+-- Boton de bolsa de plantilla Blizzard: GetBagID() y GetID(), colgado de un contenedor vivo declarado
+-- (o del `parent` que se pase).
+local function genericButton(bag, slot, fields, parent)
+    local button = CreateFrame('Button', nil, parent or liveContainer())
     button.id, button.bag = slot, bag
     function button:GetBagID() return self.bag end
     for key, value in pairs(fields or {}) do button[key] = value end
@@ -560,7 +648,7 @@ test('Generic: se instala siempre (sin addon) y engancha SetItemButtonQuality', 
     withQuality()
     local original = SetItemButtonQuality
     ns.Bags.InstallAll()
-    ok(isInstalled('generic'), 'instalado sin addon de bolsas')
+    ok(isInstalled(GENERIC), 'instalado sin addon de bolsas')
     ok(SetItemButtonQuality ~= original, 'global enganchada')
 end)
 
@@ -581,7 +669,7 @@ end)
 test('Generic: sin ninguna API para enganchar -> install false', function()
     FAKE.Remove('SetItemButtonQuality')
     ns.Bags.InstallAll()
-    ok(not isInstalled('generic'))
+    ok(not isInstalled(GENERIC))
 end)
 
 test('Generic: marca con GetBagID/GetID validos y el item que el addon dice dibujar', function()
@@ -590,10 +678,57 @@ test('Generic: marca con GetBagID/GetID validos y el item que el addon dice dibu
     local button = genericButton(2, 5)
     SetItemButtonQuality(button, 0, link)
     ok(marked(button), 'moneda')
-    eq(button.KnuJunkOwner, 'generic')
+    eq(button.KnuJunkOwner, GENERIC)
     local byID = genericButton(2, 5)
     SetItemButtonQuality(byID, 0, 100)
     ok(marked(byID), 'tambien con itemID')
+end)
+
+test('Generic: contenedor desconocido (cache, hermandad, otro personaje) con IDs coincidentes -> sin marca', function()
+    withQuality(); ns.Bags.InstallAll()
+    local link = junk(100, 0, 3)
+    spy(function(updates)
+        for _, fields in ipairs({
+            { isLive = false, lastCharacter = 'Otro' },   -- el caso de la revision: nombres neutros
+            { owner = 'Otro-Reino' },
+            { tab = 2 },
+            {},
+        }) do
+            local view = CreateFrame('Frame', 'VistaDesconocida', UIParent)
+            for key, value in pairs(fields) do view[key] = value end
+            local button = genericButton(0, 3, nil, view)
+            SetItemButtonQuality(button, 0, link)
+        end
+        -- tambien una vista que cuelga de otra desconocida
+        local outer = CreateFrame('Frame', nil, UIParent)
+        local inner = CreateFrame('Frame', nil, outer)
+        SetItemButtonQuality(genericButton(0, 3, nil, inner), 0, link)
+        eq(#updates, 0, 'ninguna marca: la ascendencia no llega a un contenedor declarado')
+    end)
+    local control = genericButton(0, 3)
+    SetItemButtonQuality(control, 0, link)
+    ok(marked(control), 'control: el mismo boton bajo un contenedor declarado marca')
+    local nested = CreateFrame('Frame', nil, liveContainer())
+    local deep = genericButton(0, 3, nil, CreateFrame('Frame', nil, nested))
+    SetItemButtonQuality(deep, 0, link)
+    ok(marked(deep), 'el contenedor declarado puede ser un ancestro lejano')
+end)
+
+test('Generic: el adaptador de Blizzard declara ContainerFrameN y ContainerFrameCombinedBags como vivos', function()
+    withQuality()
+    local numbered = CreateFrame('Frame', 'ContainerFrame1', UIParent)
+    numbered.UpdateItems = function() end
+    ContainerFrameCombinedBags = CreateFrame('Frame', nil, UIParent)
+    ContainerFrameCombinedBags.UpdateItems = function() end
+    ns.Bags.InstallAll()
+    local link = junk(100, 0, 3)
+    local a = genericButton(0, 3, nil, numbered)
+    SetItemButtonQuality(a, 0, link)
+    ok(marked(a), 'ContainerFrame1')
+    local b = genericButton(0, 3, nil, ContainerFrameCombinedBags)
+    SetItemButtonQuality(b, 0, link)
+    ok(marked(b), 'ContainerFrameCombinedBags')
+    ContainerFrameCombinedBags = nil
 end)
 
 test('Generic no pisa un boton con dueno', function()
@@ -607,19 +742,11 @@ test('Generic no pisa un boton con dueno', function()
         eq(#clears, 0, 'ni lo limpia')
     end)
     eq(button.KnuJunkOwner, 'Bagnon')
-    local own = genericButton(0, 3)
-    own.KnuJunkOwner = 'generic'
-    spy(function(updates) SetItemButtonQuality(own, 0, link); eq(#updates, 1, 'el propio si') end)
-end)
-
-test('Generic deja los botones de Baganator (tabla BGR) a su adaptador oficial', function()
-    withQuality(); ns.Bags.InstallAll()
-    local link = junk(100, 0, 3)
-    local button = genericButton(0, 3, { BGR = { itemID = 100, itemLink = link } })
-    spy(function(updates, clears)
-        SetItemButtonQuality(button, 0, link)
-        eq(#updates, 0); eq(#clears, 0)
-    end)
+    for _, owner in ipairs({ GENERIC, 'generic' }) do
+        local own = genericButton(0, 3)
+        own.KnuJunkOwner = owner
+        spy(function(updates) SetItemButtonQuality(own, 0, link); eq(#updates, 1, 'el dueno ' .. owner .. ' si') end)
+    end
 end)
 
 test('Generic sin identidad -> sin marca', function()
@@ -634,11 +761,21 @@ test('Generic sin identidad -> sin marca', function()
     ok(not marked(button))
 end)
 
+test('Generic deja los botones de Baganator (tabla BGR) a su adaptador oficial', function()
+    withQuality(); ns.Bags.InstallAll()
+    local link = junk(100, 0, 3)
+    local button = genericButton(0, 3, { BGR = { itemID = 100, itemLink = link } })
+    spy(function(updates, clears)
+        SetItemButtonQuality(button, 0, link)
+        eq(#updates, 0); eq(#clears, 0)
+    end)
+end)
+
 test('Generic: sin GetBagID/GetID validos, bolsa fuera de 0-4 o cache -> sin marca', function()
     withQuality(); ns.Bags.InstallAll()
     local link = junk(100, 0, 3); junk(101, 6, 1)
     spy(function(updates)
-        local noBag = CreateFrame('Button', nil, UIParent); noBag.id = 3
+        local noBag = CreateFrame('Button', nil, liveContainer()); noBag.id = 3
         SetItemButtonQuality(noBag, 0, link)
         local noSlot = genericButton(0, nil)
         SetItemButtonQuality(noSlot, 0, link)
@@ -648,9 +785,8 @@ test('Generic: sin GetBagID/GetID validos, bolsa fuera de 0-4 o cache -> sin mar
         SetItemButtonQuality(bankBag, 0, FAKE.linkOf(101))
         local cached = genericButton(0, 3, { isCached = true })
         SetItemButtonQuality(cached, 0, link)
-        local inBank = genericButton(0, 3)
-        inBank.parent = CreateFrame('Frame', 'ElvUI_BankContainerFrame', UIParent)
-        SetItemButtonQuality(inBank, 0, link)
+        local bankFrame = CreateFrame('Frame', 'ElvUI_BankContainerFrame', liveContainer())
+        SetItemButtonQuality(genericButton(0, 3, nil, bankFrame), 0, link)
         SetItemButtonQuality(nil, 0, link)
         SetItemButtonQuality('x', 0, link)
         eq(#updates, 0)
@@ -707,6 +843,32 @@ test('Generic: item sin datos queda pendiente y se retoma por su revalidacion', 
     addItem(100)
     FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
     ok(marked(button))
+    eq(button.KnuJunkOwner, GENERIC)
+end)
+
+test('Generic: una espera de un boton administrado no se retoma si el boton ya muestra otra bolsa', function()
+    withQuality(); ns.Bags.InstallAll()
+    FAKE.bags['0:3'] = 100
+    local button = genericButton(0, 3)
+    SetItemButtonQuality(button, 0, FAKE.linkOf(100))
+    addItem(100)
+    button.bag = 1                       -- el addon reciclo el boton a otra bolsa sin avisar
+    FAKE.bags['1:3'] = 100
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+    ok(not marked(button), 'revalidacion: el contexto era la bolsa 0')
+end)
+
+test('Marks: llamada SIN dueno (dueno por defecto generic) se reanuda por la regla del slot vivo aunque Generic exista', function()
+    withQuality(); ns.Bags.InstallAll()
+    FAKE.bags['0:1'] = 200
+    local button = CreateFrame('Button', nil, UIParent)
+    ns.Marks.Update(button, 0, 1)
+    eq(button.KnuJunkOwner, 'generic')
+    ok(not marked(button), 'sin datos')
+    addItem(200)
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(marked(button), 'sin revalidador propio: basta que el slot siga con ese item')
+    ok(ns.Bags.Revalidator('generic') == nil, 'ningun adaptador se registra con el dueno por defecto')
 end)
 
 -- ---------------------------------------------------------------------------
@@ -720,5 +882,5 @@ test('registro: ninguno de los nuevos se instala sin su addon, salvo el generico
         'cargBags_Nivaya', 'm_Bags', 'DerpyStuffing', 'famBags', 'LUI', 'RealUI_Inventory' }) do
         ok(not isInstalled(name), name .. ' no se instala sin su addon')
     end
-    ok(isInstalled('generic'))
+    ok(isInstalled('GenericHook'))
 end)

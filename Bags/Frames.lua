@@ -7,7 +7,11 @@ local _, ns = ...
 -- corregidos en analisis/_auditoria-codex.md filas 22-25) y, para Inventorian, del codigo real
 -- (Inventorian 12.1.5.1 Item.lua l.22: InventorianItemButton<n>; l.57-70: reusa ContainerFrame<c>Item<i>).
 -- Escritos de cero; el recorrido NO copia el barrido de 1000/2000 globals de la referencia:
---   * solo con el addon cargado (Registry) y solo botones VISIBLES (IsVisible: su ventana abierta);
+--   * solo con el addon cargado (Registry), solo si el CONTENEDOR del addon (entry.frame) existe y es
+--     visible (IsVisible) antes de sondear nada, y solo botones visibles. Una entrada SIN contenedor
+--     conocido NO recorre (decision del controlador, 2026-11-17): hoy solo Inventorian lo tiene
+--     verificado (_G.InventorianBagFrame); las otras ocho conservan sus patrones y recorreran cuando se
+--     verifique el nombre de su ventana en el juego (campo `frame`);
 --   * acotado: cada serie de nombres se corta en el PRIMER indice que falta y hay un tope total de
 --     sondeos por pasada (PROBE_CAP). Si un addon numera con huecos, lo que sigue al hueco no se ve
 --     (sin marca: el fallo seguro).
@@ -22,12 +26,14 @@ local _, ns = ...
 -- vista de otro personaje o banco sin abrir, Frame.lua l.707) lo ve Common.NonCarried; button.bag y SetBagID (l.85, 90)
 -- tienen que coincidir con el ID del padre (bagContainers, l.353-366); la ventana de bolsas es
 -- _G.InventorianBagFrame (Inventorian.lua l.81) y no se recorre mientras esta oculta.
--- Un boton con otro dueno (Marks.KnuJunkOwner de otro adaptador) no se toca. Los refrescos llegan
+-- Un boton con otro dueno dedicado (Marks.KnuJunkOwner de otro adaptador) no se toca; uno con dueno
+-- generico ('generic' o 'GenericHook') se toma (Common.MayTakeOver) y el generico deja de seguirlo. Los refrescos llegan
 -- por Registry (instalacion y BAG_UPDATE_DELAYED).
 -- SIN VERIFICAR EN EL JUEGO: ninguno de estos addons esta instalado aqui salvo lo leido de
 -- Inventorian; los nombres son los de la competencia.
 local Frames = {}
 ns.Frames = Frames
+Frames.probes = 0   -- sondeos de globals hechos en total (las pruebas comprueban que con la bolsa cerrada son 0)
 
 local Common = ns.Bags.Common
 
@@ -104,6 +110,7 @@ local function eachButton(entry, fn)
     local probes, seen = 0, {}
     local function try(name)
         probes = probes + 1
+        Frames.probes = Frames.probes + 1
         local button = rawget(_G, name)
         if button == nil then return false end
         if type(button) == 'table' and not seen[button] then
@@ -131,16 +138,15 @@ local function newAdapter(entry)
         return entry.identity(button)
     end or nil)
 
+    -- Sin contenedor conocido, inexistente u oculto: no se recorre.
     local function frameOpen()
-        if not entry.frame then return true end
+        if not entry.frame then return false end
         local frame = rawget(_G, entry.frame)
-        if frame == nil then return true end   -- sin ventana conocida se decide por cada boton
-        return visible(frame)
+        return type(frame) == 'table' and visible(frame)
     end
 
     local function paint(button)
-        local owner = button.KnuJunkOwner
-        if owner ~= nil and owner ~= entry.name then return end
+        if not Common.MayTakeOver(button, entry.name) then return end
         if not visible(button) then return end
         pcall(tracker.Apply, tracker, button, reader)
     end

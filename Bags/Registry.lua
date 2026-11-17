@@ -15,6 +15,28 @@ local installedList = {}
 local refreshPending = false
 local baseline         -- cantidad de adaptadores propios del addon (para ResetState)
 
+-- Contenedores declarados como ventana VIVA de las bolsas del personaje actual por el adaptador que
+-- los conoce (el de Blizzard declara ContainerFrameN y ContainerFrameCombinedBags; los de Frames solo
+-- si estan verificados). Los consume el adaptador generico: contenedor no declarado, sin marca.
+local liveContainers = setmetatable({}, { __mode = 'k' })
+
+function Bags.DeclareLiveContainer(frame)
+    if type(frame) == 'table' then liveContainers[frame] = true end
+end
+
+-- true si el boton o alguno de sus ancestros (hasta 16 niveles) es un contenedor declarado.
+function Bags.InLiveContainer(button)
+    local object = button
+    for _ = 1, 16 do
+        if type(object) ~= 'table' then return false end
+        if liveContainers[object] then return true end
+        local success, parent = pcall(function() return object:GetParent() end)
+        if not success then return false end
+        object = parent
+    end
+    return false
+end
+
 local function find(name)
     for _, entry in ipairs(specs) do if entry.name == name then return entry end end
 end
@@ -91,6 +113,7 @@ function Bags.ResetState()
     if baseline == nil then baseline = #specs end
     for index = #specs, baseline + 1, -1 do specs[index] = nil end
     installed, installedList, refreshPending = {}, {}, false
+    liveContainers = setmetatable({}, { __mode = 'k' })
     connectSources()
 end
 

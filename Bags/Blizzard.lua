@@ -68,6 +68,7 @@ function Blizzard.Hook()
     end
     local any = hookedGlobal
     for _, frame in ipairs(knownFrames()) do
+        ns.Bags.DeclareLiveContainer(frame)   -- ventanas de bolsas de Blizzard: vivas, del personaje actual
         if hookedFrames[frame] then any = true
         elseif type(frame.UpdateItems) == 'function' then
             hooksecurefunc(frame, 'UpdateItems', paintFrame)

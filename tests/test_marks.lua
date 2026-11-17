@@ -64,7 +64,7 @@ end)
 test('item sin datos: sin marca y se marca al llegar GET_ITEM_INFO_RECEIVED', function()
     FAKE.bags['0:1'] = 200 -- el cliente aun no conoce el item
     local button = newButton()
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ok(not visible(button), 'sin datos no hay marca')
     addItem(200, { quality = 0 })
     FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
@@ -369,7 +369,7 @@ test('dato pendiente: si el slot cambia de item antes de llegar los datos, sin m
     local saved = ns.Player.ReadItem
     ns.Player.ReadItem = function() return nil end -- el cliente aun no tiene los datos
     local button = newButton()
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ns.Player.ReadItem = saved
     addItem(201, { quality = 0 })
     FAKE.bags['0:1'] = 201                     -- el slot cambia a otro gris
@@ -377,7 +377,7 @@ test('dato pendiente: si el slot cambia de item antes de llegar los datos, sin m
     ok(not visible(button), 'el item esperado ya no esta en el slot')
     FAKE.bags['0:1'] = 200
     ns.Player.ReadItem = function() return nil end
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ns.Player.ReadItem = saved
     FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
     ok(visible(button), 'control: sin cambios se marca')
@@ -434,7 +434,7 @@ test('combate: un boton protegido sin textura nuestra no se toca; se marca al sa
     addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
     local button = protectedButton()
     FAKE.inCombat = true
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ok(button.KnuJunkMark == nil, 'no se creo la textura en combate')
     FAKE.inCombat = false
     FAKE.Fire('PLAYER_REGEN_ENABLED')
@@ -446,7 +446,7 @@ test('combate: lo diferido se revalida (el slot cambio) y UpdateLink tambien se 
     FAKE.bags['0:1'] = 100
     local button = protectedButton()
     FAKE.inCombat = true
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     FAKE.bags['0:1'] = 101                      -- cambia durante el combate
     FAKE.inCombat = false
     FAKE.Fire('PLAYER_REGEN_ENABLED')
@@ -463,19 +463,19 @@ end)
 test('combate: una textura nuestra ya creada si se actualiza; botones sin proteger tambien', function()
     addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
     local button = protectedButton()
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')    -- fuera de combate: se crea
+    ns.Marks.Update(button, 0, 1, 'generic')    -- fuera de combate: se crea
     ok(visible(button))
     FAKE.inCombat = true
-    ns.Marks.Update(button, 0, 2, 'sin-revalidador')    -- slot vacio: se oculta sin crear nada
+    ns.Marks.Update(button, 0, 2, 'generic')    -- slot vacio: se oculta sin crear nada
     ok(not visible(button), 'actualiza la textura existente')
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ok(visible(button), 'y la vuelve a mostrar')
     local plain = newButton()
-    ns.Marks.Update(plain, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(plain, 0, 1, 'generic')
     ok(visible(plain), 'boton no protegido: se marca en combate')
     local failing = newButton()
     function failing:IsProtected() error('roto') end
-    ns.Marks.Update(failing, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(failing, 0, 1, 'generic')
     ok(failing.KnuJunkMark == nil, 'IsProtected que falla cuenta como protegido')
     FAKE.inCombat = false
 end)
@@ -484,7 +484,7 @@ test('combate: Clear olvida lo diferido', function()
     addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
     local button = protectedButton()
     FAKE.inCombat = true
-    ns.Marks.Update(button, 0, 1, 'sin-revalidador')
+    ns.Marks.Update(button, 0, 1, 'generic')
     ns.Marks.Clear(button)
     FAKE.inCombat = false
     FAKE.Fire('PLAYER_REGEN_ENABLED')

@@ -6,34 +6,38 @@ local _, ns = ...
 -- con el item que estan dibujando. Tambien se engancha el METODO homonimo de ItemButtonMixin y de
 -- ContainerFrameItemButtonMixin si existen (los botones creados despues lo heredan: profession-mats
 -- ProfessionMats.lua l.890-896, loot-triage Bags.lua l.139-179).
--- Se instala siempre (addon = nil) y es la ULTIMA red: reglas, todas de fallo seguro.
+-- Se instala siempre (addon = nil) y es la ULTIMA red: reglas, todas de fallo seguro. Su dueno y su
+-- spec se llaman 'GenericHook' (el 'generic' por defecto de Marks queda sin revalidador propio).
+--   * PRUEBA POSITIVA: solo marca si la ascendencia del boton llega a un contenedor que algun adaptador
+--     declaro como ventana viva del personaje actual (ns.Bags.DeclareLiveContainer; hoy lo hace el
+--     adaptador de Blizzard con ContainerFrameN y ContainerFrameCombinedBags). Contenedor desconocido,
+--     aunque los IDs y el item coincidan: sin marca (ni nombres ni IDs prueban de quien es una vista).
 --   * Solo marca si el boton da GetBagID() y GetID() validos (bolsa 0-4, slot >= 1) Y hay identidad:
 --     el item que el addon pasa a SetItemButtonQuality o los campos que el boton expone (Common.
 --     DisplayedID). Sin identidad, sin marca: el slot vivo no prueba lo que se dibuja. Si el boton
 --     dice una cosa y la llamada otra, sin marca.
 --   * No dibuja sobre un boton que ya tiene dueno de otro adaptador (button.KnuJunkOwner ~= nil y
---     ~= 'generic'); tampoco lo limpia ni lo repinta en los refrescos.
+--     distinto de 'generic'/'GenericHook'); un adaptador dedicado SI puede tomar un boton nuestro (y
+--     entonces dejamos de seguirlo); tampoco lo limpia ni lo repinta en los refrescos.
 --   * Los botones de Baganator (llevan la tabla BGR, la fuente de identidad que Common.DisplayedID
 --     ya reconoce) los cubre su adaptador oficial con sus propios iconos de esquina: aqui se dejan
 --     para no duplicar la marca. SIN VERIFICAR que todos sus botones tengan BGR.
 --   * Banco, hermandad, vault y cache: Common.NonCarried; fuera de 0-4: Marks.
---   * Lo que ningun adaptador reconoce como no portado (p. ej. una pestana de hermandad cuyo boton
---     conteste un numero de bolsa 0-4 con el mismo item en ese slot) no se puede descartar mas.
 -- SIN VERIFICAR EN EL JUEGO (solo contra los fuentes de Bagnon, ElvUI e Inventorian leidos y el
 -- hook de la competencia).
-local OWNER = 'generic'
 local Adapter = {}
 ns.GenericAdapter = Adapter
 
 local Common = ns.Bags.Common
+local OWNER = Common.GENERIC_OWNER
 local tracker = Common.NewTracker(OWNER)
 local hookedGlobal = false
 local hookedMixins = {}
 local MIXINS = { 'ItemButtonMixin', 'ContainerFrameItemButtonMixin' }
 
+-- Dueno de OTRO adaptador dedicado ('generic', el valor por defecto de Marks, no cuenta como ajeno).
 local function foreign(button)
-    local owner = button.KnuJunkOwner
-    return owner ~= nil and owner ~= OWNER
+    return not Common.MayTakeOver(button, OWNER)
 end
 
 local function locate(button)
@@ -41,6 +45,7 @@ local function locate(button)
     local slot = Common.Call(button, 'GetID')
     if type(bag) ~= 'number' or type(slot) ~= 'number' or bag < 0 or bag > 4 or slot < 1 then return nil end
     if Common.NonCarried(button) then return nil end
+    if not ns.Bags.InLiveContainer(button) then return nil end
     return bag, slot
 end
 

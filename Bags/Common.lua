@@ -97,6 +97,15 @@ function Common.NonCarried(button)
     return true
 end
 
+-- Duenos "genericos": 'generic' es el dueno por defecto de Marks (llamada sin owner) y
+-- 'GenericHook' el del adaptador generico por hook. Un adaptador dedicado puede tomar un boton que
+-- tenga uno de ellos; los duenos dedicados de otros adaptadores nunca se pisan.
+Common.GENERIC_OWNER = 'GenericHook'
+function Common.MayTakeOver(button, owner)
+    local current = button.KnuJunkOwner
+    return current == nil or current == owner or current == 'generic' or current == Common.GENERIC_OWNER
+end
+
 local IDENTITY_NUMBERS = { 'itemID', 'itemId' }
 local IDENTITY_LINKS = { 'itemLink', 'hyperlink', 'link' }
 local IDENTITY_SOURCES = { 'info', 'BGR', 'details' }
