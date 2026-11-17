@@ -4,8 +4,8 @@ local _, ns = ...
 -- martillo) o un override del usuario; un item sin marca no recibe nada (cero ruido). Los motivos
 -- 'quest_starter', 'quest_active' y 'quest_log_incomplete' tampoco agregan lineas.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
--- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Un guard por tooltip
--- evita repetir las lineas si el hook dispara dos veces para el mismo contenido.
+-- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
+-- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
 local Tooltip = {}
 ns.Tooltip = Tooltip
 
@@ -16,7 +16,7 @@ local GRAY = { 0.6, 0.6, 0.6 }
 local WHITE = { 1, 1, 1 }
 
 local hooked = false
-local guard = setmetatable({}, { __mode = 'k' }) -- [tooltip] = token del contenido ya procesado
+local guard = setmetatable({}, { __mode = 'k' }) -- [tooltip] = enlace ya decorado (respaldo si no se leen sus lineas)
 
 local function enabled()
     local db = ns.DB
@@ -108,25 +108,66 @@ function Tooltip.Lines(link)
     return lines
 end
 
+-- Enlace del item mostrado: GetItem, el hyperlink de los datos, TooltipUtil.GetDisplayedItem y, por
+-- ultimo, el GUID de los datos (items modernos que solo traen guid). Todo detectado y en pcall.
 local function tooltipLink(tooltip, data)
     if type(tooltip.GetItem) == 'function' then
         local success, _, link = pcall(tooltip.GetItem, tooltip)
         if success and type(link) == 'string' then return link end
     end
     if type(data) == 'table' and type(data.hyperlink) == 'string' then return data.hyperlink end
+    local util = rawget(_G, 'TooltipUtil')
+    if type(util) == 'table' and type(util.GetDisplayedItem) == 'function' then
+        local success, _, link = pcall(util.GetDisplayedItem, tooltip)
+        if success and type(link) == 'string' then return link end
+    end
+    if type(data) == 'table' and data.guid ~= nil and type(C_Item) == 'table'
+        and type(C_Item.GetItemLinkByGUID) == 'function' then
+        local success, link = pcall(C_Item.GetItemLinkByGUID, data.guid)
+        if success and type(link) == 'string' then return link end
+    end
+end
+
+-- Solo se atienden estos dos tooltips (muestran items de cualquier origen); cualquier otro se ignora.
+local function supported(tooltip)
+    return tooltip == rawget(_G, 'GameTooltip') or tooltip == rawget(_G, 'ItemRefTooltip')
+end
+
+-- ¿Ya tiene el tooltip alguna de nuestras lineas? Se leen sus lineas de la izquierda
+-- (<nombre>TextLeft<i>); si no se pueden leer, se recurre al registro (tooltip -> enlace ya
+-- decorado), que OnTooltipCleared borra.
+local function alreadyDecorated(tooltip, link, lines)
+    if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.GetNumLines, tooltip)
+        local name = success and tooltip:GetName()
+        if success and type(count) == 'number' and type(name) == 'string' then
+            local wanted = {}
+            for _, line in ipairs(lines) do wanted[line.text] = true end
+            local readable = count == 0
+            for index = 1, count do
+                local region = rawget(_G, name .. 'TextLeft' .. index)
+                if type(region) == 'table' and type(region.GetText) == 'function' then
+                    readable = true
+                    local ok, text = pcall(region.GetText, region)
+                    if ok and wanted[text] then return true end
+                end
+            end
+            if readable then return false end
+        end
+    end
+    return guard[tooltip] == link
 end
 
 local function decorate(tooltip, data)
-    if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' then return end
+    if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' or not supported(tooltip) then return end
     local link = tooltipLink(tooltip, data)
     if not link then return end
-    -- El token del contenido: los datos del tooltip si hay (tabla nueva por cada armado); si no, el enlace.
-    local token = type(data) == 'table' and data or link
-    if guard[tooltip] == token then return end
-    guard[tooltip] = token
-    for _, line in ipairs(Tooltip.Lines(link)) do
+    local lines = Tooltip.Lines(link)
+    if #lines == 0 or alreadyDecorated(tooltip, link, lines) then return end
+    for _, line in ipairs(lines) do
         tooltip:AddLine(line.text, line.r, line.g, line.b)
     end
+    guard[tooltip] = link -- solo tras agregar: un intento pendiente o fallido se reintenta
 end
 
 -- Punto de entrada de los hooks: nunca lanza.

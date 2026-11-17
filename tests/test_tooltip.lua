@@ -6,13 +6,24 @@ local function addItem(id, fields)
     return base
 end
 
--- Tooltip falso: registra las lineas que le agregan; GetItem devuelve el enlace puesto en .link.
+-- Tooltip falso con nombre (como los de Blizzard): AddLine crea <nombre>TextLeft<n>, GetNumLines
+-- cuenta las lineas, GetItem devuelve el enlace puesto en .link y Clear dispara OnTooltipCleared.
+local tooltipCount = 0
 local function newTooltip(id)
-    local tooltip = CreateFrame('Tooltip')
+    tooltipCount = tooltipCount + 1
+    local tooltip = CreateFrame('Tooltip', 'KJTestTip' .. tooltipCount)
     tooltip.lines = {}
     tooltip.link = id and FAKE.linkOf(id) or nil
-    function tooltip:AddLine(text, r, g, b) self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b } end
+    function tooltip:AddLine(text, r, g, b)
+        self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
+        CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(text)
+    end
+    function tooltip:GetNumLines() return #self.lines end
     function tooltip:GetItem() if self.link then return 'Item', self.link end end
+    function tooltip:Clear()
+        self.lines = {}
+        if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
+    end
     return tooltip
 end
 
@@ -22,6 +33,22 @@ local function withProcessor()
     Enum = { TooltipDataType = { Item = 0 } }
     TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) state.calls[#state.calls + 1] = { kind = kind, fn = fn } end }
     return state
+end
+
+-- Dispara el callback del procesador sobre `tooltip`, que pasa a ser el GameTooltip (el unico, con
+-- ItemRefTooltip, que se atiende).
+local function run(processor, tooltip, data)
+    GameTooltip = tooltip
+    processor.calls[1].fn(tooltip, data)
+end
+
+-- Cambia ns.Classify durante fn y lo restaura SIEMPRE, aunque fn falle.
+local function withClassify(replacement, fn)
+    local saved = ns.Classify
+    ns.Classify = replacement
+    local success, err = pcall(fn)
+    ns.Classify = saved
+    if not success then error(err, 0) end
 end
 
 local function withReagents(map, fn)
@@ -51,7 +78,7 @@ test('Tooltip: gris agrega una linea con moneda en dorado', function()
     ok(ns.Tooltip.Hook(), 'engancha')
     eq(#processor.calls, 1); eq(processor.calls[1].kind, Enum.TooltipDataType.Item)
     local tooltip = newTooltip(100)
-    processor.calls[1].fn(tooltip, {})
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 1)
     local entry = line(tooltip, 1, 'Basura: se vende', { 1, 0.82, 0 })
     ok(hasIcon(entry), 'icono en linea')
@@ -63,7 +90,7 @@ test('Tooltip: item sin marca no agrega nada', function()
     local processor = withProcessor()
     ns.Tooltip.Hook()
     local tooltip = newTooltip(100)
-    processor.calls[1].fn(tooltip, {})
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 0)
 end)
 
@@ -71,18 +98,17 @@ test('Tooltip: misiones (activa, iniciadora, diario incompleto) sin linea', func
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
-    local saved = ns.Classify
     for _, case in ipairs({
         { mark = 'quest', reasons = { { kind = 'quest_active' } } },
         { mark = nil, reasons = { { kind = 'quest_starter', questID = 5 } } },
         { mark = nil, reasons = { { kind = 'quest_log_incomplete' } } },
     }) do
-        ns.Classify = function() return case end
-        local tooltip = newTooltip(100)
-        processor.calls[1].fn(tooltip, {})
-        eq(#tooltip.lines, 0)
+        withClassify(function() return case end, function()
+            local tooltip = newTooltip(100)
+            run(processor, tooltip, {})
+            eq(#tooltip.lines, 0)
+        end)
     end
-    ns.Classify = saved
 end)
 
 test('Tooltip: hammer_other lista dos profesiones en el orden del clasificador, en gris', function()
@@ -91,7 +117,7 @@ test('Tooltip: hammer_other lista dos profesiones en el orden del clasificador, 
     ns.Tooltip.Hook()
     withReagents({ [100] = { 164, 186 } }, function()
         local tooltip = newTooltip(100)
-        processor.calls[1].fn(tooltip, {})
+        run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
         local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', { 0.6, 0.6, 0.6 })
         ok(hasIcon(entry), 'icono'); ok(entry.text:find('Trade_BlackSmithing', 1, true), 'martillo')
@@ -106,7 +132,7 @@ test('Tooltip: hammer_mine muestra tu profesion en verde', function()
     ns.Tooltip.Hook()
     withReagents({ [100] = { 164, 186 } }, function()
         local tooltip = newTooltip(100)
-        processor.calls[1].fn(tooltip, {})
+        run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
         line(tooltip, 1, 'Tu profesión: Herrería', { 0.25, 0.85, 0.35 })
     end)
@@ -119,7 +145,7 @@ test('Tooltip: override visible (keep y sell), en blanco', function()
     local processor = withProcessor()
     ns.Tooltip.Hook()
     local keep, sell = newTooltip(100), newTooltip(101)
-    processor.calls[1].fn(keep, {}); processor.calls[1].fn(sell, {})
+    run(processor, keep, {}); run(processor, sell, {})
     eq(#keep.lines, 1); line(keep, 1, 'Marcado a mano: guardar', { 1, 1, 1 })
     eq(#sell.lines, 1); line(sell, 1, 'Marcado a mano: vender', { 1, 1, 1 })
     ok(hasIcon(sell.lines[1]), 'vender lleva la moneda')
@@ -131,7 +157,7 @@ test('Tooltip: addon apagado -> sin lineas', function()
     ns.Tooltip.Hook()
     ns.DB.enabled = false
     local tooltip = newTooltip(100)
-    processor.calls[1].fn(tooltip, {})
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 0)
 end)
 
@@ -141,7 +167,7 @@ test('Tooltip: moneda oculta en los ajustes -> sin linea de motivo', function()
     ns.Tooltip.Hook()
     ns.DB.show.coin = false
     local tooltip = newTooltip(100)
-    processor.calls[1].fn(tooltip, {})
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 0)
 end)
 
@@ -149,36 +175,34 @@ test('Tooltip: quest_done usa el nombre si hay API y #id si no', function()
     addItem(100, { quality = 1 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
-    local saved = ns.Classify
-    ns.Classify = function() return { mark = 'coin', reasons = { { kind = 'quest_done', questID = 77 } } } end
-    local plain = newTooltip(100)
-    processor.calls[1].fn(plain, {})
-    line(plain, 1, 'Misión terminada: #77', { 1, 0.82, 0 })
-    C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
-    local named = newTooltip(100)
-    processor.calls[1].fn(named, {})
-    line(named, 1, 'Misión terminada: La caza 77')
-    C_QuestLog.GetTitleForQuestID = function() error('roto') end
-    local broken = newTooltip(100)
-    processor.calls[1].fn(broken, {})
-    line(broken, 1, 'Misión terminada: #77')
-    ns.Classify = saved
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'quest_done', questID = 77 } } } end, function()
+        local plain = newTooltip(100)
+        run(processor, plain, {})
+        line(plain, 1, 'Misión terminada: #77', { 1, 0.82, 0 })
+        C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
+        local named = newTooltip(100)
+        run(processor, named, {})
+        line(named, 1, 'Misión terminada: La caza 77')
+        C_QuestLog.GetTitleForQuestID = function() error('roto') end
+        local broken = newTooltip(100)
+        run(processor, broken, {})
+        line(broken, 1, 'Misión terminada: #77')
+    end)
 end)
 
 test('Tooltip: class_cannot_use usa el nombre de la subclase o el numero', function()
     addItem(100, { quality = 1, classID = 4, subclassID = 4 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
-    local saved = ns.Classify
-    ns.Classify = function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 4, subclassID = 4 } } } end
-    local plain = newTooltip(100)
-    processor.calls[1].fn(plain, {})
-    line(plain, 1, 'Tu clase no usa 4', { 1, 0.82, 0 })
-    GetItemSubClassInfo = function() return 'Placas' end
-    local named = newTooltip(100)
-    processor.calls[1].fn(named, {})
-    line(named, 1, 'Tu clase no usa Placas')
-    ns.Classify = saved
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 4, subclassID = 4 } } } end, function()
+        local plain = newTooltip(100)
+        run(processor, plain, {})
+        line(plain, 1, 'Tu clase no usa 4', { 1, 0.82, 0 })
+        GetItemSubClassInfo = function() return 'Placas' end
+        local named = newTooltip(100)
+        run(processor, named, {})
+        line(named, 1, 'Tu clase no usa Placas')
+    end)
 end)
 
 test('Tooltip: las siete claves en ingles tienen traduccion al castellano', function()
@@ -187,20 +211,101 @@ test('Tooltip: las siete claves en ingles tienen traduccion al castellano', func
     for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'traduccion de ' .. key) end
 end)
 
-test('Tooltip: doble disparo para el mismo contenido -> lineas una sola vez', function()
+test('Tooltip: doble callback con tablas equivalentes -> lineas una sola vez', function()
+    addItem(100, { quality = 0, price = 5 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    run(processor, tooltip, { id = 100, dataInstanceID = 7 })
+    run(processor, tooltip, { id = 100, dataInstanceID = 7 })
+    run(processor, tooltip, nil)
+    eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: cambio de item sin clear -> lineas del nuevo, sin repetir las anteriores', function()
+    addItem(100, { quality = 0, price = 5 })
+    addItem(101, { quality = 1 })
+    ns.DB.overrides[101] = 'keep'
+    ns.Player.Invalidate()
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    local data = {}
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 1)
+    tooltip.link = FAKE.linkOf(101)
+    run(processor, tooltip, data)
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 2)
+    line(tooltip, 1, 'Basura: se vende'); line(tooltip, 2, 'Marcado a mano: guardar')
+end)
+
+test('Tooltip: clear y rearmado del mismo item -> las lineas vuelven', function()
+    addItem(100, { quality = 0, price = 5 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    local data = {}
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 1)
+    tooltip:Clear()
+    eq(#tooltip.lines, 0)
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: sin poder leer las lineas, el respaldo por enlace evita repetir y Clear lo libera', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     local tooltip = newTooltip(100)
+    tooltip.GetNumLines = nil
     GameTooltip = tooltip
     ns.Tooltip.Hook()
-    local data = {}
-    processor.calls[1].fn(tooltip, data)
-    processor.calls[1].fn(tooltip, data)
+    run(processor, tooltip, {})
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 1)
-    -- tras limpiarse el tooltip, un armado nuevo vuelve a agregarlas
-    tooltip.scripts.OnTooltipCleared(tooltip)
-    tooltip.lines = {}
-    processor.calls[1].fn(tooltip, data)
+    tooltip:Clear()
+    run(processor, tooltip, {})
+    eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: otros tooltips (ni GameTooltip ni ItemRefTooltip) se ignoran; ItemRefTooltip se atiende', function()
+    addItem(100, { quality = 0, price = 5 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local other = newTooltip(100)
+    processor.calls[1].fn(other, {})
+    eq(#other.lines, 0)
+    local ref = newTooltip(100)
+    ItemRefTooltip = ref
+    processor.calls[1].fn(ref, {})
+    eq(#ref.lines, 1)
+end)
+
+test('Tooltip: item identificado solo por GUID (sin GetItem ni hyperlink) -> lineas', function()
+    addItem(100, { quality = 0, price = 5 })
+    C_Item = { GetItemLinkByGUID = function(guid) if guid == 'Item-1-2' then return FAKE.linkOf(100) end end }
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    tooltip.GetItem = nil
+    run(processor, tooltip, { guid = 'Item-1-2' })
+    eq(#tooltip.lines, 1)
+    line(tooltip, 1, 'Basura: se vende')
+    local unknown = newTooltip(100)
+    unknown.GetItem = nil
+    run(processor, unknown, { guid = 'otro' })
+    eq(#unknown.lines, 0)
+end)
+
+test('Tooltip: TooltipUtil.GetDisplayedItem resuelve el enlace si GetItem y los datos no', function()
+    addItem(100, { quality = 0, price = 5 })
+    TooltipUtil = { GetDisplayedItem = function() return 'Item', FAKE.linkOf(100), 100 end }
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    tooltip.GetItem = nil
+    run(processor, tooltip, {})
     eq(#tooltip.lines, 1)
 end)
 
@@ -218,27 +323,57 @@ test('Tooltip: sin TooltipDataProcessor engancha OnTooltipSetItem (una vez por a
     line(ItemRefTooltip, 1, 'Basura: se vende')
 end)
 
-test('Tooltip: un error del clasificador o del tooltip no lo rompe', function()
+test('Tooltip: un error del clasificador o del tooltip no lo rompe y se recupera al reintentar', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
-    local saved = ns.Classify
-    ns.Classify = function() error('roto') end
     local tooltip = newTooltip(100)
-    processor.calls[1].fn(tooltip, {})
-    ns.Classify = saved
-    eq(#tooltip.lines, 0)
+    withClassify(function() error('roto') end, function()
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 0)
+    end)
+    run(processor, tooltip, {}) -- mismo enlace: el intento fallido no cuenta como hecho
+    eq(#tooltip.lines, 1)
     local weird = newTooltip(100)
     weird.GetItem = function() error('roto') end
-    processor.calls[1].fn(weird, {})
+    run(processor, weird, {})
     eq(#weird.lines, 0)
 end)
 
-test('Tooltip: sin datos del item todavia -> sin lineas', function()
+test('Tooltip: sin datos del item todavia -> sin lineas y se reintenta cuando llegan', function()
     local processor = withProcessor()
     ns.Tooltip.Hook()
     local tooltip = newTooltip(nil)
     tooltip.link = '|cffffffff|Hitem:999::::::::|h[Desconocido]|h|r'
-    processor.calls[1].fn(tooltip, {})
+    local data = {}
+    run(processor, tooltip, data)
     eq(#tooltip.lines, 0)
+    addItem(999, { quality = 0, price = 5 })
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 1)
+    run(processor, tooltip, data)
+    eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: aislamiento - un fallo dentro de withClassify no deja el clasificador falso', function()
+    local original = ns.Classify
+    local success = pcall(withClassify, function() return { mark = 'coin', reasons = {} } end, function() error('fallo deliberado') end)
+    ok(not success, 'el fallo se propaga')
+    eq(ns.Classify, original, 'clasificador restaurado')
+end)
+
+test('Tooltip: aislamiento - Reset deja GameTooltip limpio, sin hooks ni lineas', function()
+    local dirty = newTooltip(100)
+    dirty.scripts.OnTooltipSetItem = function() end
+    GameTooltip = dirty
+    ItemRefTooltip = newTooltip(100)
+    FAKE.Reset()
+    ok(GameTooltip ~= dirty, 'GameTooltip nuevo')
+    ok(next(GameTooltip.scripts) == nil, 'sin scripts enganchados')
+    eq(ItemRefTooltip, nil)
+end)
+
+test('Tooltip: aislamiento - el caso siguiente ve el GameTooltip limpio', function()
+    ok(next(GameTooltip.scripts) == nil, 'sin scripts enganchados')
+    eq(GameTooltip.lines, nil)
 end)
