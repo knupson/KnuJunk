@@ -76,6 +76,31 @@ test('iniciador con isQuestDone nil -> nil', function()
     end)
 end)
 
+test('gris iniciador de mision no hecha -> nil', function()
+    withData({}, { [9000] = 123 }, function()
+        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = function() return false end })
+        eq(result.mark, nil)
+        eq(hasReason(result, 'quest_starter').questID, 123)
+        ok(not hasReason(result, 'gray'), 'sin reason gray')
+    end)
+end)
+
+test('gris iniciador con isQuestDone nil -> nil', function()
+    withData({}, { [9000] = 123 }, function()
+        local gray = item { quality = 0, price = 5 }
+        eq(ns.Classify(gray, ctx { isQuestDone = function() return nil end }).mark, nil)
+        local noFn = ctx(); noFn.isQuestDone = nil
+        eq(ns.Classify(gray, noFn).mark, nil)
+    end)
+end)
+
+test('gris iniciador con mision hecha -> coin', function()
+    withData({}, { [9000] = 123 }, function()
+        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = function() return true end })
+        eq(result.mark, 'coin'); ok(hasReason(result, 'quest_done'), 'quest_done')
+    end)
+end)
+
 test('placas en MAGE -> coin class_cannot_use', function()
     withData({}, {}, function()
         local result = ns.Classify(item { classID = 4, subclassID = 4, quality = 2 }, ctx { class = 'MAGE' })

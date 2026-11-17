@@ -98,11 +98,18 @@ function ns.Classify(item, ctx)
         return result
     end
 
+    -- Iniciador de mision cuya mision no esta confirmada como hecha (false o nil): es util,
+    -- sin marca y sin monedita aunque sea gris.
+    local starterQuest = ns.Data.starters and ns.Data.starters[id]
+    if starterQuest and not questDone(ctx, starterQuest) then
+        reasons[#reasons + 1] = { kind = 'quest_starter', questID = starterQuest }
+        return result
+    end
+
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
         reasons[#reasons + 1] = { kind = 'gray' }
     end
-    local starterQuest = ns.Data.starters and ns.Data.starters[id]
     if starterQuest and questDone(ctx, starterQuest) then
         reasons[#reasons + 1] = { kind = 'quest_done', questID = starterQuest }
     end
