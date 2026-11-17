@@ -287,6 +287,10 @@ function FAKE.InstallBaganator()
         end,
         RegisterCornerWidget = function(label, id, onUpdate, onInit, defaultPosition, isFast)
             assert(id and label and onUpdate and onInit and not state.widgets[id])
+            if defaultPosition ~= nil and (type(defaultPosition) ~= 'table' or type(defaultPosition.priority) ~= 'number'
+                or ({ top_left = 1, top_right = 1, bottom_left = 1, bottom_right = 1 })[defaultPosition.corner] == nil) then
+                error('defaultPosition invalida')
+            end
             state.widgets[id] = { label = label, onUpdate = onUpdate, onInit = onInit, defaultPosition = defaultPosition, isFast = isFast }
         end,
         RequestItemButtonsRefresh = function() state.refreshes = state.refreshes + 1 end,

@@ -37,7 +37,10 @@ test('registra junk plugin y dos widgets', function()
     eq(state.junk.knujunk.label, 'KnuJunk')
     eq(state.widgets.knujunk_hammer.label, 'KnuJunk: martillo')
     eq(state.widgets.knujunk_coin.label, 'KnuJunk: monedita')
-    ok(state.widgets.knujunk_hammer.defaultPosition == nil, 'no se autoactivan en ninguna esquina')
+    local position = state.widgets.knujunk_hammer.defaultPosition
+    ok(position ~= nil, 'el martillo se autoinserta en una esquina')
+    eq(position.corner, 'top_right'); eq(position.priority, 1)
+    ok(state.widgets.knujunk_coin.defaultPosition == nil, 'la monedita no: la moneda nativa es del junk plugin')
     local names = {}
     for _, name in ipairs(ns.Bags.Installed()) do names[name] = true end
     ok(names.Baganator, 'el registro de bolsas lo da por instalado')

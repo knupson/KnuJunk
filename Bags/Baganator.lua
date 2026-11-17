@@ -3,8 +3,8 @@ local _, ns = ...
 -- Baganator por su API oficial (Baganator.API): ni hooks ni frames propios sobre sus botones.
 --   * junk plugin 'KnuJunk': Baganator pinta SU moneda de basura donde devolvemos true (solo 'coin').
 --   * corner widgets 'KnuJunk: martillo' y 'KnuJunk: monedita': nuestra marca en una esquina del
---     boton, para quien prefiera no usar el junk plugin. Activarlos es decision del jugador en las
---     opciones de Baganator; este adaptador nunca toca su configuracion.
+--     boton (el martillo se autoinserta arriba a la derecha; la monedita queda a elegir del jugador).
+--     Este adaptador nunca escribe la configuracion de Baganator: la autoinsercion es suya.
 -- Regla de oro: si un boton no se puede PROBAR como una casilla viva de las bolsas 0-4 del personaje
 -- actual (vistas guardadas de otros personajes, banco, hermandad), no se marca.
 --   * Corner widget: Baganator pasa los detalles del boton; `itemLocation` solo lo fijan los botones
@@ -20,8 +20,12 @@ local RESCAN_SECONDS = 2
 local VIEW_PREFIXES = { 'Baganator_SingleViewBackpackViewFrame', 'Baganator_CategoryViewBackpackViewFrame' }
 
 local JUNK_PLUGIN = { label = 'KnuJunk', id = 'knujunk' }
+-- El martillo se autoinserta (una sola vez, lo gestiona Baganator) en la esquina superior derecha:
+-- por defecto Baganator la deja vacia (arriba izquierda: junk + nivel; abajo: set y cantidad). La
+-- monedita NO lleva posicion: la moneda nativa la da el junk plugin.
+local HAMMER_POSITION = { corner = 'top_right', priority = 1 }
 local WIDGETS = {
-    { id = 'knujunk_hammer', label = 'KnuJunk: martillo', accepts = function(mark) return mark == 'hammer_mine' or mark == 'hammer_other' end },
+    { id = 'knujunk_hammer', label = 'KnuJunk: martillo', position = HAMMER_POSITION, accepts = function(mark) return mark == 'hammer_mine' or mark == 'hammer_other' end },
     { id = 'knujunk_coin', label = 'KnuJunk: monedita', accepts = function(mark) return mark == 'coin' end },
 }
 
@@ -130,7 +134,7 @@ function Adapter.Install()
     for _, widget in ipairs(WIDGETS) do
         if not done[widget.id] then
             done[widget.id] = pcall(API.RegisterCornerWidget, widget.label, widget.id,
-                widgetCallback(widget.accepts), createWidget)
+                widgetCallback(widget.accepts), createWidget, widget.position)
         end
     end
     return done[JUNK_PLUGIN.id] == true and done.knujunk_hammer == true and done.knujunk_coin == true
