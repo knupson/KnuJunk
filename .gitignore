@@ -1,3 +1,5 @@
 dist/
 .release/
 .superpowers/
+__pycache__/
+*.pyc

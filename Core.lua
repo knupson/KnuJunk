@@ -3,6 +3,24 @@ local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
 ns.Defaults = { enabled = true, show = { coin = true, hammer = true, loot = true }, overrides = {} }
 ns.Print = KL:NewPrinter('Junk')
+ns.Data = ns.Data or {}
+
+-- SkillLine IDs de profesion de WoW Classic: [skillLineID] = true. Debe coincidir con
+-- PROFESSIONS de tools/build_data.py (lo verifica tools/test_build_data.py).
+ns.PROFESSIONS = {
+    [164] = true, -- Herreria
+    [165] = true, -- Peleteria
+    [171] = true, -- Alquimia
+    [182] = true, -- Herboristeria
+    [186] = true, -- Mineria
+    [197] = true, -- Sastreria
+    [202] = true, -- Ingenieria
+    [333] = true, -- Encantamiento
+    [393] = true, -- Desuello
+    [185] = true, -- Cocina
+    [129] = true, -- Primeros Auxilios
+    [356] = true, -- Pesca
+}
 
 -- Completa en target lo que falte según source, sin pisar valores del usuario.
 local function merge(target, source)

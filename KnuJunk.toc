@@ -12,3 +12,5 @@
 Libs\KnuLib\KnuLib.xml
 Locales\Locales.lua
 Core.lua
+Data\Reagents.lua
+Data\Starters.lua
