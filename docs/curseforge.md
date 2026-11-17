@@ -16,7 +16,7 @@ It only shows icons. KnuJunk never sells, destroys or moves anything.
 
 ### Features
 
-- **Coin** on items that are safe to sell or drop: grey items with a vendor price, items that start a quest you have already finished, and armor or weapons your class can never equip (the class table comes from Forever's own data, build 1.60.1.70959). Items with a use or equip effect (or when the game can't tell), set pieces, and slots without an armor or weapon type (rings, trinkets, cloaks, shirts, tabards) never get an automatic coin.
+- **Coin** on items that are safe to sell or drop: grey items with a vendor price, items that start a quest you have already finished, and armor or weapons your class can never equip (the class table comes from Forever's own data, build 1.60.1.70959). Items with a use or equip effect and set pieces never get an automatic coin. Slots without an armor or weapon type (rings, trinkets, cloaks, shirts, tabards) never get the "your class can't use" coin; a grey one with a vendor price still gets the junk coin.
 - **Hammer** on profession materials. Green: one of your professions uses it. Grey: it belongs to a profession you don't have. Main professions and Cooking, First Aid and Fishing count. The material table was generated from wago.tools data for the Forever build 1.60.1.70959.
 - **Quest items are protected.** An item a quest in your log needs never gets a coin. Neither does an item that starts a quest you haven't finished, or any item when the game hasn't given the data yet. If the quest log can't be read in full (for example collapsed headers in combat after you accept a quest), no automatic coin is shown until it can. When there is doubt, there is no icon.
 - **Tooltip reason.** Hover a marked item and the tooltip tells you why: "Junk: sells", "Quest finished: ...", "Your class can't use Plate", "Your profession: Mining", "Profession you don't have: Blacksmithing". Items without an icon get no extra line, except "Marked by hand: keep" when you chose to keep the item.
@@ -83,7 +83,7 @@ Known limitations:
 
 - Without QuestieDB, an item that starts a quest you finished gets a coin even if that quest is repeatable: without Questie KnuJunk can't know.
 - Quests your race or class can never do don't give a coin yet.
-- Whether Forever reports equip-only effects is not verified; if it can't tell, the item gets no automatic coin.
+- Equip and use effects are detected via `GetItemSpell`. If the client hasn't loaded the spell data yet, an item may briefly be treated as having no effect. Whether Forever reports equip-only effects is not verified either.
 - Baganator: only the backpack views of the skins that ship with Baganator are recognized.
 
 If you see a coin on something you needed, please tell us the item and the bag addon you use. A false coin is the one thing KnuJunk is built to avoid.
@@ -101,7 +101,7 @@ If you see a coin on something you needed, please tell us the item and the bag a
 
 **KnuJunk** pone un ícono chico en los items de tus bolsas y en la ventana de botín para que veas de un vistazo qué podés vender o tirar y qué materiales usa una profesión. Está hecho para **World of Warcraft: Forever** (1.60.1). Sólo muestra íconos: nunca vende, rompe ni mueve nada.
 
-- **Monedita** en lo que se puede vender o tirar: items grises con precio de venta, items que inician una misión que ya hiciste y armaduras o armas que tu clase nunca puede equipar (según los datos de Forever). Los items con efecto de uso o de equipar (o si el juego no lo dice), las piezas de set y las ranuras sin tipo de arma o armadura (anillos, abalorios, capas, camisas, tabardos) nunca llevan monedita automática.
+- **Monedita** en lo que se puede vender o tirar: items grises con precio de venta, items que inician una misión que ya hiciste y armaduras o armas que tu clase nunca puede equipar (según los datos de Forever). Los items con efecto de uso o de equipar y las piezas de set nunca llevan monedita automática. Las ranuras sin tipo de arma o armadura (anillos, abalorios, capas, camisas, tabardos) nunca la llevan por «tu clase no puede usarlo»; si son grises con precio, sí por gris. Los efectos se detectan con `GetItemSpell`: si el cliente todavía no cargó los datos del hechizo, un item puede tratarse por un momento como si no tuviera efecto.
 - **Martillito** en los materiales de profesión: verde si una profesión tuya lo usa, gris si es de una profesión que no tenés. Cuentan las principales y Cocina, Primeros auxilios y Pesca.
 - **Lo que necesita una misión nunca lleva monedita.** Tampoco lo que inicia una misión sin terminar, ni nada cuyos datos el juego todavía no dio. Si el diario no se puede leer entero, no hay monedita automática hasta leerlo. Ante la duda, sin ícono.
 - **Tooltip** con el motivo de cada ícono. Un item sin ícono no suma líneas, salvo «Marcado a mano: guardar» si elegiste conservarlo.

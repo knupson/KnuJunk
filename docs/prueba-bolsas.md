@@ -10,7 +10,7 @@ Lista de comprobación para la beta 0.1.0. Las dos primeras columnas (existencia
    - **Martillo verde / gris**: verde si una profesión tuya usa el material, gris si es de una profesión que no tenés.
    - **Sin marca donde no corresponde**: abrí el banco y, si la bolsa lo tiene, la vista de otro personaje o la caché. No debe aparecer ninguna marca ahí. Una monedita falsa es el peor fallo.
 3. Activá BugSack/BugGrabber antes de empezar. Después de abrir y cerrar bolsas, cambiar de ficha y mover items, revisá si hay errores de `KnuJunk`.
-4. Completá la fila de la bolsa: versión probada, y en cada columna de juego `sí`, `no` o `n/a` (con una nota si hace falta). Si la bolsa no instala o no arranca en Forever, anotalo y pasá a la siguiente: se salta y queda con el hook genérico.
+4. Completá la fila de la bolsa: versión probada, y en cada columna de juego `sí`, `no` o `n/a` (con una nota si hace falta). Si la bolsa no instala o no arranca en Forever, anotalo y pasá a la siguiente: se salta. El hook genérico no la cubre: hoy sólo marca dentro de las ventanas de Blizzard, así que esa bolsa queda sin marcas.
 5. `/knu junk status` lista los adaptadores instalados (`Adaptadores de bolsas`). Si tu bolsa no aparece ahí, anotalo en la fila.
 6. Casos extra de la revisión final (anotarlos en las notas de la fila que corresponda):
    - Pícaro con un hacha de una mano y druida con un arma de asta: sin monedita.
