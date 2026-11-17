@@ -139,11 +139,15 @@ end)
 
 test('ctx usa ns.DB.overrides y ns.Questie.Uses si existen', function()
     eq(ns.Player.GetContext().overrides, ns.DB.overrides)
+    eq(ns.Player.GetContext().questieUses, ns.Questie.Uses) -- QuestieSource.lua ya esta cargado
+    local saved = ns.Questie
+    ns.Questie = nil
+    ns.Player.Invalidate()
     eq(ns.Player.GetContext().questieUses, nil)
     ns.Questie = { Uses = function() return {} end }
     ns.Player.Invalidate()
     eq(ns.Player.GetContext().questieUses, ns.Questie.Uses)
-    ns.Questie = nil
+    ns.Questie = saved
 end)
 
 test('el contexto se cachea', function()

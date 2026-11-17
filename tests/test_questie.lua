@@ -1,0 +1,280 @@
+-- QuestieDB opcional como fuente de misiones. Los datos salen de un LibQuestieDB falso del stub.
+local HUMAN, ORC = 1, 2
+local ALLIANCE, HORDE = 1 + 4 + 8 + 64 + 1024, 2 + 16 + 32 + 128 + 512
+local WARRIOR, MAGE = 1, 128
+
+-- Instala la libreria falsa y deja terminar el indice (los lotes corren con C_Timer.After).
+local function install(quests, opts)
+    FAKE.InstallQuestie(quests, opts)
+    ns.Questie.Uses(0)
+    FAKE.Advance(5)
+end
+
+local function questIDs(uses)
+    local list = {}
+    for _, use in ipairs(uses or {}) do list[#list + 1] = use.questID end
+    table.sort(list)
+    return table.concat(list, ',')
+end
+
+test('sin LibQuestieDB: Available false y Uses nil', function()
+    eq(LibQuestieDB, nil)
+    eq(ns.Questie.Available(), false)
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.Advance(5)
+    eq(ns.Questie.Uses(500), nil)
+end)
+
+test('contrato no soportado: Available false y Uses nil', function()
+    FAKE.InstallQuestie({ [1] = { objectives = { nil, nil, { { 500 } } } } }, { contract = 3 })
+    eq(ns.Questie.Available(), false)
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.Advance(5)
+    eq(ns.Questie.Uses(500), nil)
+end)
+
+test('RequireContract que lanza error: Available false sin propagar', function()
+    FAKE.InstallQuestie({}, { throwRequire = true })
+    eq(ns.Questie.Available(), false)
+    eq(ns.Questie.Uses(500), nil)
+end)
+
+test('LibQuestieDB que aparece despues se detecta (no se cachea el fallo)', function()
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.InstallQuestie({ [1] = { objectives = { nil, nil, { { 500 } } } } })
+    eq(ns.Questie.Available(), true)
+    ns.Questie.Uses(500)
+    FAKE.Advance(5)
+    eq(questIDs(ns.Questie.Uses(500)), '1')
+end)
+
+test('item objetivo de dos misiones -> dos entradas', function()
+    install({
+        [10] = { objectives = { nil, nil, { { 500, 'Cuero' } } } },
+        [20] = { objectives = { nil, nil, { { 500, 'Cuero', 3 }, { 501 } } } },
+        [30] = { objectives = { nil, nil, { { 999 } } } },
+    })
+    local uses = ns.Questie.Uses(500)
+    eq(questIDs(uses), '10,20')
+    eq(uses[1].repeatable, false); eq(uses[2].repeatable, false)
+    eq(questIDs(ns.Questie.Uses(501)), '20')
+    eq(ns.Questie.Uses(12345), nil)
+end)
+
+test('antes de terminar el indice Uses devuelve nil sin trabar', function()
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    eq(ns.Questie.Uses(500), nil)
+    eq(FAKE.questieCalls, 0, 'el primer Uses no construye nada a mano')
+    FAKE.Advance(5)
+    eq(questIDs(ns.Questie.Uses(500)), '10')
+end)
+
+test('el indice se arma en tandas, no de una', function()
+    local quests = {}
+    for i = 1, 1000 do quests[i] = { objectives = { nil, nil, { { 70000 + i } } } } end
+    FAKE.InstallQuestie(quests)
+    ns.Questie.Uses(70001)
+    FAKE.Advance(0)
+    local firstBatch = FAKE.questieCalls
+    ok(firstBatch > 0, 'la primera tanda trabajo')
+    ok(firstBatch < 1000 * 5, 'no leyo todo en una sola tanda: ' .. firstBatch)
+    eq(ns.Questie.Uses(70001), nil, 'sin terminar sigue nil')
+    FAKE.Advance(5)
+    eq(questIDs(ns.Questie.Uses(70001)), '1')
+    eq(questIDs(ns.Questie.Uses(71000)), '1000')
+    local calls = FAKE.questieCalls
+    ns.Questie.Uses(70001); FAKE.Advance(5)
+    eq(FAKE.questieCalls, calls, 'no se vuelve a armar')
+end)
+
+-- El stub define C_Timer una sola vez (Reset no lo restaura): se devuelve siempre.
+local function withoutTimer(fn)
+    local saved = C_Timer
+    C_Timer = nil
+    local good, err = pcall(fn)
+    C_Timer = saved
+    if not good then error(err, 0) end
+end
+
+test('sin C_Timer: se arma sincrono en el primer Uses', function()
+    withoutTimer(function()
+        FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+        eq(FAKE.questieCalls, 0, 'nada se lee antes del primer Uses')
+        eq(questIDs(ns.Questie.Uses(500)), '10')
+    end)
+end)
+
+test('item fuente, requerido para empezar, de hechizo y que inicia la mision', function()
+    install({
+        [1] = { sourceItemId = 600 },
+        [2] = { requiredSourceItems = { 601, 602 } },
+        [3] = { objectives = { nil, nil, nil, nil, nil, { { 7000, 'Usar', 603 } } } },
+        [4] = { startedBy = { { 1 }, nil, { 604 } } },
+        [5] = { objectives = { nil, nil, { 605 } } }, -- id suelto en lugar de tupla
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '1')
+    eq(questIDs(ns.Questie.Uses(601)), '2'); eq(questIDs(ns.Questie.Uses(602)), '2')
+    eq(questIDs(ns.Questie.Uses(603)), '3')
+    eq(questIDs(ns.Questie.Uses(604)), '4')
+    eq(questIDs(ns.Questie.Uses(605)), '5')
+end)
+
+test('un item repetido varias veces en una mision no se duplica', function()
+    install({ [1] = { sourceItemId = 600, requiredSourceItems = { 600 },
+        objectives = { nil, nil, { { 600 }, { 600 } } } } })
+    eq(#ns.Questie.Uses(600), 1)
+end)
+
+test('mision repetible, diaria, semanal o mensual -> repeatable true', function()
+    install({
+        [1] = { sourceItemId = 600, specialFlags = 1 },
+        [2] = { sourceItemId = 601, questFlags = 4096 },
+        [3] = { sourceItemId = 602, questFlags = 32768 },
+        [4] = { sourceItemId = 603, questFlags = 65536 },
+        [5] = { sourceItemId = 604, questFlags = 8 + 512 + 1024, specialFlags = 0 },
+    })
+    for id = 600, 603 do eq(ns.Questie.Uses(id)[1].repeatable, true, 'item ' .. id) end
+    eq(ns.Questie.Uses(604)[1].repeatable, false)
+end)
+
+test('mision de otra raza filtrada; sin restriccion o de la propia, no', function()
+    FAKE.raceID = HUMAN
+    install({
+        [1] = { sourceItemId = 600, requiredRaces = HORDE },
+        [2] = { sourceItemId = 600, requiredRaces = ALLIANCE },
+        [3] = { sourceItemId = 600, requiredRaces = 0 },
+        [4] = { sourceItemId = 600 },
+        [5] = { sourceItemId = 600, requiredRaces = 2 + 1 },
+        [6] = { sourceItemId = 601, requiredRaces = 2 },
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '2,3,4,5')
+    eq(ns.Questie.Uses(601), nil, 'si todas las misiones se filtran no queda nada')
+end)
+
+test('el filtro de raza sigue al personaje', function()
+    FAKE.raceID = ORC; FAKE.faction = 'Horde'
+    install({
+        [1] = { sourceItemId = 600, requiredRaces = HORDE },
+        [2] = { sourceItemId = 600, requiredRaces = ALLIANCE },
+        [3] = { sourceItemId = 600, requiredRaces = 4 },
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '1')
+end)
+
+test('raza desconocida: se filtra por facccion; sin datos de faccion, se conserva', function()
+    FAKE.raceID = 99; FAKE.faction = 'Horde'
+    install({
+        [1] = { sourceItemId = 600, requiredRaces = ALLIANCE },
+        [2] = { sourceItemId = 600, requiredRaces = HORDE },
+        [3] = { sourceItemId = 600, requiredRaces = ALLIANCE + HORDE },
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '2,3')
+    FAKE.Reset(); FAKE.raceID = 99; FAKE.faction = nil
+    install({ [1] = { sourceItemId = 600, requiredRaces = ALLIANCE } })
+    eq(questIDs(ns.Questie.Uses(600)), '1', 'sin faccion no se puede descartar: se conserva')
+end)
+
+test('mision de otra clase filtrada', function()
+    FAKE.class = 'MAGE'
+    install({
+        [1] = { sourceItemId = 600, requiredClasses = WARRIOR },
+        [2] = { sourceItemId = 600, requiredClasses = MAGE },
+        [3] = { sourceItemId = 600, requiredClasses = WARRIOR + MAGE },
+        [4] = { sourceItemId = 600, requiredClasses = 0 },
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '2,3,4')
+end)
+
+test('Caballero de la Muerte usa DEATH_KNIGHT de classKeys', function()
+    FAKE.class = 'DEATHKNIGHT'
+    install({
+        [1] = { sourceItemId = 600, requiredClasses = 32 },
+        [2] = { sourceItemId = 600, requiredClasses = WARRIOR },
+    })
+    eq(questIDs(ns.Questie.Uses(600)), '1')
+end)
+
+test('sin datos de raza o clase del personaje: se conservan las misiones', function()
+    FAKE.Remove('UnitRace'); FAKE.Remove('UnitFactionGroup'); FAKE.Remove('UnitClass')
+    install({ [1] = { sourceItemId = 600, requiredRaces = HORDE, requiredClasses = WARRIOR } })
+    eq(questIDs(ns.Questie.Uses(600)), '1')
+end)
+
+test('error de LibQuestieDB durante el armado: Uses nil, sin lanzar', function()
+    install({
+        [10] = { objectives = { nil, nil, { { 500 } } } },
+        [20] = { objectives = { nil, nil, { { 500 } } } },
+    }, { throwOn = 20 })
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.Advance(5)
+    eq(ns.Questie.Uses(500), nil)
+    eq(ns.Questie.Uses('no es un id'), nil)
+end)
+
+test('error de LibQuestieDB en el armado sincrono: Uses nil, sin lanzar', function()
+    withoutTimer(function()
+        FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } }, { throwOn = 10 })
+        eq(ns.Questie.Uses(500), nil)
+        eq(ns.Questie.Uses(500), nil)
+    end)
+end)
+
+test('error al listar las misiones: Uses nil, sin lanzar', function()
+    FAKE.InstallQuestie({})
+    LibQuestieDB.Quest.GetAllIds = function() error('GetAllIds roto') end
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.Advance(5)
+    eq(ns.Questie.Uses(500), nil)
+end)
+
+test('con Questie presente, se espera a que este listo antes de armar', function()
+    local waiting
+    Questie = { API = { isReady = false, RegisterOnReady = function(fn) waiting = fn end } }
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    eq(ns.Questie.Uses(500), nil)
+    FAKE.Advance(5)
+    eq(FAKE.questieCalls, 0, 'Questie aun aplica sus correcciones: no se lee nada')
+    ok(waiting ~= nil, 'se registro el aviso de Questie')
+    eq(ns.Questie.Uses(500), nil)
+    Questie.API.isReady = true
+    waiting()
+    FAKE.Advance(5)
+    eq(questIDs(ns.Questie.Uses(500)), '10')
+end)
+
+test('con Questie ya listo, se arma de inmediato', function()
+    Questie = { API = { isReady = true, RegisterOnReady = function() error('no deberia registrarse') end } }
+    install({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    eq(questIDs(ns.Questie.Uses(500)), '10')
+end)
+
+test('al terminar el indice invalida el contexto y avisa a OnReady', function()
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    local before = ns.Player.GetContext()
+    eq(ns.Player.GetContext(), before)
+    local notified = 0
+    ns.Questie.OnReady(function() notified = notified + 1 end)
+    ns.Questie.OnReady(function() error('un aviso roto no frena al resto') end)
+    ns.Questie.OnReady(function() notified = notified + 1 end)
+    ns.Questie.Uses(500)
+    eq(ns.Player.GetContext(), before, 'mientras arma, el contexto sigue siendo el mismo')
+    FAKE.Advance(5)
+    ok(ns.Player.GetContext() ~= before, 'el contexto se reconstruye al terminar')
+    eq(notified, 2)
+    eq(ns.Questie.IsReady(), true)
+end)
+
+test('el contexto del personaje usa Questie.Uses y el clasificador lo respeta', function()
+    FAKE.items[500] = { name = 'Cuero', quality = 1, price = 10, classID = 15, subclassID = 0 }
+    install({
+        [10] = { objectives = { nil, nil, { { 500 } } } },
+        [20] = { objectives = { nil, nil, { { 500 } } } },
+        [30] = { objectives = { nil, nil, { { 500 } } }, requiredRaces = HORDE },
+    })
+    local item = ns.Player.ReadLink(FAKE.linkOf(500))
+    FAKE.completed[10] = true
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'falta la 20')
+    FAKE.completed[20] = true
+    ns.Player.Invalidate()
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'hechas las aplicables (la 30 es de la Horda)')
+end)

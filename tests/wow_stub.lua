@@ -116,6 +116,11 @@ local function installClient()
     end
     FAKE.linkOf = linkOf
     UnitClass = function() return 'Mago', FAKE.class end
+    FAKE.raceID = 1         -- UnitRace: 1 = humano
+    FAKE.faction = 'Alliance'
+    UnitRace = function() return 'Humano', 'Human', FAKE.raceID end
+    UnitFactionGroup = function() return FAKE.faction, FAKE.faction end
+    LibQuestieDB, Questie = nil, nil
     GetProfessions = function()
         local indexes = {}
         for i = 1, #FAKE.professions do indexes[i] = i end
@@ -230,10 +235,45 @@ function FAKE.Remove(path)
     local owner, key = path:match('^(.-)%.(.+)$')
     if owner then _G[owner][key] = nil else _G[path] = nil end
 end
+-- LibQuestieDB falso (solo pruebas). quests = { [questID] = { campo = valor } } con los nombres
+-- de campo reales de Quest.Get. opts.contract = contrato maximo que dice soportar (por defecto 4),
+-- opts.throwOn = questID para el que Quest.Get lanza error, opts.throwRequire = RequireContract lanza.
+FAKE.questieCalls = 0
+function FAKE.InstallQuestie(quests, opts)
+    opts = opts or {}
+    FAKE.questieCalls = 0
+    local ids = {}
+    for questID in pairs(quests) do ids[#ids + 1] = questID end
+    table.sort(ids)
+    LibQuestieDB = {
+        RequireContract = function(required)
+            if opts.throwRequire then error('RequireContract roto') end
+            return required >= 1 and required <= (opts.contract or 4)
+        end,
+        Enum = {
+            raceMaskById = { [1] = 1, [2] = 2, [3] = 4, [4] = 8, [5] = 16, [6] = 32, [7] = 64, [8] = 128,
+                [9] = 256, [10] = 512, [11] = 1024 },
+            factionRaceMasks = { Alliance = 1 + 4 + 8 + 64 + 1024, Horde = 2 + 16 + 32 + 128 + 512 },
+            classKeys = { WARRIOR = 1, PALADIN = 2, HUNTER = 4, ROGUE = 8, PRIEST = 16, DEATH_KNIGHT = 32,
+                SHAMAN = 64, MAGE = 128, WARLOCK = 256, MONK = 512, DRUID = 1024, ALL_CLASSES = 1503 },
+        },
+        Quest = {
+            Get = function(questID, key)
+                FAKE.questieCalls = FAKE.questieCalls + 1
+                if opts.throwOn == questID then error('Quest.Get roto') end
+                local quest = quests[questID]
+                return quest and quest[key]
+            end,
+            GetAllIds = function() return ids end,
+        },
+    }
+    return LibQuestieDB
+end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
     installClient()
     if ns and ns.Player then ns.Player.ResetState() end
+    if ns and ns.Questie then ns.Questie.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')
 end
 FAKE.Reset()

@@ -5,6 +5,7 @@
 ## Notes-esMX: Basura, sobrantes de misión y materiales de profesión: iconos en tus bolsas y en el botín.
 ## Author: Alejandro Benzoni (KnuPwns)
 ## SavedVariables: KnuJunkDB
+## OptionalDeps: QuestieDB
 ## Version: 0.1.0
 ## X-License: MIT
 ## X-Website: https://knunet.com
@@ -17,3 +18,4 @@ Data\Starters.lua
 Data\ClassGear.lua
 Classify.lua
 Player.lua
+QuestieSource.lua
