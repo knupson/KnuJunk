@@ -202,6 +202,27 @@ local function indexQuest(source, items, questID)
     if type(startedBy) == 'table' and type(startedBy[3]) == 'table' then
         for _, itemID in ipairs(startedBy[3]) do ids[#ids + 1] = itemID end
     end
+    -- Objetivos ocultos: { spawns?, icono, texto?, indice, { {'item'|'monster'|'object', id}, ... }? }.
+    -- Si no se pueden leer, un uso del item podria perderse y dar un quest_done falso: se lanza
+    -- error y el indice entero queda 'failed' (sin datos de Questie, nunca moneda por Questie).
+    local extra = get(questID, 'extraObjectives')
+    if extra ~= nil then
+        if type(extra) ~= 'table' then error('extraObjectives ilegible') end
+        for _, objective in pairs(extra) do
+            if type(objective) ~= 'table' then error('extraObjectives ilegible') end
+            local refs = objective[5]
+            if refs ~= nil then
+                if type(refs) ~= 'table' then error('extraObjectives ilegible') end
+                for _, ref in pairs(refs) do
+                    if type(ref) ~= 'table' then error('extraObjectives ilegible') end
+                    if ref[1] == 'item' then
+                        if not validID(ref[2]) then error('extraObjectives ilegible') end
+                        ids[#ids + 1] = ref[2]
+                    end
+                end
+            end
+        end
+    end
 
     local record
     for _, itemID in ipairs(ids) do

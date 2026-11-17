@@ -360,3 +360,28 @@ test('playerInfo: raza y clase se cachean por separado', function()
     eq(calls.race, race, 'la raza resuelta se guarda')
     eq(calls.class, classBase + 1)
 end)
+
+-- Item 10 de la ola final: las referencias a items de extraObjectives tambien cuentan
+-- (contrato QuestieDB: { spawns?, icono, texto?, indice, { {'item', itemID}, ... }? }).
+test('extraObjectives: un item referenciado cuenta como uso de la mision', function()
+    install({
+        [10] = { objectives = { nil, nil, { { 500 } } } },
+        [20] = { extraObjectives = { { nil, 5, 'Usar el cuerno', 1, { { 'item', 500 }, { 'monster', 77 } } } } },
+        [30] = { extraObjectives = { { { [1] = {} }, 3, 'Sin referencias', 0 } } },
+    })
+    eq(questIDs(ns.Questie.Uses(500)), '10,20')
+    eq(ns.Questie.Uses(77), nil, 'las referencias a criaturas no son items')
+    -- Mision 10 hecha, 20 (extra) sin hacer: sin moneda, marca de mision.
+    local ctx = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
+        isQuestDone = function(q) return q == 10 end, questieUses = ns.Questie.Uses }
+    eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'quest')
+end)
+
+test('extraObjectives ilegible: sin datos de Questie (nunca quest_done por Questie)', function()
+    install({
+        [10] = { objectives = { nil, nil, { { 500 } } } },
+        [20] = { extraObjectives = { { nil, 5, 'Roto', 1, { { 'item', 'x' } } } } },
+    })
+    eq(ns.Questie.Uses(500), nil)
+    eq(ns.Questie.Pending(), false)
+end)
