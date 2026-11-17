@@ -1,0 +1,58 @@
+# Prueba de bolsas de KnuJunk en WoW Forever
+
+Lista de comprobación para la beta 0.1.0. Las dos primeras columnas (existencia en CurseForge y estado del adaptador) están completas; las columnas de juego quedan vacías y las completa quien prueba.
+
+## Cómo probar
+
+1. Instalá **una sola** bolsa por vez en Forever (carpeta `_forever_\Interface\AddOns`), con KnuJunk instalado y las demás bolsas apagadas. Entrá al juego con un personaje que tenga en las bolsas 0 a 4: un item gris, un material de profesión, y si se puede un equipo que tu clase nunca usa.
+2. Abrí las bolsas. Mirá cada casilla:
+   - **Monedita**: aparece en los items grises vendibles, en el equipo que tu clase nunca puede usar y en los items de misiones ya hechas (con QuestieDB cargado, también en objetivos de misiones hechas).
+   - **Martillo verde / gris**: verde si una profesión tuya usa el material, gris si es de una profesión que no tenés.
+   - **Sin marca donde no corresponde**: abrí el banco y, si la bolsa lo tiene, la vista de otro personaje o la caché. No debe aparecer ninguna marca ahí. Una monedita falsa es el peor fallo.
+3. Activá BugSack/BugGrabber antes de empezar. Después de abrir y cerrar bolsas, cambiar de ficha y mover items, revisá si hay errores de `KnuJunk`.
+4. Completá la fila de la bolsa: versión probada, y en cada columna de juego `sí`, `no` o `n/a` (con una nota si hace falta). Si la bolsa no instala o no arranca en Forever, anotalo y pasá a la siguiente: se salta y queda con el hook genérico.
+5. `/knu junk status` lista los adaptadores instalados (`Adaptadores de bolsas`). Si tu bolsa no aparece ahí, anotalo en la fila.
+
+Fuentes de las dos columnas completas, todas leídas el 2026-11-17:
+
+- Existencia en CurseForge: la API pública `https://api.cfwidget.com/wow/addons/<slug>` (se busca un archivo cuya lista de versiones incluya 1.60.1) y, cuando esa API no tiene el proyecto, la página del proyecto en CurseForge (se busca el sabor «WoW Forever» en los archivos recientes). «No encontrado» significa que no se halló ningún proyecto con esa clave; no es una prueba de que no exista.
+- Estado del adaptador: el código del repo y los informes de las tareas 7, 8 y 9 de `.superpowers/sdd/2026-11-17-knujunk/`. «Verificado contra código real» quiere decir que el contrato del addon se leyó en su código fuente; ninguna fila fue probada en el juego.
+
+## Tabla
+
+| Bolsa | Existe para Forever (link CurseForge) | Versión probada | Monedita | Martillo verde/gris | Sin marca en banco/caché | Sin errores BugSack | Estado del adaptador en el código |
+|---|---|---|---|---|---|---|---|
+| Blizzard (bolsas individuales y combinada) | No aplica (viene con el juego) | | | | | | Engancha con `hooksecurefunc` la global `ContainerFrame_Update` (forma clásica) y `UpdateItems` de `ContainerFrame1..N` y `ContainerFrameCombinedBags` (forma moderna), detectando cuál existe. Sin verificar cuál usa Forever. |
+| Ventana de botín (clásica o ScrollBox) | No aplica (viene con el juego) | | | | | | Engancha `LootFrame` por la forma moderna (ScrollBox con filas recicladas) o la clásica (`LootFrame_Update`, `LootButtonN`), detectando cada una. Marca monedita, martillo y signo de misión. Sin verificar cuál usa Forever; con autolooteo no hay ventana y no se marca nada. |
+| Baganator | Sí: [baganator](https://www.curseforge.com/wow/addons/baganator). Release `862` (archivo 9659116) y alpha `862-2-g943da69`, ambos con 1.60.1. Requiere Syndicator. | | | | | | API oficial (`RegisterJunkPlugin` y `RegisterCornerWidget`), verificado contra el código de Baganator 862. La vista de otros personajes se descarta por `isLive`; si cambian nombres internos de Baganator, queda sin marca. |
+| BetterBags | Sí: [better-bags](https://www.curseforge.com/wow/addons/better-bags). Release `v0.9.4` (archivo 9659838) con 1.60.1. | | | | | | Mensajes del módulo Events (`item/Updated`, `item/NewButton`, `item/Clearing`). Contrato tomado del código de otros addons, no del de BetterBags: sin código real disponible. |
+| AdiBags | No encontrado para Forever: existe [adibags](https://www.curseforge.com/wow/addons/adibags) pero ningún archivo lista 1.60.1 (último archivo 2024-09-08). | | | | | | Mensajes de ABEvent-1.0 (`AdiBags_UpdateButton` y compañía). Sin código real disponible. |
+| ArkInventory | Sí: [ark-inventory](https://www.curseforge.com/wow/addons/ark-inventory). Release `3.12.17` (archivo 9215808) y alpha `3.12.17-alpha-2` con 1.60.1. | | | | | | `hooksecurefunc` sobre `ArkInventory.API.ItemFrameUpdated`, verificado contra el código de ArkInventory 3.12.17. Sin marca en vistas de otros personajes y en ubicaciones que no sean la bolsa. |
+| EllesmereUIBags | Parcial: la suite [ellesmereui](https://www.curseforge.com/wow/addons/ellesmereui) tiene `v9.8.8` (archivo 9643268) con 1.60.1 y su descripción lista un módulo de bolsas. Que el paquete traiga la carpeta `EllesmereUIBags` no está verificado. | | | | | | `EUI_Bags.RegisterItemOverlayIcon`. Contrato tomado del código de otro addon: sin código real disponible. |
+| LiteBag | No encontrado para Forever: existe [litebag](https://www.curseforge.com/wow/addons/litebag) pero sus archivos recientes son Retail y Classic (último 12.1.5-1 Retail; no se vio el sabor Forever; página leída, no se recorrió la lista completa). Slug en cfwidget: sin datos. | | | | | | `LiteBag_RegisterHook('LiteBagItemButton_Update')`. Sin código real disponible; la identidad del item se captura en el callback. |
+| tdBag2 | No encontrado para Forever: existe [tdbag2](https://www.curseforge.com/wow/addons/tdbag2) (2.3.19) pero sus archivos recientes son MoP Classic, Titan Reforged, Classic y TBC, sin Forever. Slug en cfwidget: sin datos. | | | | | | `tdBag2:RegisterPlugin` (tipo `Item`); exige `meta:IsBag()` y `meta:IsSelf()`. Sin código real disponible. |
+| Baggins | Sí: [baggins](https://www.curseforge.com/wow/addons/baggins). Release `v5.9.9-forever` (archivo 9579085) con 1.60.1. | | | | | | Señal `Baggins_ItemButtonUpdated`, verificado contra el código de Baggins Forever 5.9.9. |
+| Bagnon | Sí: [bagnon](https://www.curseforge.com/wow/addons/bagnon). Release `12.1.11` (archivo 9638308) con 1.60.1. | | | | | | `hooksecurefunc` sobre `Bagnon.Item.Update`, verificado contra el código de BagBrother 12.1.11. Sólo la ventana `inventory`. |
+| Bagnonium | Sí: [bagnonium](https://www.curseforge.com/wow/addons/bagnonium). La página muestra el sabor «WoW Forever» en `12.1.11` (archivo 9638319). Confirmado sólo por la página (cfwidget no tiene el proyecto). | | | | | | Mismo mecanismo que Bagnon, con su propia carpeta. Sin código propio leído: se asume el mismo BagBrother. |
+| ElvUI | No está en CurseForge: se distribuye por tukui.org y GitHub. Ya hay una copia instalada en el equipo (v16.01). Slug probado en cfwidget: `elvui`. | | | | | | `hooksecurefunc` sobre `ElvUI[1].Bags.UpdateSlot`, verificado contra ElvUI v16.01. Con las bolsas de ElvUI apagadas (como en el equipo) el adaptador no se instala. Orden real de eventos de login con ElvUI activo: sin verificar. |
+| BaudBag | Sí, con reservas: [baud-bag](https://www.curseforge.com/wow/addons/baud-bag). La página muestra el sabor «WoW Forever» en `v12.1.5.1` (archivo 9599190), pero su descripción dice que el soporte está en desarrollo. Confirmado sólo por la página. | | | | | | `hooksecurefunc` sobre `BaudBag.ItemSlot_Updated`. Sin código real disponible; sin marca hasta verificar (no hay identidad expuesta del item). |
+| Combuctor | No encontrado con ese nombre: no hay proyecto `combuctor` (cfwidget sin datos). Según la página de Combuctor Masque en CurseForge, Combuctor pasó a llamarse Bagnonium (ver la fila de Bagnonium). | | | | | | Por nombres de ventana (`ContainerFrame<b+1>Item<s>`), tomados de la competencia. Sin marca hasta verificar el nombre de ventana. |
+| OneBag3 | No encontrado para Forever: existe [onebag3](https://www.curseforge.com/wow/addons/onebag3) pero ningún archivo lista 1.60.1 (último archivo 2022). | | | | | | Por nombres de ventana (`OneBagFrameBag<b>Item<s>`). Sin marca hasta verificar el nombre de ventana. |
+| Inventorian | Sí: [inventorian](https://www.curseforge.com/wow/addons/inventorian). Release `12.1.5.1` (archivo 9621749) con 1.60.1. | | | | | | Por nombres de botón, verificado contra el código de Inventorian 12.1.5.1 (identidad por `itemLink`, ventana `InventorianBagFrame`). |
+| cargBags_Nivaya | Sí: [cargbags-nivaya-mop-update](https://www.curseforge.com/wow/addons/cargbags-nivaya-mop-update). Release `Forever 0.3` (archivo 9481585) con 1.60.1; el nombre del proyecto es «cargBags Nivaya» (fan update). | | | | | | Por nombres de botón (`NivayaSlot<n>`), tomados de la competencia. Sin marca hasta verificar el nombre de ventana. |
+| m_Bags | No encontrado (slugs probados en cfwidget: `m-bags`, `mbags`, `m-bags-classic`; la búsqueda web no halló un proyecto con ese nombre). | | | | | | Por nombres de botón (`m_BagsSlot<n>`), tomados de la competencia. Sin marca hasta verificar el nombre de ventana. |
+| DerpyStuffing | No encontrado para Forever: existe [derpy-stuffing-bags](https://www.curseforge.com/wow/addons/derpy-stuffing-bags) pero ningún archivo lista 1.60.1 (último archivo 2021-04-10). | | | | | | Por nombres de botón (`StuffingBag<b>_<s>`). Sin marca hasta verificar el nombre de ventana. |
+| famBags | No encontrado para Forever: existe [fambags](https://www.curseforge.com/wow/addons/fambags) pero la página muestra un único archivo Retail de 2014 (v1.3.3). Slug en cfwidget: sin datos. | | | | | | Por nombres de botón (`famBagsButton_<b>_<s>`). Sin marca hasta verificar el nombre de ventana. |
+| LUI | Sí: [lui](https://www.curseforge.com/wow/addons/lui) («LUI Core»). Release `v2610` (archivo 9431496) y alphas posteriores con 1.60.1. Su descripción menciona un módulo de bolsas. | | | | | | Por nombres de botón (`LUIBags_Item<b>_<s>`), tomados de la competencia. Sin marca hasta verificar el nombre de ventana. |
+| RealUI_Inventory | Parcial: viene dentro de [realui](https://www.curseforge.com/wow/addons/realui). La página muestra el sabor «WoW Forever» en `4.2.6` (archivo 9531550) y dice que incluye RealUI_Inventory. No hay proyecto aparte. | | | | | | Por nombres de botón (`RealUIInventory_Slot<n>`), tomados de la competencia. Sin marca hasta verificar el nombre de ventana. |
+| Hook genérico (cualquier otra bolsa) | No aplica | | | | | | `hooksecurefunc` sobre `SetItemButtonQuality` y los mixins `ItemButtonMixin` y `ContainerFrameItemButtonMixin`, si existen. Sólo marca botones dentro de un contenedor declarado vivo (hoy sólo los de Blizzard) y cuya identidad coincide con el slot. Que Bagnon, ElvUI e Inventorian llamen a `SetItemButtonQuality` con el item se verificó en su código; que Forever tenga ese método en el mixin no está verificado. |
+
+## Resumen de existencia (2026-11-17)
+
+- Con archivo para Forever en CurseForge (12): Baganator, BetterBags, ArkInventory, EllesmereUI (suite), Baggins, Bagnon, Bagnonium, BaudBag (con reservas), Inventorian, cargBags_Nivaya, LUI y RealUI (suite).
+- Fuera de CurseForge: ElvUI (tukui.org y GitHub).
+- Combuctor es hoy Bagnonium.
+- Sin archivo para Forever: AdiBags, LiteBag, tdBag2, OneBag3, DerpyStuffing, famBags.
+- No encontrado: m_Bags.
+
+Las que no tengan versión para Forever, o no instalen, se saltan y se anotan en `docs/curseforge.md` (decisión del user, spec §7).
