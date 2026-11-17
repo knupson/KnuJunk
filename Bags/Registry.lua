@@ -74,6 +74,8 @@ end
 
 -- spec.revalidate(boton) -> bag, slot, itemID mostrado | nil: lo usa Marks para retomar una marca
 -- que quedo esperando (datos del item, combate) sin saltarse la lectura del adaptador.
+-- Los duenos que marcan por enlace (Loot) devuelven en su lugar el ENLACE que el boton muestra ahora
+-- (o nil).
 function Bags.Revalidator(name)
     local entry = find(name)
     if entry and type(entry.spec.revalidate) == 'function' then return entry.spec.revalidate end

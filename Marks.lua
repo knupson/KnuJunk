@@ -223,7 +223,18 @@ end
 -- revalidar (spec.revalidate(boton) -> bag, slot, itemID mostrado), su vista tiene que seguir
 -- siendo una casilla viva con ese mismo item. Si algo no coincide: sin marca.
 local function resume(button, entry)
-    if entry.link then return Marks.UpdateLink(button, entry.link, entry.owner) end
+    if entry.link then
+        -- Por enlace: si el dueno sabe revalidar, spec.revalidate(boton) devuelve el enlace que el
+        -- boton muestra AHORA (la fila de botin pudo reciclarse a otro item mientras esperaba datos);
+        -- tiene que ser el mismo item que se esperaba, y se marca con el enlace actual.
+        local revalidate = ns.Bags and ns.Bags.Revalidator and ns.Bags.Revalidator(entry.owner or 'generic')
+        if revalidate then
+            local success, current = pcall(revalidate, button)
+            if not success or itemIDOf(current) ~= entry.id then return Marks.Clear(button) end
+            return Marks.UpdateLink(button, current, entry.owner)
+        end
+        return Marks.UpdateLink(button, entry.link, entry.owner)
+    end
     local bag, slot = entry.bag, entry.slot
     local revalidate = ns.Bags and ns.Bags.Revalidator and ns.Bags.Revalidator(entry.owner or 'generic')
     if revalidate then
