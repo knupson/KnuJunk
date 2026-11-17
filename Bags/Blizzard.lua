@@ -88,10 +88,29 @@ function Blizzard.Refresh()
     end
 end
 
+-- Al retomar una marca pendiente (datos del item o fin del combate) el boton pudo reciclarse:
+-- se lee lo que muestra AHORA. Tiene que estar visible, su bolsa (del frame actual) en 0-4 y el
+-- item vivo de ese slot es lo que muestra. Cualquier duda: nil (sin marca).
+local function revalidate(button)
+    if type(button) ~= 'table' then return nil end
+    if type(button.IsVisible) == 'function' then
+        if not button:IsVisible() then return nil end
+    elseif type(button.IsShown) == 'function' and not button:IsShown() then
+        return nil
+    end
+    local frame = type(button.GetParent) == 'function' and button:GetParent() or nil
+    if type(button.GetBagID) ~= 'function' and type(frame) ~= 'table' then return nil end
+    local bag = bagOf(button, frame or {})
+    local slot = type(button.GetID) == 'function' and button:GetID() or nil
+    if type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return nil end
+    return bag, slot, ns.Marks.SlotItemID(bag, slot)
+end
+
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Blizzard.ResetState()
     hookedFrames = setmetatable({}, { __mode = 'k' })
     hookedGlobal = false
 end
 
-ns.Bags.Register('Blizzard', { install = Blizzard.Hook, refresh = Blizzard.Refresh })
+ns.Bags.Register('Blizzard', { install = Blizzard.Hook, refresh = Blizzard.Refresh,
+    revalidate = revalidate, owner = OWNER })

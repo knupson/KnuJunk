@@ -206,6 +206,12 @@ function Marks.Verdict(bag, slot, expectedID)
     return nil, false
 end
 
+-- ID del item vivo en el slot `bag`/`slot`, o nil (vacio o error). Para revalidadores.
+function Marks.SlotItemID(bag, slot)
+    local success, id = pcall(slotItemID, bag, slot)
+    if success then return id end
+end
+
 -- Pinta `texture` (de una esquina ajena) con la marca; false si la marca no es dibujable.
 function Marks.Style(texture, mark)
     local kind = kindOf(mark, false)

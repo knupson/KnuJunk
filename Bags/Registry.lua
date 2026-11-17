@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Registro de adaptadores de bolsas. Cada adaptador (Blizzard, Bagnon, ...) se registra con
 --   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil,
---            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional) }
+--            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional),
+--            owner = dueno que el adaptador guarda en los botones, si no es el nombre (opcional) }
 -- install se llama (hasta tener exito una vez) cuando su addon esta cargado: en PLAYER_LOGIN y en
 -- cada ADDON_LOADED; devuelve false si aun no puede engancharse y se reintenta. refresh repinta.
 local Bags = {}
@@ -76,8 +77,14 @@ end
 -- que quedo esperando (datos del item, combate) sin saltarse la lectura del adaptador.
 -- Los duenos que marcan por enlace (Loot) devuelven en su lugar el ENLACE que el boton muestra ahora
 -- (o nil).
+-- `name` es el dueno guardado en el boton: el nombre registrado o, si difiere, spec.owner.
 function Bags.Revalidator(name)
     local entry = find(name)
+    if not entry then
+        for _, candidate in ipairs(specs) do
+            if candidate.spec.owner == name then entry = candidate; break end
+        end
+    end
     if entry and type(entry.spec.revalidate) == 'function' then return entry.spec.revalidate end
 end
 

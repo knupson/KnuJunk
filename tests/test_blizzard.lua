@@ -212,3 +212,66 @@ test('Blizzard: un boton que falla no impide marcar los demas', function()
         ok(not (broken.KnuJunkMark and broken.KnuJunkMark:IsShown()), 'el roto queda sin marca')
     end)
 end)
+
+-- Item 4 de la ola final: al retomar una marca pendiente (datos o combate) se revalida lo que
+-- el boton muestra AHORA: bolsa del frame actual (0-4), slot actual, visible, y el item vivo.
+test('Blizzard: boton que paso al banco mientras esperaba datos -> sin moneda', function()
+    withGlobals({ 'ContainerFrame_Update', 'ContainerFrame1', 'ContainerFrame1Item1' }, function()
+        local frame, buttons = classicFrame('ContainerFrame1', 0, { 1 })
+        FAKE.bags['0:1'] = 200 -- sin datos todavia
+        ContainerFrame_Update = function() end
+        ns.Bags.InstallAll()
+        ContainerFrame_Update(frame)
+        ok(not (buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown()), 'sin datos: sin marca')
+        -- El cliente recicla el frame para el banco y el boton para otro slot, sin redibujar aun.
+        frame.id = -1; buttons[1].id = 2
+        addItem(200)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+        ok(not (buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown()), 'boton del banco sin moneda')
+    end)
+end)
+
+test('Blizzard: boton oculto u otro slot al retomar -> sin moneda; mismo boton vivo -> moneda', function()
+    withGlobals({ 'ContainerFrame_Update', 'ContainerFrame1', 'ContainerFrame1Item1' }, function()
+        local frame, buttons = classicFrame('ContainerFrame1', 0, { 1 })
+        FAKE.bags['0:1'] = 200
+        ContainerFrame_Update = function() end
+        ns.Bags.InstallAll()
+        ContainerFrame_Update(frame)
+        -- Mismo bolsa, otro slot con otro item: no se marca.
+        buttons[1].id = 3; FAKE.bags['0:3'] = 201; addItem(201)
+        addItem(200)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+        ok(not (buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown()), 'otro slot')
+        -- Boton oculto.
+        buttons[1].id = 1; FAKE.items[200] = nil
+        ContainerFrame_Update(frame)
+        buttons[1]:Hide()
+        addItem(200)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+        ok(not (buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown()), 'oculto')
+        -- Visible, mismo slot y mismo item: si.
+        buttons[1]:Show(); FAKE.items[200] = nil
+        ContainerFrame_Update(frame)
+        addItem(200)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+        ok(buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown(), 'vivo: moneda')
+    end)
+end)
+
+test('Blizzard: cola de combate revalida bolsa actual del boton', function()
+    withGlobals({ 'ContainerFrame_Update', 'ContainerFrame1', 'ContainerFrame1Item1' }, function()
+        local frame, buttons = classicFrame('ContainerFrame1', 0, { 1 })
+        buttons[1].IsProtected = function() return true end
+        addItem(200); FAKE.bags['0:1'] = 200
+        ContainerFrame_Update = function() end
+        ns.Bags.InstallAll()
+        FAKE.inCombat = true
+        ContainerFrame_Update(frame)
+        ok(buttons[1].KnuJunkMark == nil, 'diferido en combate')
+        frame.id = -1 -- el frame pasa a mostrar el banco
+        FAKE.inCombat = false
+        FAKE.Fire('PLAYER_REGEN_ENABLED')
+        ok(not (buttons[1].KnuJunkMark and buttons[1].KnuJunkMark:IsShown()), 'banco: sin moneda')
+    end)
+end)
