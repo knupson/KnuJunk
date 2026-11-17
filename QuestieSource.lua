@@ -44,7 +44,7 @@ local MAX_PER_TICK, BUDGET_MS, TICK_SECONDS = 300, 4, 0.01
 local state            -- nil | 'waiting' | 'building' | 'ready' | 'failed'
 local index            -- [itemID] = { registro de mision, ... }; solo cuando state == 'ready'
 local lib              -- LibQuestieDB ya validado (solo se guarda un exito)
-local player           -- { raceBit, classBit, faction } una vez resueltos raza y clase
+local raceBit, classBit -- cada uno se guarda en cuanto se resuelve (no cambian durante la sesion)
 local readyCallbacks = {}
 local generation = 0   -- ResetState invalida los lotes y avisos pendientes
 
@@ -70,6 +70,12 @@ function Questie.Available() return getLib() ~= nil end
 
 function Questie.IsReady() return state == 'ready' end
 
+-- true mientras QuestieDB esta disponible pero su indice aun no esta listo (Uses da nil sin que
+-- eso signifique "sin misiones"). Un fallo definitivo cuenta como "sin Questie".
+function Questie.Pending()
+    return getLib() ~= nil and state ~= 'ready' and state ~= 'failed'
+end
+
 -- fn() se llama (una vez) cuando el indice queda listo: las vistas pueden refrescarse.
 function Questie.OnReady(fn)
     if type(fn) ~= 'function' then return end
@@ -79,7 +85,7 @@ end
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Questie.ResetState()
     generation = generation + 1
-    state, index, lib, player, readyCallbacks = nil, nil, nil, nil, {}
+    state, index, lib, raceBit, classBit, readyCallbacks = nil, nil, nil, nil, nil, {}
 end
 
 -- ---------------------------------------------------------------------------
@@ -104,23 +110,24 @@ end
 -- ---------------------------------------------------------------------------
 
 -- { raceBit=, classBit=, faction= }; cada dato en nil si no se sabe (esa mision no se filtra por el).
+-- Raza y clase se cachean por separado: si una aun no esta disponible, la otra no se vuelve a leer.
 local function playerInfo()
-    if player then return player end
     local enum = lib and lib.Enum
-    local raceID, classToken, faction
-    if type(UnitRace) == 'function' then raceID = select(3, UnitRace('player')) end
-    if type(UnitClass) == 'function' then classToken = select(2, UnitClass('player')) end
-    if type(UnitFactionGroup) == 'function' then faction = (UnitFactionGroup('player')) end
-    local info = { faction = type(faction) == 'string' and faction or nil }
-    if type(enum) == 'table' then
-        if type(enum.raceMaskById) == 'table' and raceID ~= nil then info.raceBit = enum.raceMaskById[raceID] end
-        if type(enum.classKeys) == 'table' and type(classToken) == 'string' then
+    if type(enum) ~= 'table' then return {} end
+    if not raceBit and type(UnitRace) == 'function' and type(enum.raceMaskById) == 'table' then
+        local raceID = select(3, UnitRace('player'))
+        if raceID ~= nil then raceBit = enum.raceMaskById[raceID] end
+    end
+    if not classBit and type(UnitClass) == 'function' and type(enum.classKeys) == 'table' then
+        local token = select(2, UnitClass('player'))
+        if type(token) == 'string' then
             -- El cliente dice DEATHKNIGHT; classKeys dice DEATH_KNIGHT.
-            info.classBit = enum.classKeys[classToken] or enum.classKeys[(classToken:gsub('^DEATHKNIGHT$', 'DEATH_KNIGHT'))]
+            classBit = enum.classKeys[token] or enum.classKeys[(token:gsub('^DEATHKNIGHT$', 'DEATH_KNIGHT'))]
         end
     end
-    if info.raceBit and info.classBit then player = info end -- ya no cambia: se guarda
-    return info
+    local faction
+    if type(UnitFactionGroup) == 'function' then faction = (UnitFactionGroup('player')) end
+    return { raceBit = raceBit, classBit = classBit, faction = type(faction) == 'string' and faction or nil }
 end
 
 local function otherFaction(faction)
@@ -213,7 +220,12 @@ end
 local function finish(items)
     index, state = items, 'ready'
     -- Los contextos ya armados no tenian esta fuente: se reconstruyen en el proximo pedido.
-    if ns.Player and ns.Player.Invalidate then pcall(ns.Player.Invalidate) end
+    -- Y se reconstruye ya: asi Player.OnChanged se entera (questLogIncomplete pasa de true a nil)
+    -- aunque nadie pida el contexto, y las vistas se refrescan.
+    if ns.Player and ns.Player.Invalidate then
+        pcall(ns.Player.Invalidate)
+        if ns.Player.GetContext then pcall(ns.Player.GetContext) end
+    end
     local callbacks = readyCallbacks
     readyCallbacks = {}
     for _, fn in ipairs(callbacks) do pcall(fn) end

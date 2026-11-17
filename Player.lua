@@ -314,6 +314,9 @@ local function buildContext()
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
     local professions = readProfessions()
     local questItems, incomplete, names = buildQuestItems()
+    -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
+    -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
+    if ns.Questie and type(ns.Questie.Pending) == 'function' and ns.Questie.Pending() then incomplete = true end
     local ctx = {
         class = class,
         professions = professions,

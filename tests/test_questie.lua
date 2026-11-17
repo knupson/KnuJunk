@@ -278,3 +278,85 @@ test('el contexto del personaje usa Questie.Uses y el clasificador lo respeta', 
     ns.Player.Invalidate()
     eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'hechas las aplicables (la 30 es de la Horda)')
 end)
+
+test('Pending: solo mientras QuestieDB esta disponible y el indice no termino', function()
+    eq(ns.Questie.Pending(), false, 'sin LibQuestieDB')
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    eq(ns.Questie.Pending(), true, 'disponible, aun sin armar')
+    ns.Questie.Uses(500)
+    eq(ns.Questie.Pending(), true, 'armando')
+    FAKE.Advance(5)
+    eq(ns.Questie.Pending(), false, 'listo')
+end)
+
+test('Pending: esperando a Questie cuenta como pendiente; un fallo definitivo, no', function()
+    local waiting
+    Questie = { API = { isReady = false, RegisterOnReady = function(fn) waiting = fn end } }
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    ns.Questie.Uses(500)
+    eq(ns.Questie.Pending(), true, 'esperando')
+    FAKE.Reset()
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } }, { throwOn = 10 })
+    ns.Questie.Uses(500); FAKE.Advance(5)
+    eq(ns.Questie.Pending(), false, 'fallo definitivo = sin Questie')
+end)
+
+test('indice sin terminar: item gris de una mision sin hacer no da moneda; con el indice listo y la mision hecha, si', function()
+    FAKE.items[500] = { name = 'Pelo', quality = 0, price = 5, classID = 15, subclassID = 0 }
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    local item = ns.Player.ReadLink(FAKE.linkOf(500))
+    local before = ns.Classify(item, ns.Player.GetContext())
+    eq(before.mark, nil, 'sin moneda antes de terminar el indice')
+    eq(before.reasons[1].kind, 'quest_log_incomplete')
+    FAKE.completed[10] = true
+    FAKE.Advance(5)
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'indice listo y mision hecha')
+    FAKE.completed[10] = nil
+    ns.Player.Invalidate()
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'indice listo y mision pendiente')
+end)
+
+test('item de clase que no puede usar tampoco da moneda mientras el indice esta pendiente', function()
+    FAKE.class = 'MAGE'
+    FAKE.items[501] = { name = 'Espadon', quality = 1, price = 5, classID = 2, subclassID = 8 }
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 501 } } } } })
+    local item = ns.Player.ReadLink(FAKE.linkOf(501))
+    item.hasUseOrEquipSpell = false
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, nil)
+    FAKE.Advance(5)
+    FAKE.completed[10] = true
+    ns.Player.Invalidate()
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin')
+end)
+
+test('al terminar el indice OnChanged avisa (questLogIncomplete true -> nil) sin pedir el contexto', function()
+    FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
+    local seen = {}
+    ns.Player.OnChanged(function(ctx) seen[#seen + 1] = ctx end)
+    eq(ns.Player.GetContext().questLogIncomplete, true)
+    eq(#seen, 0)
+    ns.Questie.Uses(500)
+    eq(#seen, 0, 'armando: aun no cambia nada')
+    FAKE.Advance(5)
+    eq(#seen, 1, 'OnChanged avisa una vez al terminar')
+    eq(seen[1].questLogIncomplete, nil)
+    eq(ns.Player.GetContext(), seen[1])
+end)
+
+test('playerInfo: raza y clase se cachean por separado', function()
+    local calls = { race = 0, class = 0 }
+    local raceID = nil
+    UnitRace = function() calls.race = calls.race + 1; return 'x', 'x', raceID end
+    UnitClass = function() calls.class = calls.class + 1; return 'Mago', 'MAGE' end
+    install({ [1] = { sourceItemId = 600, requiredRaces = ORC, requiredClasses = MAGE } })
+    local classBase, raceBase = calls.class, calls.race -- Player.GetContext tambien las lee al terminar el indice
+    ns.Questie.Uses(600); ns.Questie.Uses(600)
+    eq(calls.class, classBase + 1, 'la clase ya resuelta no se vuelve a leer')
+    eq(calls.race, raceBase + 2, 'la raza sin resolver se reintenta')
+    raceID = HUMAN
+    eq(ns.Questie.Uses(600), nil, 'ya se sabe que es humano: mision de orcos filtrada')
+    local race = calls.race
+    ns.Questie.Uses(600)
+    eq(calls.race, race, 'la raza resuelta se guarda')
+    eq(calls.class, classBase + 1)
+end)
