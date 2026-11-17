@@ -93,8 +93,81 @@ function GetLocale() return FAKE.locale or 'esES' end
 function strtrim(text) return (text:gsub('^%s+', ''):gsub('%s+$', '')) end
 SlashCmdList = setmetatable({}, {__index = {}}); hash_SlashCmdList = {}
 DEFAULT_CHAT_FRAME = {AddMessage = function(_, message) FAKE.messages[#FAKE.messages + 1] = message end}
+-- Cliente simulado: estado en FAKE.* y APIs globales. Reset restaura TODO; las pruebas quitan
+-- una API con FAKE.Remove('Nombre') o FAKE.Remove('C_Tabla.Nombre').
+local function installClient()
+    FAKE.class = 'MAGE'
+    FAKE.professions = {}   -- GetProfessions: { {name=, skillLine=}, ... }
+    FAKE.skillLines = {}    -- GetSkillLineInfo: { {name=, isHeader=}, ... }
+    FAKE.completed = {}     -- [questID] = true
+    FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
+    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell= }
+    FAKE.bags = {}          -- ['bag:slot'] = itemID
+    local function itemOf(key)
+        if type(key) == 'number' then return key, FAKE.items[key] end
+        if type(key) == 'string' then
+            local id = tonumber(key:match('item:(%d+)'))
+            if id then return id, FAKE.items[id] end
+            for itemID, data in pairs(FAKE.items) do if data.name == key then return itemID, data end end
+        end
+    end
+    local function linkOf(id)
+        return '|cffffffff|Hitem:' .. id .. '::::::::|h[' .. (FAKE.items[id] and FAKE.items[id].name or '?') .. ']|h|r'
+    end
+    FAKE.linkOf = linkOf
+    UnitClass = function() return 'Mago', FAKE.class end
+    GetProfessions = function()
+        local indexes = {}
+        for i = 1, #FAKE.professions do indexes[i] = i end
+        return indexes[1], indexes[2], indexes[3], indexes[4], indexes[5], indexes[6]
+    end
+    GetProfessionInfo = function(index)
+        local p = FAKE.professions[index]
+        if not p then return nil end
+        return p.name, 'icon', 1, 300, 0, 0, p.skillLine
+    end
+    GetNumSkillLines = function() return #FAKE.skillLines end
+    GetSkillLineInfo = function(index)
+        local s = FAKE.skillLines[index]
+        if not s then return nil end
+        return s.name, s.isHeader
+    end
+    C_QuestLog = {
+        IsQuestFlaggedCompleted = function(questID) return FAKE.completed[questID] == true end,
+        GetNumQuestLogEntries = function() return #FAKE.questLog end,
+        GetInfo = function(index) return FAKE.questLog[index] end,
+        GetQuestObjectives = function(questID)
+            for _, q in ipairs(FAKE.questLog) do if q.questID == questID then return q.objectives or {} end end
+            return {}
+        end,
+    }
+    IsQuestFlaggedCompleted = function(questID) return FAKE.completed[questID] == true end
+    GetItemInfo = function(key)
+        local id, d = itemOf(key)
+        if not d then return nil end
+        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', 'Subtipo', 1, d.equipLoc or '', 'icon',
+            d.price, d.classID, d.subclassID, 0, 0, d.setID, false
+    end
+    GetItemSpell = function(key)
+        local _, d = itemOf(key)
+        if d and d.spell then return 'Hechizo', 1234 end
+    end
+    C_Container = {
+        GetContainerItemInfo = function(bag, slot)
+            local id = FAKE.bags[bag .. ':' .. slot]
+            if not id then return nil end
+            return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil }
+        end,
+    }
+end
+function FAKE.Remove(path)
+    local owner, key = path:match('^(.-)%.(.+)$')
+    if owner then _G[owner][key] = nil else _G[path] = nil end
+end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
+    installClient()
+    if ns and ns.Player then ns.Player.Invalidate() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')
 end
 FAKE.Reset()

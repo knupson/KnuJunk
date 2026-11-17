@@ -16,3 +16,4 @@ Data\Reagents.lua
 Data\Starters.lua
 Data\ClassGear.lua
 Classify.lua
+Player.lua

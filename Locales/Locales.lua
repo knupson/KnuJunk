@@ -1,3 +1,53 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
 })
+
+-- Nombres de las profesiones por SkillLine ID, en los dos idiomas. No dependen de
+-- GetLocale: el idioma del cliente no esta verificado, asi que se aceptan ambos.
+local NAMES = {
+    [164] = { es = 'Herrería', en = 'Blacksmithing' },
+    [165] = { es = 'Peletería', en = 'Leatherworking' },
+    [171] = { es = 'Alquimia', en = 'Alchemy' },
+    [182] = { es = 'Herboristería', en = 'Herbalism' },
+    [186] = { es = 'Minería', en = 'Mining' },
+    [197] = { es = 'Sastrería', en = 'Tailoring' },
+    [202] = { es = 'Ingeniería', en = 'Engineering' },
+    [333] = { es = 'Encantamiento', en = 'Enchanting' },
+    [393] = { es = 'Desuello', en = 'Skinning' },
+    [185] = { es = 'Cocina', en = 'Cooking' },
+    [129] = { es = 'Primeros auxilios', en = 'First Aid' },
+    [356] = { es = 'Pesca', en = 'Fishing' },
+}
+
+-- Minusculas y sin tildes (UTF-8), para comparar sin importar mayusculas ni acentos.
+local ACCENTS = {
+    ['\195\129'] = 'a', ['\195\137'] = 'e', ['\195\141'] = 'i', ['\195\147'] = 'o',
+    ['\195\154'] = 'u', ['\195\145'] = 'n', ['\195\156'] = 'u',
+    ['\195\161'] = 'a', ['\195\169'] = 'e', ['\195\173'] = 'i', ['\195\179'] = 'o',
+    ['\195\186'] = 'u', ['\195\177'] = 'n', ['\195\188'] = 'u',
+}
+local function normalize(text)
+    return (text:gsub('\195[\128-\191]', ACCENTS):lower():gsub('^%s+', ''):gsub('%s+$', ''))
+end
+ns.NormalizeName = normalize
+
+local byName = {}
+for skillLine, names in pairs(NAMES) do
+    byName[normalize(names.es)] = skillLine
+    byName[normalize(names.en)] = skillLine
+end
+
+-- Nombre de la profesion en el idioma del cliente (ingles si no es es*).
+function ns.ProfessionName(skillLine)
+    local names = NAMES[skillLine]
+    if not names then return nil end
+    local locale = GetLocale and GetLocale() or 'enUS'
+    if locale == 'esES' or locale == 'esMX' then return names.es end
+    return names.en
+end
+
+-- Mapa inverso: nombre localizado (es o en, sin importar mayusculas/tildes) -> SkillLine ID.
+function ns.ProfessionByName(name)
+    if type(name) ~= 'string' then return nil end
+    return byName[normalize(name)]
+end
