@@ -4,7 +4,7 @@ local _, ns = ...
 -- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price }
 -- ctx  = { class, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
 --          questItemsInLog = {[itemID]=true}, questieUses(itemID)->{ {questID=, repeatable=} }|nil,
---          overrides = {[itemID]='keep'|'sell'} }
+--          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
 -- result = { mark = 'coin'|'hammer_mine'|'hammer_other'|'quest'|nil, reasons = { {kind=...} } }
 
 local ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR = 2, 4
@@ -108,7 +108,13 @@ function ns.Classify(item, ctx)
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
-        reasons[#reasons + 1] = { kind = 'gray' }
+        -- Diario con misiones sin leer (encabezado plegado en combate): un gris podria ser
+        -- objetivo de mision, asi que no se da monedita por gris.
+        if ctx.questLogIncomplete then
+            reasons[#reasons + 1] = { kind = 'quest_log_incomplete' }
+        else
+            reasons[#reasons + 1] = { kind = 'gray' }
+        end
     end
     if starterQuest and questDone(ctx, starterQuest) then
         reasons[#reasons + 1] = { kind = 'quest_done', questID = starterQuest }
@@ -123,6 +129,9 @@ function ns.Classify(item, ctx)
     if classCannotUse(item, ctx) then
         reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID }
     end
-    if #reasons > 0 then result.mark = 'coin' end
+    -- 'quest_log_incomplete' solo explica por que falta la moneda: no cuenta como motivo.
+    for _, reason in ipairs(reasons) do
+        if reason.kind ~= 'quest_log_incomplete' then result.mark = 'coin'; break end
+    end
     return result
 end

@@ -193,3 +193,15 @@ test('item sin quality (datos no cargados) -> nil', function()
         eq(ns.Classify(unloaded, ctx { isQuestDone = function() return true end }).mark, nil)
     end)
 end)
+
+test('questLogIncomplete: el gris no da monedita; otras reglas siguen', function()
+    withData({}, {}, function()
+        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { questLogIncomplete = true })
+        eq(result.mark, nil); ok(hasReason(result, 'quest_log_incomplete'), 'reason')
+        ok(not hasReason(result, 'gray'), 'sin reason gray')
+        -- Otra regla de monedita sigue valiendo.
+        local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false }
+        local second = ns.Classify(armor, ctx { questLogIncomplete = true })
+        eq(second.mark, 'coin'); ok(hasReason(second, 'class_cannot_use'), 'class_cannot_use')
+    end)
+end)

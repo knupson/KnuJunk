@@ -7,8 +7,54 @@ local Player = {}
 ns.Player = Player
 
 local cache
+local lastQuestNames -- {[nombre normalizado] = nombre} del ultimo escaneo COMPLETO del diario
+local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos se ignoran
+local selfChangeUntil = 0 -- los eventos que provocan esas expansiones llegan despues; se ignoran un rato
+local SELF_EVENT_WINDOW = 2
 
 function Player.Invalidate() cache = nil end
+
+-- Solo para pruebas: deja el modulo como recien cargado.
+function Player.ResetState()
+    cache, lastQuestNames, scanning, selfChangeUntil = nil, nil, false, 0
+end
+
+local function now() return GetTime and GetTime() or 0 end
+local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
+
+-- Lee una lista con encabezados plegables (diario de misiones, habilidades). Si hay
+-- encabezados plegados los expande (fuera de combate), llama scan() y los vuelve a plegar
+-- exactamente igual. Devuelve true si scan() vio la lista completa.
+--   count() -> n ; entry(i) -> title, isHeader, isCollapsed ; expand(i), collapse(i) pueden ser nil.
+local function scanExpanded(count, entry, expand, collapse, scan, saveState, restoreState)
+    local collapsedTitles, any = {}, false
+    for index = 1, count() do
+        local title, isHeader, isCollapsed = entry(index)
+        if isHeader and isCollapsed then collapsedTitles[title] = true; any = true end
+    end
+    if not any then scan(); return true end
+    if inCombat() or not expand or not collapse then scan(); return false end
+    scanning = true
+    local state = saveState and saveState()
+    local scanned = pcall(function()
+        -- De abajo hacia arriba: expandir un encabezado no mueve los indices de los de arriba.
+        for index = count(), 1, -1 do
+            local _, isHeader, isCollapsed = entry(index)
+            if isHeader and isCollapsed then expand(index) end
+        end
+        scan()
+    end)
+    pcall(function()
+        for index = count(), 1, -1 do
+            local title, isHeader, isCollapsed = entry(index)
+            if isHeader and not isCollapsed and collapsedTitles[title] then collapse(index) end
+        end
+    end)
+    if restoreState then pcall(restoreState, state) end
+    scanning = false
+    selfChangeUntil = now() + SELF_EVENT_WINDOW
+    return scanned
+end
 
 -- ---------------------------------------------------------------------------
 -- Profesiones
@@ -32,13 +78,24 @@ local function readProfessions()
         end
     end
     if not viaModern and type(GetNumSkillLines) == 'function' and type(GetSkillLineInfo) == 'function' then
-        for index = 1, GetNumSkillLines() or 0 do
-            local name, isHeader = GetSkillLineInfo(index)
-            if not isHeader then
-                local id = ns.ProfessionByName(name)
-                if id and ns.PROFESSIONS[id] then professions[id] = true end
-            end
+        local function entry(index)
+            local name, isHeader, isExpanded = GetSkillLineInfo(index)
+            -- Plegado solo si el cliente lo dice con false/0: ante un nil no se toca nada.
+            return name, isHeader, isHeader and (isExpanded == false or isExpanded == 0)
         end
+        -- Si no se puede expandir (combate o sin API) quedan las visibles: peor caso hammer_other.
+        scanExpanded(function() return GetNumSkillLines() or 0 end, entry,
+            type(ExpandSkillHeader) == 'function' and ExpandSkillHeader or nil,
+            type(CollapseSkillHeader) == 'function' and CollapseSkillHeader or nil,
+            function()
+                for index = 1, GetNumSkillLines() or 0 do
+                    local name, isHeader = GetSkillLineInfo(index)
+                    if not isHeader then
+                        local id = ns.ProfessionByName(name)
+                        if id and ns.PROFESSIONS[id] then professions[id] = true end
+                    end
+                end
+            end)
     end
     return professions
 end
@@ -65,46 +122,92 @@ local function objectiveItemName(text, kind)
     return text:match('^(.-):%s*%d+%s*/%s*%d+%s*$')
 end
 
--- Devuelve los nombres de item de los objetivos de tipo item de todo el diario.
-local function questObjectiveItems()
+-- Lee el diario completo. Devuelve names ({[normalizado]=nombre} de items pedidos) y complete.
+-- complete=false si quedaron misiones sin leer (encabezado plegado en combate, sin API para
+-- expandir, o sin API de diario).
+local function scanQuestLog()
     local names = {}
     local function add(text, kind)
         local name = objectiveItemName(text, kind)
-        if name and name ~= '' then names[#names + 1] = name end
+        if name and name ~= '' then names[ns.NormalizeName(name)] = name end
     end
     if C_QuestLog and type(C_QuestLog.GetNumQuestLogEntries) == 'function'
         and type(C_QuestLog.GetInfo) == 'function' and type(C_QuestLog.GetQuestObjectives) == 'function' then
-        for index = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
+        local expand = type(C_QuestLog.ExpandQuestHeader) == 'function' and C_QuestLog.ExpandQuestHeader
+            or (type(ExpandQuestHeader) == 'function' and ExpandQuestHeader or nil)
+        local collapse = type(C_QuestLog.CollapseQuestHeader) == 'function' and C_QuestLog.CollapseQuestHeader
+            or (type(CollapseQuestHeader) == 'function' and CollapseQuestHeader or nil)
+        local function count() return C_QuestLog.GetNumQuestLogEntries() or 0 end
+        local function entry(index)
             local info = C_QuestLog.GetInfo(index)
-            if info and not info.isHeader and info.questID then
-                for _, objective in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do
-                    add(objective.text, objective.type)
+            if not info then return nil end
+            return info.title, info.isHeader, info.isCollapsed and info.isCollapsed ~= 0
+        end
+        local save, restore
+        if type(C_QuestLog.GetSelectedQuest) == 'function' and type(C_QuestLog.SetSelectedQuest) == 'function' then
+            save = C_QuestLog.GetSelectedQuest
+            restore = function(questID) if questID and questID ~= 0 then C_QuestLog.SetSelectedQuest(questID) end end
+        end
+        local complete = scanExpanded(count, entry, expand, collapse, function()
+            for index = 1, count() do
+                local info = C_QuestLog.GetInfo(index)
+                if info and not info.isHeader and info.questID then
+                    for _, objective in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do
+                        add(objective.text, objective.type)
+                    end
                 end
             end
-        end
+        end, save, restore)
+        return names, complete
     elseif type(GetNumQuestLogEntries) == 'function' and type(GetQuestLogTitle) == 'function'
         and type(GetNumQuestLeaderBoards) == 'function' and type(GetQuestLogLeaderBoard) == 'function' then
-        for index = 1, (GetNumQuestLogEntries()) or 0 do
-            local _, _, _, isHeader = GetQuestLogTitle(index)
-            if not isHeader then
-                for objective = 1, GetNumQuestLeaderBoards(index) or 0 do
-                    local text, kind = GetQuestLogLeaderBoard(objective, index)
-                    add(text, kind)
-                end
-            end
+        local function count() return (GetNumQuestLogEntries()) or 0 end
+        local function entry(index)
+            local title, _, _, isHeader, isCollapsed = GetQuestLogTitle(index)
+            return title, isHeader, isCollapsed and isCollapsed ~= 0
         end
+        local save, restore
+        if type(GetQuestLogSelection) == 'function' and type(SelectQuestLogEntry) == 'function' then
+            save = GetQuestLogSelection
+            restore = function(selected) if selected and selected > 0 then SelectQuestLogEntry(selected) end end
+        end
+        local complete = scanExpanded(count, entry,
+            type(ExpandQuestHeader) == 'function' and ExpandQuestHeader or nil,
+            type(CollapseQuestHeader) == 'function' and CollapseQuestHeader or nil,
+            function()
+                for index = 1, count() do
+                    local _, _, _, isHeader = GetQuestLogTitle(index)
+                    if not isHeader then
+                        for objective = 1, GetNumQuestLeaderBoards(index) or 0 do
+                            local text, kind = GetQuestLogLeaderBoard(objective, index)
+                            add(text, kind)
+                        end
+                    end
+                end
+            end, save, restore)
+        return names, complete
     end
-    return names
+    return names, false
 end
 
--- {[itemID]=true} de los items que piden las misiones del diario. Los objetivos traen el
--- nombre, no el id: se resuelve con GetItemInfo(nombre) y, para lo que no se pudo
--- resolver, __index compara por nombre del item consultado (un item de mision gris no
--- puede quedar con monedita por no haberse resuelto a tiempo).
+-- Devuelve questItemsInLog = {[itemID]=true} y si el diario quedo incompleto. Un escaneo
+-- incompleto no reemplaza al ultimo completo: se unen (lo ya visto sigue valiendo). Sin
+-- ningun escaneo completo previo, el contexto queda marcado questLogIncomplete.
+-- Los objetivos traen el nombre, no el id: se resuelve con GetItemInfo(nombre) y, para lo
+-- que no se pudo resolver, __index compara por el nombre del item consultado (un item de
+-- mision gris no debe quedar con monedita por no haberse resuelto a tiempo).
 local function buildQuestItems()
-    local ids, lowered = {}, {}
-    for _, name in ipairs(questObjectiveItems()) do
-        lowered[ns.NormalizeName(name)] = true
+    local names, complete = scanQuestLog()
+    local incomplete = false
+    if complete then
+        lastQuestNames = names
+    elseif lastQuestNames then
+        for key, name in pairs(lastQuestNames) do names[key] = names[key] or name end
+    else
+        incomplete = true
+    end
+    local ids = {}
+    for _, name in pairs(names) do
         if type(GetItemInfo) == 'function' then
             local _, link = GetItemInfo(name)
             local id = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
@@ -112,11 +215,11 @@ local function buildQuestItems()
         end
     end
     return setmetatable(ids, { __index = function(_, id)
-        if next(lowered) == nil or type(GetItemInfo) ~= 'function' then return nil end
+        if next(names) == nil or type(GetItemInfo) ~= 'function' then return nil end
         local name = GetItemInfo(id)
-        if type(name) == 'string' and lowered[ns.NormalizeName(name)] then return true end
+        if type(name) == 'string' and names[ns.NormalizeName(name)] then return true end
         return nil
-    end })
+    end }), incomplete
 end
 
 -- ---------------------------------------------------------------------------
@@ -126,11 +229,14 @@ end
 local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
+    local professions = readProfessions()
+    local questItems, incomplete = buildQuestItems()
     return {
         class = class,
-        professions = readProfessions(),
+        professions = professions,
         isQuestDone = isQuestDone,
-        questItemsInLog = buildQuestItems(),
+        questItemsInLog = questItems,
+        questLogIncomplete = incomplete or nil,
         questieUses = ns.Questie and ns.Questie.Uses or nil,
         overrides = ns.DB and ns.DB.overrides or {},
     }
@@ -198,7 +304,14 @@ end
 -- ---------------------------------------------------------------------------
 
 local frame = CreateFrame('Frame')
+-- Un evento que el cliente no conozca no debe romper la carga.
 for _, event in ipairs({ 'SKILL_LINES_CHANGED', 'QUEST_LOG_UPDATE', 'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP' }) do
-    frame:RegisterEvent(event)
+    pcall(frame.RegisterEvent, frame, event)
 end
-frame:SetScript('OnEvent', function() Player.Invalidate() end)
+frame:SetScript('OnEvent', function(_, event)
+    if scanning then return end
+    -- Expandir/plegar encabezados dispara estos dos eventos (a veces un frame despues):
+    -- no son un cambio real, y reaccionar armaria un bucle.
+    if (event == 'QUEST_LOG_UPDATE' or event == 'SKILL_LINES_CHANGED') and now() < selfChangeUntil then return end
+    Player.Invalidate()
+end)

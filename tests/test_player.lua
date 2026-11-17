@@ -181,3 +181,134 @@ test('GetContext alimenta el clasificador de punta a punta', function()
     local result = ns.Classify(ns.Player.ReadItem(0, 1), ns.Player.GetContext())
     eq(result.mark, 'coin')
 end)
+
+-- Diario con encabezados plegados.
+local function collapsedLog()
+    addItem(500, { name = 'Garra de lobo', quality = 0 })
+    FAKE.questLog = {
+        { title = 'Elwynn', isHeader = true, isCollapsed = true },
+        { title = 'Lobos', questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } },
+        { title = 'Westfall', isHeader = true, isCollapsed = false },
+        { title = 'Cosecha', questID = 3, objectives = { { text = 'Maiz: 0/4', type = 'item' } } },
+    }
+end
+
+test('diario con encabezado plegado: expande, lee objetivo y vuelve a plegar', function()
+    collapsedLog()
+    FAKE.selected = 3
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questItemsInLog[500], true)
+    eq(ctx.questLogIncomplete, nil)
+    eq(FAKE.questLog[1].isCollapsed, true, 'Elwynn vuelve a plegado')
+    eq(FAKE.questLog[3].isCollapsed, false, 'Westfall sigue expandido')
+    eq(FAKE.calls.expand, 1); eq(FAKE.calls.collapse, 1)
+    eq(FAKE.selected, 3, 'seleccion conservada')
+end)
+
+test('diario con encabezado plegado, API clasica', function()
+    collapsedLog()
+    FAKE.Remove('C_QuestLog.GetInfo')
+    FAKE.selected = 2
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questItemsInLog[500], true)
+    eq(FAKE.questLog[1].isCollapsed, true); eq(FAKE.questLog[3].isCollapsed, false)
+    eq(FAKE.calls.expand, 1); eq(FAKE.calls.collapse, 1)
+    eq(FAKE.selected, 2)
+end)
+
+test('en combate con encabezado plegado usa el ultimo escaneo completo', function()
+    collapsedLog()
+    ns.Player.GetContext() -- escaneo completo (fuera de combate)
+    FAKE.calls = { expand = 0, collapse = 0 }
+    FAKE.inCombat = true
+    ns.Player.Invalidate()
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questItemsInLog[500], true, 'conserva lo del escaneo completo')
+    eq(ctx.questLogIncomplete, nil)
+    eq(FAKE.calls.expand, 0, 'no toca el diario en combate')
+    eq(FAKE.questLog[1].isCollapsed, true)
+end)
+
+test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris sin moneda', function()
+    collapsedLog()
+    FAKE.inCombat = true
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questLogIncomplete, true)
+    eq(FAKE.calls.expand, 0)
+    addItem(900, { quality = 0, price = 5 })
+    local result = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(900)), ctx)
+    eq(result.mark, nil)
+    local found = false
+    for _, reason in ipairs(result.reasons) do if reason.kind == 'quest_log_incomplete' then found = true end end
+    ok(found, 'reason quest_log_incomplete')
+end)
+
+test('sin API para expandir: igual que en combate', function()
+    collapsedLog()
+    FAKE.Remove('C_QuestLog.ExpandQuestHeader'); FAKE.Remove('ExpandQuestHeader')
+    eq(ns.Player.GetContext().questLogIncomplete, true)
+end)
+
+test('sin API de diario: questLogIncomplete', function()
+    FAKE.Remove('C_QuestLog'); FAKE.Remove('GetNumQuestLogEntries')
+    eq(ns.Player.GetContext().questLogIncomplete, true)
+end)
+
+test('diario completo y legible: no hay questLogIncomplete', function()
+    eq(ns.Player.GetContext().questLogIncomplete, nil)
+end)
+
+test('no entra en bucle con QUEST_LOG_UPDATE al expandir', function()
+    collapsedLog()
+    local ctx = ns.Player.GetContext()
+    -- Los eventos sincronicos de expandir/plegar no invalidaron el cache.
+    eq(ns.Player.GetContext(), ctx)
+    eq(FAKE.calls.expand, 1)
+    -- Llegada diferida del evento (mismo instante): se ignora.
+    FAKE.Fire('QUEST_LOG_UPDATE')
+    eq(ns.Player.GetContext(), ctx)
+    eq(FAKE.calls.expand, 1)
+    -- Pasada la ventana, un QUEST_LOG_UPDATE real si invalida.
+    FAKE.Advance(3)
+    FAKE.Fire('QUEST_LOG_UPDATE')
+    ok(ns.Player.GetContext() ~= ctx, 'invalida')
+    eq(FAKE.calls.expand, 2)
+end)
+
+test('QUEST_TURNED_IN invalida aunque sea dentro de la ventana', function()
+    collapsedLog()
+    local ctx = ns.Player.GetContext()
+    FAKE.Fire('QUEST_TURNED_IN')
+    ok(ns.Player.GetContext() ~= ctx)
+end)
+
+-- Encabezados de habilidades plegados.
+local function collapsedSkills()
+    FAKE.Remove('GetProfessions')
+    FAKE.skillLines = {
+        { name = 'Habilidades de armas', isHeader = true, isExpanded = true },
+        { name = 'Espadas' },
+        { name = 'Profesiones', isHeader = true, isExpanded = false },
+        { name = 'Herrería' },
+    }
+end
+
+test('habilidades con encabezado plegado: expande, lee la profesion y vuelve a plegar', function()
+    collapsedSkills()
+    local professions = ns.Player.GetContext().professions
+    eq(professions[164], true)
+    eq(FAKE.skillLines[3].isExpanded, false, 'Profesiones vuelve a plegado')
+    eq(FAKE.skillLines[1].isExpanded, true)
+    eq(FAKE.calls.expand, 1); eq(FAKE.calls.collapse, 1)
+    local ctx = ns.Player.GetContext()
+    FAKE.Fire('SKILL_LINES_CHANGED') -- eco del propio expandir: no invalida
+    eq(ns.Player.GetContext(), ctx)
+end)
+
+test('habilidades plegadas en combate: no toca nada y no hay profesion', function()
+    collapsedSkills()
+    FAKE.inCombat = true
+    eq(ns.Player.GetContext().professions[164], nil)
+    eq(FAKE.calls.expand, 0)
+    eq(FAKE.skillLines[3].isExpanded, false)
+end)

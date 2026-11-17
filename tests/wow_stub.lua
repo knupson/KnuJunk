@@ -126,21 +126,80 @@ local function installClient()
         if not p then return nil end
         return p.name, 'icon', 1, 300, 0, 0, p.skillLine
     end
-    GetNumSkillLines = function() return #FAKE.skillLines end
-    GetSkillLineInfo = function(index)
-        local s = FAKE.skillLines[index]
-        if not s then return nil end
-        return s.name, s.isHeader
+    -- Listas con encabezados plegables: lo plegado no se ve. skillLines usa isExpanded=false para
+    -- plegar; questLog usa isCollapsed=true. Expandir/plegar dispara el evento como el cliente real.
+    FAKE.inCombat = false
+    FAKE.calls = { expand = 0, collapse = 0 }
+    FAKE.selected = nil
+    local function visible(list, isCollapsed)
+        local result, hidden = {}, false
+        for _, entry in ipairs(list) do
+            if entry.isHeader then hidden = isCollapsed(entry) end
+            if entry.isHeader or not hidden then result[#result + 1] = entry end
+        end
+        return result
     end
+    local function skillCollapsed(entry) return entry.isExpanded == false end
+    local function questCollapsed(entry) return entry.isCollapsed == true end
+    local function setCollapsed(list, isCollapsed, index, collapsed, field, event, counter, inverse)
+        local entry = visible(list, isCollapsed)[index]
+        if not entry or not entry.isHeader then return end
+        if inverse then entry[field] = not collapsed else entry[field] = collapsed end
+        FAKE.calls[counter] = FAKE.calls[counter] + 1
+        FAKE.selected = nil -- el cliente real tambien pierde la seleccion
+        FAKE.Fire(event)
+    end
+    InCombatLockdown = function() return FAKE.inCombat end
+    GetNumSkillLines = function() return #visible(FAKE.skillLines, skillCollapsed) end
+    GetSkillLineInfo = function(index)
+        local s = visible(FAKE.skillLines, skillCollapsed)[index]
+        if not s then return nil end
+        return s.name, s.isHeader, s.isExpanded
+    end
+    ExpandSkillHeader = function(index)
+        setCollapsed(FAKE.skillLines, skillCollapsed, index, false, 'isExpanded', 'SKILL_LINES_CHANGED', 'expand', true)
+    end
+    CollapseSkillHeader = function(index)
+        setCollapsed(FAKE.skillLines, skillCollapsed, index, true, 'isExpanded', 'SKILL_LINES_CHANGED', 'collapse', true)
+    end
+    local function expandQuest(index)
+        setCollapsed(FAKE.questLog, questCollapsed, index, false, 'isCollapsed', 'QUEST_LOG_UPDATE', 'expand')
+    end
+    local function collapseQuest(index)
+        setCollapsed(FAKE.questLog, questCollapsed, index, true, 'isCollapsed', 'QUEST_LOG_UPDATE', 'collapse')
+    end
+    ExpandQuestHeader, CollapseQuestHeader = expandQuest, collapseQuest
     C_QuestLog = {
         IsQuestFlaggedCompleted = function(questID) return FAKE.completed[questID] == true end,
-        GetNumQuestLogEntries = function() return #FAKE.questLog end,
-        GetInfo = function(index) return FAKE.questLog[index] end,
+        GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed) end,
+        GetInfo = function(index) return visible(FAKE.questLog, questCollapsed)[index] end,
         GetQuestObjectives = function(questID)
             for _, q in ipairs(FAKE.questLog) do if q.questID == questID then return q.objectives or {} end end
             return {}
         end,
+        ExpandQuestHeader = expandQuest,
+        CollapseQuestHeader = collapseQuest,
+        GetSelectedQuest = function() return FAKE.selected end,
+        SetSelectedQuest = function(questID) FAKE.selected = questID end,
     }
+    -- API clasica del diario (la usa el cliente cuando falta C_QuestLog.GetInfo).
+    GetNumQuestLogEntries = function() return #visible(FAKE.questLog, questCollapsed) end
+    GetQuestLogTitle = function(index)
+        local q = visible(FAKE.questLog, questCollapsed)[index]
+        if not q then return nil end
+        return q.title, 1, '', q.isHeader, q.isCollapsed
+    end
+    GetNumQuestLeaderBoards = function(index)
+        local q = visible(FAKE.questLog, questCollapsed)[index]
+        return q and q.objectives and #q.objectives or 0
+    end
+    GetQuestLogLeaderBoard = function(objective, index)
+        local q = visible(FAKE.questLog, questCollapsed)[index]
+        local o = q and q.objectives and q.objectives[objective]
+        if o then return o.text, o.type, false end
+    end
+    GetQuestLogSelection = function() return FAKE.selected or 0 end
+    SelectQuestLogEntry = function(index) FAKE.selected = index end
     IsQuestFlaggedCompleted = function(questID) return FAKE.completed[questID] == true end
     GetItemInfo = function(key)
         local id, d = itemOf(key)
@@ -167,7 +226,7 @@ end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
     installClient()
-    if ns and ns.Player then ns.Player.Invalidate() end
+    if ns and ns.Player then ns.Player.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')
 end
 FAKE.Reset()
