@@ -210,3 +210,26 @@ test('questLogIncomplete: ninguna moneda salvo override_sell', function()
         eq(sold.mark, 'coin'); ok(hasReason(sold, 'override_sell'), 'override_sell')
     end)
 end)
+
+-- Canarios de ClassGear contra los datos de Forever (SkillLineAbility ClassMask, build en
+-- Data/ClassGear.lua): un picaro aprende hachas de una mano y un druida armas de asta.
+test('ClassGear: hacha 1M en ROGUE -> sin moneda', function()
+    withData({}, {}, function()
+        local axe = item { classID = 2, subclassID = 0, quality = 2 }
+        eq(ns.Classify(axe, ctx { class = 'ROGUE' }).mark, nil)
+    end)
+end)
+
+test('ClassGear: arma de asta en DRUID -> sin moneda', function()
+    withData({}, {}, function()
+        local polearm = item { classID = 2, subclassID = 6, quality = 2 }
+        eq(ns.Classify(polearm, ctx { class = 'DRUID' }).mark, nil)
+    end)
+end)
+
+test('ClassGear: generado desde datos con build', function()
+    ok(type(ns.Data.build) == 'string' and ns.Data.build ~= '', 'build')
+    local file = assert(io.open('Data/ClassGear.lua', 'r'))
+    local first = file:read('*l'); file:close()
+    ok(first:find('Generado por tools/build_data.py', 1, true), 'cabecera generada: ' .. tostring(first))
+end)

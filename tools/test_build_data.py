@@ -72,6 +72,50 @@ class LuaOutputTest(unittest.TestCase):
         self.assertLess(text.index('[1307]'), text.index('[4500]'))
 
 
+class ClassGearTest(unittest.TestCase):
+    def setUp(self):
+        self.gear, self.missing = build_data.compute_class_gear(rows('skilllineability.csv'))
+
+    def test_rogue_learns_one_handed_axes(self):
+        # Hechizo 196 (Hachas de una mano) ClassMask 79 = guerrero, paladin, cazador, picaro, chaman.
+        self.assertIn(0, self.gear['ROGUE']['weapon'])
+        self.assertIn(0, self.gear['SHAMAN']['weapon'])
+        self.assertNotIn(0, self.gear['MAGE']['weapon'])
+
+    def test_druid_learns_polearms(self):
+        # Hechizo 200 (Armas de asta) ClassMask 1031 = guerrero, paladin, cazador, druida.
+        self.assertIn(6, self.gear['DRUID']['weapon'])
+        self.assertNotIn(6, self.gear['ROGUE']['weapon'])
+
+    def test_armor_and_union_of_rows(self):
+        self.assertEqual(self.gear['WARRIOR']['armor'] & {4}, {4})
+        self.assertNotIn(4, self.gear['MAGE']['armor'])
+        for name in build_data.GEAR_CLASSES.values():
+            self.assertIn(1, self.gear[name]['armor'])
+        # Dos filas del mismo hechizo (varitas): se unen las mascaras 16 | 384.
+        for name in ('PRIEST', 'MAGE', 'WARLOCK'):
+            self.assertIn(19, self.gear[name]['weapon'])
+        self.assertNotIn(19, self.gear['ROGUE']['weapon'])
+
+    def test_non_gear_spells_ignored_and_missing_reported(self):
+        # 1293712 (SkillLine 415, ClassMask 0) no es el hechizo de la habilidad: no da tela a nadie extra.
+        self.assertIn(264, self.missing)  # arcos no esta en el fixture
+        self.assertNotIn(196, self.missing)
+
+    def test_zero_class_mask_means_every_class(self):
+        gear, _ = build_data.compute_class_gear([{'SkillLine': '45', 'Spell': '264', 'ClassMask': '0'}])
+        for name in build_data.GEAR_CLASSES.values():
+            self.assertIn(2, gear[name]['weapon'])
+
+    def test_class_gear_lua(self):
+        text = build_data.render_class_gear_lua(self.gear, '1.60.1.70959')
+        self.assertEqual(text.splitlines()[0],
+                         '-- Generado por tools/build_data.py desde wago.tools wowf 1.60.1.70959. No editar.')
+        self.assertIn('ns.ClassGear = {', text)
+        self.assertIn('    ROGUE = { armor = set { 1 }, weapon = set { 0 } },', text)
+        self.assertIn('    DRUID = { armor = set { 1 }, weapon = set { 6 } },', text)
+
+
 class RetryTest(unittest.TestCase):
     def test_retries_then_succeeds(self):
         calls, waits = [], []
