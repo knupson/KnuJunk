@@ -312,7 +312,8 @@ function FAKE.Reset()
     FAKE.baganator = nil
     for _, name in ipairs({ 'ArkInventory', 'EUI_Bags', 'LiteBag_RegisterHook', 'tdBag2', 'Baggins', 'Bagnon', 'Bagnonium',
         'ElvUI', 'BaudBag', 'SetItemButtonQuality', 'ItemButtonMixin', 'ContainerFrameItemButtonMixin',
-        'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS' }) do _G[name] = nil end
+        'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS',
+        'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
@@ -322,6 +323,7 @@ function FAKE.Reset()
     if ns and ns.Bags then ns.Bags.ResetState() end
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.Loot then ns.Loot.ResetState() end
+    if ns and ns.Tooltip then ns.Tooltip.ResetState() end
     if ns and ns.BaganatorAdapter then ns.BaganatorAdapter.ResetState() end
     if ns and ns.Bags and ns.Bags.Common then ns.Bags.Common.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')

@@ -1,5 +1,12 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Junk: sells'] = 'Basura: se vende',
+    ['Quest finished: %s'] = 'Misión terminada: %s',
+    ["Your class can't use %s"] = 'Tu clase no usa %s',
+    ['Your profession: %s'] = 'Tu profesión: %s',
+    ["Profession you don't have: %s"] = 'Profesión que no tenés: %s',
+    ['Marked by hand: keep'] = 'Marcado a mano: guardar',
+    ['Marked by hand: sell'] = 'Marcado a mano: vender',
 })
 
 -- Nombres de las profesiones por SkillLine ID, en los dos idiomas. No dependen de

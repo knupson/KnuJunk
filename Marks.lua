@@ -18,6 +18,7 @@ local TEXTURES = {
     hammer = 'Interface\\Icons\\Trade_BlackSmithing',
     quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
 }
+Marks.TEXTURES = TEXTURES -- las usa el tooltip para el icono en linea de cada motivo
 local MINE_TINT = { 0.25, 0.85, 0.35 }
 local OTHER_ALPHA = 0.7
 
