@@ -3,7 +3,8 @@ local _, ns = ...
 -- Registro de adaptadores de bolsas. Cada adaptador (Blizzard, Bagnon, ...) se registra con
 --   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil,
 --            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional),
---            owner = dueno que el adaptador guarda en los botones, si no es el nombre (opcional) }
+--            owner = dueno que el adaptador guarda en los botones, si no es el nombre (opcional),
+--            bagUpdates = false: no repintar por cambios de bolsas, solo por cambios de veredicto (opcional) }
 -- install se llama (hasta tener exito una vez) cuando su addon esta cargado: en PLAYER_LOGIN y en
 -- cada ADDON_LOADED; devuelve false si aun no puede engancharse y se reintenta. refresh repinta.
 local Bags = {}
@@ -14,6 +15,7 @@ local specs = {}       -- lista ordenada de { name =, spec = }
 local installed = {}   -- [name] = true
 local installedList = {}
 local refreshPending = false
+local contextPending = false -- en la rafaga hubo un pedido que no es solo de bolsas
 local baseline         -- cantidad de adaptadores propios del addon (para ResetState)
 
 -- Contenedores declarados como ventana VIVA de las bolsas del personaje actual por el adaptador que
@@ -95,14 +97,21 @@ function Bags.Installed()
 end
 
 local function refreshNow()
-    refreshPending = false
+    local bagsOnly = not contextPending
+    refreshPending, contextPending = false, false
     for _, entry in ipairs(specs) do
-        if installed[entry.name] and type(entry.spec.refresh) == 'function' then pcall(entry.spec.refresh) end
+        if installed[entry.name] and type(entry.spec.refresh) == 'function'
+            and not (bagsOnly and entry.spec.bagUpdates == false) then
+            pcall(entry.spec.refresh)
+        end
     end
 end
 
--- Repinta todos los adaptadores instalados: una sola pasada por rafaga de pedidos.
-function Bags.RefreshAll()
+-- Repinta todos los adaptadores instalados: una sola pasada por rafaga de pedidos. reason = 'bags'
+-- cuando solo cambiaron las bolsas: los adaptadores con bagUpdates = false (el addon ya redibuja
+-- sus botones) se saltean salvo que en la misma rafaga haya otro pedido.
+function Bags.RefreshAll(reason)
+    if reason ~= 'bags' then contextPending = true end
     if not (C_Timer and C_Timer.After) then return refreshNow() end
     if refreshPending then return end
     refreshPending = true
@@ -121,7 +130,7 @@ connectSources()
 function Bags.ResetState()
     if baseline == nil then baseline = #specs end
     for index = #specs, baseline + 1, -1 do specs[index] = nil end
-    installed, installedList, refreshPending = {}, {}, false
+    installed, installedList, refreshPending, contextPending = {}, {}, false, false
     liveContainers = setmetatable({}, { __mode = 'k' })
     connectSources()
 end
@@ -131,5 +140,5 @@ for _, event in ipairs({ 'PLAYER_LOGIN', 'ADDON_LOADED', 'BAG_UPDATE_DELAYED' })
     pcall(frame.RegisterEvent, frame, event)
 end
 frame:SetScript('OnEvent', function(_, event)
-    if event == 'BAG_UPDATE_DELAYED' then Bags.RefreshAll() else Bags.InstallAll() end
+    if event == 'BAG_UPDATE_DELAYED' then Bags.RefreshAll('bags') else Bags.InstallAll() end
 end)

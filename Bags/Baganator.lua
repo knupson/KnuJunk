@@ -17,7 +17,11 @@ ns.BaganatorAdapter = Adapter
 
 local SIZE = 14
 local RESCAN_SECONDS = 2
+-- Vistas de mochila: "<prefijo><skin>" (ViewManagement/Initialize.lua l.150-151, frameGroup = clave
+-- de skin, Skins/Initialize.lua l.43). Claves de las skins que trae Baganator (Skins/*.lua,
+-- RegisterSkin). Una skin de otro addon no se conoce: su vista no habilita la marca (fallo seguro).
 local VIEW_PREFIXES = { 'Baganator_SingleViewBackpackViewFrame', 'Baganator_CategoryViewBackpackViewFrame' }
+local SKIN_KEYS = { 'blizzard', 'blizzard_black', 'dark', 'elvui', 'ellesmereui', 'gw2_ui', 'ndui' }
 
 local JUNK_PLUGIN = { label = 'KnuJunk', id = 'knujunk' }
 -- El martillo se autoinserta (una sola vez, lo gestiona Baganator) en la esquina superior derecha:
@@ -26,13 +30,13 @@ local JUNK_PLUGIN = { label = 'KnuJunk', id = 'knujunk' }
 local HAMMER_POSITION = { corner = 'top_right', priority = 1 }
 local WIDGETS = {
     { id = 'knujunk_hammer', label = 'KnuJunk: martillo', position = HAMMER_POSITION, accepts = function(mark) return mark == 'hammer_mine' or mark == 'hammer_other' end },
-    { id = 'knujunk_coin', label = 'KnuJunk: monedita', accepts = function(mark) return mark == 'coin' end },
+    { id = 'knujunk_coin', label = 'KnuJunk: monedita', coin = true, accepts = function(mark) return mark == 'coin' end },
 }
 
 local done = {}          -- [id] = true: lo ya registrado en Baganator (no se duplica)
-local views = {}         -- vistas de mochila de Baganator conocidas
-local lastScan           -- GetTime() del ultimo barrido de _G
-local scanDirty = true
+local views = {}         -- [nombre] = frame: vistas de mochila ya encontradas (no se destruyen)
+local lastScan           -- GetTime() de la ultima busqueda de las que faltan
+local scanDirty = true   -- Refresh pide buscar de nuevo las que faltan (ventana creada tarde)
 local waiting = {}       -- [itemID] = true: items cuyos datos esperamos para pedir un refresco
 
 local function api()
@@ -44,12 +48,14 @@ end
 -- Vista de mochila viva
 -- ---------------------------------------------------------------------------
 
+-- Busca por nombre (rawget, sin barrer _G) solo las vistas que aun no aparecieron.
 local function scanViews()
-    views = {}
-    for name, frame in pairs(_G) do
-        if type(name) == 'string' and type(frame) == 'table' then
-            for _, prefix in ipairs(VIEW_PREFIXES) do
-                if name:sub(1, #prefix) == prefix then views[#views + 1] = frame; break end
+    for _, prefix in ipairs(VIEW_PREFIXES) do
+        for _, skin in ipairs(SKIN_KEYS) do
+            local name = prefix .. skin
+            if not views[name] then
+                local frame = rawget(_G, name)
+                if type(frame) == 'table' then views[name] = frame end
             end
         end
     end
@@ -71,7 +77,7 @@ local function liveBackpack()
     if scanDirty or not lastScan or GetTime() - lastScan >= RESCAN_SECONDS then scanViews() end
     local current = currentCharacter()
     local live = false
-    for _, view in ipairs(views) do
+    for _, view in pairs(views) do
         local success, shown = pcall(view.IsShown, view)
         if success and shown then
             if view.isLive ~= true then return false end
@@ -98,9 +104,19 @@ local function junkCallback(bagID, slotID, itemID)
     return mark == 'coin'
 end
 
-local function widgetCallback(accepts)
+-- true si el junk plugin de KnuJunk esta activo en Baganator (ante un error, se supone que si).
+local function junkPluginActive()
+    local API = api()
+    if not API or type(API.IsJunkPluginActive) ~= 'function' then return false end
+    local success, result = pcall(API.IsJunkPluginActive, JUNK_PLUGIN.id)
+    return not success or result == true
+end
+
+local function widgetCallback(accepts, isCoin)
     return function(texture, details)
         if type(details) ~= 'table' or type(details.itemID) ~= 'number' then return false end
+        -- La moneda nativa del junk plugin ya cubre el item: el widget no dibuja otra.
+        if isCoin and junkPluginActive() then return false end
         local location = details.itemLocation
         if type(location) ~= 'table' or type(location.bagID) ~= 'number' or type(location.slotIndex) ~= 'number' then
             return false
@@ -134,13 +150,15 @@ function Adapter.Install()
     for _, widget in ipairs(WIDGETS) do
         if not done[widget.id] then
             done[widget.id] = pcall(API.RegisterCornerWidget, widget.label, widget.id,
-                widgetCallback(widget.accepts), createWidget, widget.position)
+                widgetCallback(widget.accepts, widget.coin), createWidget, widget.position)
         end
     end
     return done[JUNK_PLUGIN.id] == true and done.knujunk_hammer == true and done.knujunk_coin == true
 end
 
 -- Repinta: pide a Baganator que vuelva a evaluar sus botones, solo si algo nuestro esta activo.
+-- Solo por cambios de veredicto (Registry: bagUpdates = false) y solo los widgets (sin Searches):
+-- Baganator ya redibuja sus botones cuando cambian las bolsas.
 function Adapter.Refresh()
     scanDirty = true
     local API = api()
@@ -152,7 +170,14 @@ function Adapter.Refresh()
     end
     if active('IsJunkPluginActive', JUNK_PLUGIN.id) or active('IsCornerWidgetActive', 'knujunk_hammer')
         or active('IsCornerWidgetActive', 'knujunk_coin') then
-        pcall(API.RequestItemButtonsRefresh)
+        local root = rawget(_G, 'Baganator')
+        local reasons = type(root) == 'table' and type(root.Constants) == 'table' and root.Constants.RefreshReason
+        local widgets = type(reasons) == 'table' and reasons.ItemWidgets
+        if type(widgets) == 'number' then
+            pcall(API.RequestItemButtonsRefresh, { widgets })
+        else
+            pcall(API.RequestItemButtonsRefresh)
+        end
     end
 end
 
@@ -170,4 +195,5 @@ frame:SetScript('OnEvent', function(_, _, itemID)
     end
 end)
 
-ns.Bags.Register('Baganator', { addon = 'Baganator', install = Adapter.Install, refresh = Adapter.Refresh })
+ns.Bags.Register('Baganator', { addon = 'Baganator', install = Adapter.Install, refresh = Adapter.Refresh,
+    bagUpdates = false })

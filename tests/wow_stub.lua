@@ -298,10 +298,10 @@ function FAKE.InstallBaganator()
             end
             state.widgets[id] = { label = label, onUpdate = onUpdate, onInit = onInit, defaultPosition = defaultPosition, isFast = isFast }
         end,
-        RequestItemButtonsRefresh = function() state.refreshes = state.refreshes + 1 end,
+        RequestItemButtonsRefresh = function(reason) state.refreshes = state.refreshes + 1; state.lastReason = reason end,
         IsJunkPluginActive = function(id) return state.activeJunk == id end,
         IsCornerWidgetActive = function(id) return state.activeWidgets[id] == true end,
-    } }
+    }, Constants = { RefreshReason = { ItemWidgets = 4, Searches = 16 } } } -- valores de Baganator Core/Constants.lua
     return state
 end
 function FAKE.Reset()

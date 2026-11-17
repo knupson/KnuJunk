@@ -275,3 +275,51 @@ test('un error de Baganator al pedir el refresco no se propaga', function()
     ns.Bags.RefreshAll(); FAKE.Advance(0.2)
     ok(true)
 end)
+
+-- Item 9 de la ola final: Baganator ya redibuja sus botones con cada cambio de bolsas; solo se le
+-- pide refresco cuando cambia NUESTRO veredicto (contexto, Questie, opciones) y solo ItemWidgets.
+test('BAG_UPDATE_DELAYED no pide refresco a Baganator; un cambio de contexto si, con ItemWidgets', function()
+    local state = installed()
+    state.activeJunk = 'knujunk'
+    FAKE.Advance(1)
+    local base = state.refreshes
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    eq(state.refreshes, base, 'cambio de bolsas: Baganator se arregla solo')
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    eq(state.refreshes, base + 1, 'cambio de contexto')
+    ok(type(state.lastReason) == 'table' and #state.lastReason == 1 and state.lastReason[1] == 4,
+        'solo RefreshReason.ItemWidgets')
+end)
+
+test('una rafaga con BAG_UPDATE_DELAYED y un cambio de contexto si refresca Baganator', function()
+    local state = installed()
+    state.activeJunk = 'knujunk'
+    FAKE.Advance(1)
+    local base = state.refreshes
+    FAKE.Fire('BAG_UPDATE_DELAYED'); ns.Bags.RefreshAll(); FAKE.Fire('BAG_UPDATE_DELAYED')
+    FAKE.Advance(1)
+    eq(state.refreshes, base + 1)
+end)
+
+test('vistas de Baganator solo por nombres conocidos (sin barrer _G)', function()
+    local state = installed()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local unknown = CreateFrame('Frame', 'Baganator_SingleViewBackpackViewFrameskin_desconocido')
+    unknown.isLive = true
+    ok(not junk(state)(0, 1, 100), 'un nombre fuera de las skins conocidas no habilita la marca')
+    local category = CreateFrame('Frame', 'Baganator_CategoryViewBackpackViewFrameelvui')
+    category.isLive = true
+    FAKE.Advance(5)
+    eq(junk(state)(0, 1, 100), true, 'vista de categorias de la skin elvui')
+end)
+
+-- Item 11: con el junk plugin de KnuJunk activo, el widget de monedita no dibuja (doble moneda).
+test('widget de monedita: false si el junk plugin de KnuJunk esta activo', function()
+    local state = installed()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local _, update = widget(state, 'knujunk_coin')
+    state.activeJunk = 'knujunk'
+    eq(update({ itemID = 100, itemLocation = location(0, 1) }), false, 'la moneda nativa ya la dibuja Baganator')
+    state.activeJunk = 'otro'
+    eq(update({ itemID = 100, itemLocation = location(0, 1) }), true, 'otro junk plugin: el widget si')
+end)
