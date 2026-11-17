@@ -305,6 +305,7 @@ function FAKE.Reset()
         if type(name) == 'string' and name:sub(1, 9) == 'Baganator' then _G[name] = nil end
     end
     FAKE.baganator = nil
+    for _, name in ipairs({ 'ArkInventory', 'EUI_Bags', 'LiteBag_RegisterHook', 'tdBag2', 'Baggins' }) do _G[name] = nil end
     installClient()
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
@@ -312,6 +313,7 @@ function FAKE.Reset()
     if ns and ns.Bags then ns.Bags.ResetState() end
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.BaganatorAdapter then ns.BaganatorAdapter.ResetState() end
+    if ns and ns.Bags and ns.Bags.Common then ns.Bags.Common.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')
 end
 FAKE.Reset()
