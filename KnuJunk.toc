@@ -5,7 +5,7 @@
 ## Notes-esMX: Basura, sobrantes de misión y materiales de profesión: iconos en tus bolsas y en el botín.
 ## Author: Alejandro Benzoni (KnuPwns)
 ## SavedVariables: KnuJunkDB
-## OptionalDeps: QuestieDB, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins
+## OptionalDeps: QuestieDB, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag, Combuctor, OneBag3, Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI, RealUI_Inventory
 ## Version: 0.1.0
 ## X-License: MIT
 ## X-Website: https://knunet.com
@@ -31,3 +31,8 @@ Bags\EllesmereUI.lua
 Bags\LiteBag.lua
 Bags\tdBag2.lua
 Bags\Baggins.lua
+Bags\Bagnon.lua
+Bags\ElvUI.lua
+Bags\BaudBag.lua
+Bags\Frames.lua
+Bags\Generic.lua

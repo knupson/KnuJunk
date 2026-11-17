@@ -163,6 +163,20 @@ function Common.CapturingReader(locate)
     end
 end
 
+-- Para botones cuyo addon SI publica el item que dibuja (Bagnon: button.info; ElvUI: slot.itemID y
+-- slot.itemLink): la identidad es SOLO el campo expuesto, nunca el slot vivo. Sin campo, o con
+-- campos que se contradicen, sin marca. identity(boton) -> itemID, contradictorio (opcional) reemplaza
+-- a Common.DisplayedID cuando un addon deja campos viejos que no son de fiar (Inventorian).
+function Common.ExposedReader(locate, identity)
+    return function(button)
+        local bag, slot = locate(button)
+        if type(bag) ~= 'number' or type(slot) ~= 'number' then return nil end
+        local shown, contradictory = (identity or Common.DisplayedID)(button)
+        if contradictory or shown == nil then return nil end
+        return bag, slot, shown
+    end
+end
+
 -- Seguimiento de botones de UN adaptador. El lector es una funcion SIN capturas
 -- reader(boton, contexto) -> bag, slot, itemID MOSTRADO (el que el propio addon de bolsas dice que
 -- dibuja en el boton), o nil para "sin marca"; sin itemID mostrado no hay marca. Cada boton recuerda

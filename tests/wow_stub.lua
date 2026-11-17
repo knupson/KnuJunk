@@ -1,4 +1,4 @@
-FAKE = { frames = {} }
+FAKE = { frames = {}, named = {} }
 strmatch = string.match
 STANDARD_TEXT_FONT = 'Fonts\\FRIZQT__.TTF'
 local methods = {}
@@ -13,6 +13,11 @@ function methods:RegisterEvent(event) self.events[event] = true end
 function methods:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
 function methods:Hide() self.shown = false end
 function methods:IsShown() return self.shown end
+function methods:IsVisible()
+    if not self.shown then return false end
+    if self.parent and self.parent.IsVisible then return self.parent:IsVisible() end
+    return true
+end
 function methods:IsMouseOver() return self.mouseOver == true end
 function methods:SetShown(value) if value then self:Show() else self:Hide() end end
 function methods:SetText(text) self.text = text; if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self, false) end end
@@ -48,7 +53,7 @@ function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
         name = name, enabled = true, alpha = 1 }, {__index = methods})
     FAKE.frames[#FAKE.frames + 1] = frame
-    if name then _G[name] = frame end
+    if name then _G[name] = frame; FAKE.named[name] = true end
     if template == 'UIPanelButtonTemplate' or template == 'UICheckButtonTemplate' then
         frame.Text = frame:CreateFontString()
         for _, part in ipairs({'Left','Middle','Right','Normal','Pushed','Highlight','Disabled'}) do
@@ -305,7 +310,10 @@ function FAKE.Reset()
         if type(name) == 'string' and name:sub(1, 9) == 'Baganator' then _G[name] = nil end
     end
     FAKE.baganator = nil
-    for _, name in ipairs({ 'ArkInventory', 'EUI_Bags', 'LiteBag_RegisterHook', 'tdBag2', 'Baggins' }) do _G[name] = nil end
+    for _, name in ipairs({ 'ArkInventory', 'EUI_Bags', 'LiteBag_RegisterHook', 'tdBag2', 'Baggins', 'Bagnon', 'Bagnonium',
+        'ElvUI', 'BaudBag', 'SetItemButtonQuality', 'ItemButtonMixin', 'ContainerFrameItemButtonMixin' }) do _G[name] = nil end
+    for name in pairs(FAKE.named) do _G[name] = nil end
+    FAKE.named = {}
     installClient()
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
