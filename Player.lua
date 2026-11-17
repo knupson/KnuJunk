@@ -32,6 +32,8 @@ function Player.ResetState()
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
 end
 
+local MIN_EXPAND_INTERVAL = 1 -- sin huella, no se expande mas de una vez por segundo
+local function now() return GetTime and GetTime() or 0 end
 local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
 
 -- Lee una lista con encabezados plegables (diario de misiones, habilidades). Si hay
@@ -54,7 +56,15 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
     if not any then scan(); return true end
     if inCombat() or not expand or not collapse then scan(); return false end
     local before = fingerprint and fingerprint()
-    if before and memo and memo.fp == before then return true, 'cached' end
+    if before then
+        if memo and memo.fp == before then return true, 'cached' end
+    elseif memo and memo.at and now() < memo.at + MIN_EXPAND_INTERVAL then
+        -- Sin huella no se puede saber si algo cambio: se limita el ritmo de expansiones
+        -- (acota el bucle expandir -> evento -> reconstruir) y mientras tanto se reusa lo ultimo.
+        if memo.data then return true, 'cached' end
+        return false
+    end
+    if memo then memo.at = now() end
     local complete, state = false, nil
     scanning = true
     pcall(function()
@@ -408,8 +418,14 @@ local function scheduleCheck()
     end)
 end
 
-frame:SetScript('OnEvent', function()
+frame:SetScript('OnEvent', function(_, event)
     if scanning then return end -- eco sincronico de nuestra propia expansion
+    -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo
+    -- total bajo un encabezado plegado): se olvida lo escaneado. QUEST_LOG_UPDATE no, porque es
+    -- tambien el eco de nuestra propia expansion.
+    if event == 'QUEST_ACCEPTED' or event == 'QUEST_REMOVED' or event == 'QUEST_TURNED_IN' then
+        questMemo.fp, questMemo.at = nil, nil
+    end
     markDirty()
     scheduleCheck()
 end)

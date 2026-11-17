@@ -301,6 +301,62 @@ test('una mision aceptada justo despues de expandir se detecta (sin ventana cieg
     eq(FAKE.calls.expand, 2); eq(fired, 1)
 end)
 
+test('abandonar una mision y aceptar otra bajo un encabezado plegado (mismo total) se detecta', function()
+    collapsedLog()
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questItemsInLog[500], true); eq(FAKE.calls.expand, 1)
+    -- Misma cantidad de misiones: la huella no cambia.
+    addItem(501, { name = 'Piel de jabali', quality = 0 })
+    FAKE.questLog[2] = { title = 'Jabalies', questID = 4,
+        objectives = { { text = 'Piel de jabali: 0/3', type = 'item' } } }
+    FAKE.Fire('QUEST_REMOVED'); FAKE.Fire('QUEST_ACCEPTED')
+    local after = ns.Player.GetContext()
+    eq(FAKE.calls.expand, 2, 'reescaneo')
+    eq(after.questItemsInLog[501], true, 'item de la mision nueva')
+    eq(after.questItemsInLog[500], nil, 'item de la mision abandonada')
+    eq(FAKE.questLog[1].isCollapsed, true)
+end)
+
+test('QUEST_TURNED_IN tambien fuerza el reescaneo del diario plegado', function()
+    collapsedLog()
+    ns.Player.GetContext()
+    FAKE.Fire('QUEST_TURNED_IN')
+    ns.Player.GetContext()
+    eq(FAKE.calls.expand, 2)
+end)
+
+test('sin total en el cliente: los ecos no expanden sin limite (1 por segundo)', function()
+    collapsedLog()
+    FAKE.noTotal = true
+    ns.Player.OnChanged(function() end)
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questItemsInLog[500], true); eq(FAKE.calls.expand, 1)
+    for _ = 1, 3 do
+        FAKE.Fire('QUEST_LOG_UPDATE')
+        FAKE.Advance(0.25)
+        ns.Player.GetContext()
+    end
+    eq(FAKE.calls.expand, 1, 'dentro del intervalo se reusa lo ultimo')
+    eq(ns.Player.GetContext().questItemsInLog[500], true)
+    FAKE.Advance(1)
+    FAKE.Fire('QUEST_LOG_UPDATE'); FAKE.Advance(0.25); ns.Player.GetContext()
+    eq(FAKE.calls.expand, 2, 'pasado el intervalo reescanea una vez')
+    for _ = 1, 3 do FAKE.Fire('QUEST_LOG_UPDATE'); FAKE.Advance(0.25); ns.Player.GetContext() end
+    eq(FAKE.calls.expand, 2)
+end)
+
+test('sin total: una mision aceptada dentro del intervalo igual se detecta', function()
+    collapsedLog()
+    FAKE.noTotal = true
+    ns.Player.GetContext()
+    addItem(501, { name = 'Piel de jabali', quality = 0 })
+    table.insert(FAKE.questLog, 3, { title = 'Jabalies', questID = 4,
+        objectives = { { text = 'Piel de jabali: 0/3', type = 'item' } } })
+    FAKE.Fire('QUEST_ACCEPTED')
+    eq(ns.Player.GetContext().questItemsInLog[501], true)
+    eq(FAKE.calls.expand, 2)
+end)
+
 test('un cambio real avisa por OnChanged con la reconstruccion diferida', function()
     local fired, last = 0, nil
     ns.Player.OnChanged(function(ctx) fired = fired + 1; last = ctx end)

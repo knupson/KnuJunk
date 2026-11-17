@@ -129,6 +129,7 @@ local function installClient()
     -- Listas con encabezados plegables: lo plegado no se ve. skillLines usa isExpanded=false para
     -- plegar; questLog usa isCollapsed=true. Expandir/plegar dispara el evento como el cliente real.
     FAKE.inCombat = false
+    FAKE.noTotal = false
     FAKE.calls = { expand = 0, collapse = 0 }
     FAKE.selected = nil
     local function visible(list, isCollapsed)
@@ -140,6 +141,7 @@ local function installClient()
         return result
     end
     local function totalQuests()
+        if FAKE.noTotal then return nil end -- cliente sin el 2.o retorno de GetNumQuestLogEntries
         local total = 0
         for _, entry in ipairs(FAKE.questLog) do if not entry.isHeader then total = total + 1 end end
         return total
