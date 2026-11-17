@@ -194,3 +194,261 @@ test('el cambio repinta de verdad la bolsa registrada (Bags.RefreshAll real)', f
     FAKE.Advance(5)
     ok(refreshed > before, 'el adaptador se repinto')
 end)
+
+-- ---------------------------------------------------------------------------------------------
+-- Registro con el despachador real de KnuLib, alias en conflicto, idiomas y argumentos vacios.
+-- ---------------------------------------------------------------------------------------------
+
+-- Corre fn con KL.commands / KL.commandAliases vacios y restaura lo anterior pase lo que pase.
+local function withCleanDispatcher(fn)
+    local KL = ns.KL
+    local commands, aliases, default, legacy = KL.commands, KL.commandAliases, KL.defaultCommand, KL.legacySlash
+    KL.commands, KL.commandAliases, KL.defaultCommand, KL.legacySlash = {}, {}, nil, nil
+    local success, err = pcall(fn, KL)
+    KL.commands, KL.commandAliases, KL.defaultCommand, KL.legacySlash = commands, aliases, default, legacy
+    if not success then error(err, 0) end
+end
+
+-- Vuelve a cargar Commands.lua con ns.OnLogin capturado: devuelve las funciones que registro para el login.
+-- Siempre restaura ns.OnLogin y ns.Commands (las otras pruebas usan los reales).
+local function captureLoginHandlers()
+    local realOnLogin, realCommands = ns.OnLogin, ns.Commands
+    local captured = {}
+    ns.OnLogin = function(fn) captured[#captured + 1] = fn end
+    local success, err = pcall(function() assert(loadfile('Commands.lua'))('KnuJunk', ns) end)
+    ns.OnLogin, ns.Commands = realOnLogin, realCommands
+    if not success then error(err, 0) end
+    return captured
+end
+
+test('Commands.lua registra su comando por ns.OnLogin y no al cargar el archivo', function()
+    withCleanDispatcher(function(KL)
+        local captured = captureLoginHandlers()
+        eq(#captured, 1, 'una sola funcion de login')
+        eq(next(KL.commands), nil, 'nada registrado antes del login')
+        captured[1]()
+        ok(KL.commands.junk, 'junk registrado tras el login')
+        eq(KL.commandAliases.kj, 'junk')
+        eq(KL.commands.junk.help, ns.L['Junk marks: on/off, coin/hammer/loot, keep/sell/clear, status'])
+        -- A traves del despachador real, con mayusculas y espacios de mas.
+        KL:Dispatch('junk coin off')
+        eq(ns.DB.show.coin, false)
+        KL:Dispatch('  KJ   coin   on  ')
+        eq(ns.DB.show.coin, true)
+        KL:Dispatch('JUNK hammer off')
+        eq(ns.DB.show.hammer, false)
+    end)
+end)
+
+test('el login no falla si la KnuLib cargada no tiene RegisterCommand', function()
+    withCleanDispatcher(function(KL)
+        local captured = captureLoginHandlers()
+        local real = KL.RegisterCommand
+        KL.RegisterCommand = nil
+        local success, err = pcall(captured[1])
+        KL.RegisterCommand = real
+        ok(success, tostring(err))
+        eq(next(KL.commands), nil)
+    end)
+end)
+
+test('si RegisterCommand lanza error el login no se rompe', function()
+    withCleanDispatcher(function(KL)
+        local captured = captureLoginHandlers()
+        local real = KL.RegisterCommand
+        KL.RegisterCommand = function() error('KnuLib rota') end
+        local success, err = pcall(captured[1])
+        KL.RegisterCommand = real
+        ok(success, tostring(err))
+    end)
+end)
+
+test('alias kj ya tomado por otro addon: junk no lo roba y sigue andando por su nombre', function()
+    withCleanDispatcher(function(KL)
+        local other = {}
+        KL:RegisterCommand('otro', function(args) other[#other + 1] = args end, 'otro addon', { 'kj' })
+        ns.Commands.Register()
+        ok(KL.commands.junk, 'junk igual se registra')
+        eq(KL.commandAliases.kj, 'otro', 'el alias sigue siendo del primero')
+        eq(#KL.commands.junk.aliases, 0, 'junk no tiene alias')
+        KL:Dispatch('kj coin off')
+        eq(other[1], 'coin off', 'kj va al otro addon')
+        eq(ns.DB.show.coin, true, 'y no toca KnuJunk')
+        KL:Dispatch('junk coin off')
+        eq(ns.DB.show.coin, false, 'junk por su nombre funciona')
+        eq(#other, 1)
+    end)
+end)
+
+test('kj ya registrado como nombre de comando de otro addon: junk no lo pisa', function()
+    withCleanDispatcher(function(KL)
+        local called = 0
+        KL:RegisterCommand('kj', function() called = called + 1 end, 'otro')
+        ns.Commands.Register()
+        eq(KL.commandAliases.kj, nil)
+        KL:Dispatch('kj coin off')
+        eq(called, 1)
+        eq(ns.DB.show.coin, true)
+        KL:Dispatch('junk coin off')
+        eq(ns.DB.show.coin, false)
+    end)
+end)
+
+test('si junk se registro primero conserva kj y otro addon que lo pide despues no se lo saca', function()
+    withCleanDispatcher(function(KL)
+        ns.Commands.Register()
+        local called = 0
+        KL:RegisterCommand('otro', function() called = called + 1 end, nil, { 'kj' })
+        eq(KL.commandAliases.kj, 'junk')
+        KL:Dispatch('kj coin off')
+        eq(called, 0)
+        eq(ns.DB.show.coin, false)
+    end)
+end)
+
+test('registrar dos veces no duplica ni rompe el alias', function()
+    withCleanDispatcher(function(KL)
+        ns.Commands.Register()
+        ns.Commands.Register()
+        eq(KL.commandAliases.kj, 'junk')
+        eq(#KL.commands.junk.aliases, 1)
+    end)
+end)
+
+-- Recarga Locales.lua con el idioma pedido (NewLocale real) y deja todo como estaba.
+local function withLocale(locale, fn)
+    local realL, realNormalize = ns.L, ns.NormalizeName
+    local realName, realByName = ns.ProfessionName, ns.ProfessionByName
+    FAKE.locale = locale
+    local success, err = pcall(function()
+        assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+        fn()
+    end)
+    FAKE.locale = nil
+    ns.L, ns.NormalizeName, ns.ProfessionName, ns.ProfessionByName = realL, realNormalize, realName, realByName
+    if not success then error(err, 0) end
+end
+
+local PREFIX = '|cffecd9bdKNU|r|cffffa82eJunk|r: '
+
+test('ayuda en castellano (esES y esMX)', function()
+    for _, locale in ipairs({ 'esES', 'esMX' }) do
+        withLocale(locale, function()
+            run('')
+            eq(printed(), table.concat({
+                PREFIX .. 'Activar o desactivar las marcas: /knu junk on | off',
+                PREFIX .. 'Un solo tipo de marca: /knu junk coin|hammer|loot on|off',
+                PREFIX .. 'A mano: /knu junk keep|sell|clear <enlace o ID de ítem>',
+                PREFIX .. 'Ver el estado: /knu junk status',
+            }, '\n'), locale)
+        end)
+    end
+end)
+
+test('ayuda en ingles (enUS y cualquier otro idioma)', function()
+    for _, locale in ipairs({ 'enUS', 'enGB', 'deDE' }) do
+        withLocale(locale, function()
+            run('')
+            eq(printed(), table.concat({
+                PREFIX .. 'Marks on/off: /knu junk on | off',
+                PREFIX .. 'One kind: /knu junk coin|hammer|loot on|off',
+                PREFIX .. 'By hand: /knu junk keep|sell|clear <item link or ID>',
+                PREFIX .. 'Show state: /knu junk status',
+            }, '\n'), locale)
+        end)
+    end
+end)
+
+test('la ayuda de /knu usa el texto del idioma que tenia el cliente al cargar', function()
+    withCleanDispatcher(function(KL)
+        withLocale('esES', function()
+            ns.Commands.Register()
+            eq(KL.commands.junk.help, 'Marcas de basura: on/off, coin/hammer/loot, keep/sell/clear, status')
+        end)
+        withLocale('enUS', function()
+            ns.Commands.Register()
+            eq(KL.commands.junk.help, 'Junk marks: on/off, coin/hammer/loot, keep/sell/clear, status')
+        end)
+    end)
+end)
+
+test('on/off en castellano concuerdan con cada mensaje', function()
+    withLocale('esES', function()
+        eq(ns.L['on'], 'activadas'); eq(ns.L['off'], 'desactivadas')
+        run('off'); ok(hasText('Marcas: desactivadas'), printed())
+        run('on'); ok(hasText('Marcas: activadas'), printed())
+        run('coin off'); ok(hasText('Marcas de coin: desactivadas'), printed())
+        run('status')
+        ok(hasText('Marcas: activadas | coin: desactivadas | hammer: activadas | loot: activadas'), printed())
+    end)
+    withLocale('enUS', function()
+        run('hammer off'); ok(hasText('Mark hammer: off'), printed())
+        run('off'); ok(hasText('Marks: off'), printed())
+    end)
+end)
+
+test('Locales.lua no repite claves dentro de la tabla de textos', function()
+    local file = assert(io.open('Locales/Locales.lua', 'r'))
+    local source = file:read('*a'); file:close()
+    local block = source:match('NewLocale%(%{(.-)\n%}%)')
+    ok(block, 'se encontro la tabla de textos')
+    local seen, total = {}, 0
+    for key in block:gmatch("%[(%b'')%]%s*=") do
+        ok(not seen[key], 'clave repetida: ' .. key)
+        seen[key] = true; total = total + 1
+    end
+    for key in block:gmatch('%[(%b"")%]%s*=') do
+        ok(not seen[key], 'clave repetida: ' .. key)
+        seen[key] = true; total = total + 1
+    end
+    ok(total > 25, 'se leyeron las claves: ' .. total)
+end)
+
+test('argumentos nil, vacios o en blanco muestran la ayuda y no cambian nada', function()
+    withSpy(function(state)
+        for _, args in ipairs({ '', ' ', '   ', '\t', ' \t ' }) do
+            run(args)
+            eq(#FAKE.messages, 4, 'ayuda para ' .. string.format('%q', args))
+        end
+        FAKE.messages = {}
+        ns.Commands.Handle(nil)
+        eq(#FAKE.messages, 4, 'ayuda para nil')
+        eq(state.invalidate, 0); eq(state.refresh, 0)
+        eq(ns.DB.enabled, true); eq(next(ns.DB.overrides), nil)
+    end)
+end)
+
+test('subcomandos con el argumento en blanco piden el uso', function()
+    withSpy(function(state)
+        for _, text in ipairs({ 'keep ', 'sell   ', 'clear \t' }) do
+            run(text)
+            ok(hasText(string.format(ns.L['Usage: /knu junk %s <item link or ID>'], text:match('^%a+'))), text)
+        end
+        run('hammer   ')
+        ok(hasText(string.format(ns.L['Usage: /knu junk %s on|off'], 'hammer')))
+        eq(next(ns.DB.overrides), nil)
+        eq(state.invalidate, 0); eq(state.refresh, 0)
+    end)
+end)
+
+test('ParseItem devuelve nil con nil, vacio, numeros no enteros u otros tipos', function()
+    for _, value in ipairs({ '', ' ', 'abc', '-5', '1.5', '0' }) do
+        eq(ns.Commands.ParseItem(value), nil, string.format('%q', value))
+    end
+    eq(ns.Commands.ParseItem(nil), nil)
+    eq(ns.Commands.ParseItem(123), nil)
+    eq(ns.Commands.ParseItem({}), nil)
+    eq(ns.Commands.ParseItem(' 4306 '), 4306)
+end)
+
+test('por el despachador real, junk sin argumentos y con blancos imprime la ayuda', function()
+    withCleanDispatcher(function(KL)
+        ns.Commands.Register()
+        FAKE.messages = {}
+        KL:Dispatch('junk')
+        eq(#FAKE.messages, 4)
+        FAKE.messages = {}
+        KL:Dispatch('kj    ')
+        eq(#FAKE.messages, 4)
+    end)
+end)
