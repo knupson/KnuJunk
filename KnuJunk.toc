@@ -19,3 +19,6 @@ Data\ClassGear.lua
 Classify.lua
 Player.lua
 QuestieSource.lua
+Marks.lua
+Bags\Registry.lua
+Bags\Blizzard.lua
