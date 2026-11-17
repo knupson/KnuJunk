@@ -7,7 +7,8 @@ local _, ns = ...
 --     'AdiBags_AcquireButton' (boton reciclado: se limpia), 'AdiBags_UpdateButton' (se marca) y
 --     'AdiBags_ReleaseButton' (se limpia).
 --   * el boton trae button.bag, button.slot y button.itemId: ese es el slot que muestra.
---   * sin marca: boton soltado, o si el slot de bolsa 0-4 ya no tiene button.itemId. Los botones
+--   * sin marca: boton soltado, sin button.itemId numerico, o si el slot de bolsa 0-4 ya no tiene
+--     button.itemId (tambien al retomar una marca pendiente: revalidate). Los botones
 --     del banco usan bolsas fuera de 0-4 (Marks los descarta); AdiBags no muestra otros personajes.
 -- Alternativa de la referencia (no usada): hooksecurefunc al prototipo de su clase ItemButton.
 -- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1137-1150, magic-eraser
@@ -22,12 +23,15 @@ local receiver = {}      -- "self" con el que nos anotamos en ABEvent
 local registered = {}    -- [mensaje] = true
 local released = setmetatable({}, { __mode = 'k' })
 
+-- Sin itemId mostrado no hay identidad: sin marca.
 local function reader(button)
     if released[button] then return nil end
-    local expected = button.itemId
-    if type(expected) ~= 'number' then expected = nil end
-    return button.bag, button.slot, expected
+    local shown = button.itemId
+    if type(shown) ~= 'number' then return nil end
+    return button.bag, button.slot, shown
 end
+
+local function revalidate(button) return tracker:Read(button) end
 
 local function onMessage(message, button)
     pcall(function()
@@ -63,4 +67,5 @@ function Adapter.Refresh() tracker:Refresh() end
 function Adapter.ResetState() registered, released = {}, setmetatable({}, { __mode = 'k' }) end
 Common.OnReset(Adapter.ResetState)
 
-ns.Bags.Register('AdiBags', { addon = 'AdiBags', install = Adapter.Install, refresh = Adapter.Refresh })
+ns.Bags.Register('AdiBags', { addon = 'AdiBags', install = Adapter.Install, refresh = Adapter.Refresh,
+    revalidate = revalidate })

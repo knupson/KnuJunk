@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- Registro de adaptadores de bolsas. Cada adaptador (Blizzard, Bagnon, ...) se registra con
---   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil }
+--   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil,
+--            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional) }
 -- install se llama (hasta tener exito una vez) cuando su addon esta cargado: en PLAYER_LOGIN y en
 -- cada ADDON_LOADED; devuelve false si aun no puede engancharse y se reintenta. refresh repinta.
 local Bags = {}
@@ -47,6 +48,13 @@ function Bags.InstallAll()
         end
     end
     if added then Bags.RefreshAll() end
+end
+
+-- spec.revalidate(boton) -> bag, slot, itemID mostrado | nil: lo usa Marks para retomar una marca
+-- que quedo esperando (datos del item, combate) sin saltarse la lectura del adaptador.
+function Bags.Revalidator(name)
+    local entry = find(name)
+    if entry and type(entry.spec.revalidate) == 'function' then return entry.spec.revalidate end
 end
 
 function Bags.Installed()

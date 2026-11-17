@@ -7,6 +7,8 @@ local _, ns = ...
 --   * tdBag2 puede mostrar a otros personajes y bancos: button.meta debe ser un objeto con
 --     meta:IsBag() y meta:IsSelf() verdaderos (bolsa del personaje actual); sin meta o con otra
 --     respuesta, sin marca. Ademas Common.NonCarried descarta banco/hermandad/vault/cache.
+--   * identidad: el item que el boton muestra (Common.DisplayedID); si tdBag2 no lo expone (SIN
+--     VERIFICAR) no se marca nada.
 -- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1157-1165 (y l.355-361 para meta).
 local OWNER = 'tdBag2'
 local Adapter = {}
@@ -22,8 +24,10 @@ local function reader(button)
         return nil
     end
     if Common.NonCarried(button) then return nil end
-    return button.bag, button.slot
+    return button.bag, button.slot, Common.DisplayedID(button)
 end
+
+local function revalidate(button) return tracker:Read(button) end
 
 local function onItem(button)
     pcall(function() tracker:Apply(button, reader) end)
@@ -43,4 +47,5 @@ function Adapter.Refresh() tracker:Refresh() end
 function Adapter.ResetState() registered = false end
 Common.OnReset(Adapter.ResetState)
 
-ns.Bags.Register('tdBag2', { addon = 'tdBag2', install = Adapter.Install, refresh = Adapter.Refresh })
+ns.Bags.Register('tdBag2', { addon = 'tdBag2', install = Adapter.Install, refresh = Adapter.Refresh,
+    revalidate = revalidate })

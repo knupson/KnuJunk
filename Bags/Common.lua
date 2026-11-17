@@ -9,18 +9,27 @@ local Common = {}
 ns.Bags.Common = Common
 
 local resetters = {}
+Common.trackers = {}   -- los seguimientos creados (las pruebas inspeccionan sus lectores)
 
 -- Un adaptador anota aqui como volver a su estado inicial (solo para pruebas).
 function Common.OnReset(fn) resetters[#resetters + 1] = fn end
 function Common.ResetState() for _, fn in ipairs(resetters) do fn() end end
 
--- Llama object:name(...) aislando errores; devuelve el primer valor o nil.
+-- Llama object:name(...) aislando errores; devuelve el primer valor o nil (un error y un nil se
+-- confunden: donde importe la diferencia se usa TryCall).
 function Common.Call(object, name, ...)
-    if type(object) ~= 'table' then return nil end
+    local _, value = Common.TryCall(object, name, ...)
+    return value
+end
+
+-- success, value: success es false si el metodo lanza error o object no es una tabla; true con
+-- value nil si el metodo simplemente no existe.
+function Common.TryCall(object, name, ...)
+    if type(object) ~= 'table' then return false end
     local fn = object[name]
-    if type(fn) ~= 'function' then return nil end
-    local success, value = pcall(fn, object, ...)
-    if success then return value end
+    if fn == nil then return true end
+    if type(fn) ~= 'function' then return false end
+    return pcall(fn, object, ...)
 end
 
 -- Libreria de LibStub sin errores (silenciosa), o nil.
@@ -52,8 +61,9 @@ local NON_CARRIED_FLAGS = { 'isguild', 'isGuild', 'isGuildBank', 'isVault', 'isB
 local MAX_DEPTH = 16
 
 -- true si el boton (o alguno de sus ancestros) es POSITIVAMENTE una vista no portada: banco,
--- hermandad, vault, vista cacheada. Si la ascendencia no se puede recorrer completa tambien
--- devuelve true (ante la duda, sin marca).
+-- hermandad, vault, vista cacheada. Si la ascendencia no se puede recorrer completa (GetParent
+-- ausente o que falla, IsCached/GetName que fallan, ciclo, mas de 16 niveles) tambien devuelve
+-- true: ante la duda, sin marca. Solo llegar al final de la cadena (padre nil) prueba lo contrario.
 function Common.NonCarried(button)
     local object = button
     local seen = {}
@@ -61,7 +71,8 @@ function Common.NonCarried(button)
         if object == nil then return false end
         if type(object) ~= 'table' or seen[object] then return true end
         seen[object] = true
-        local name = Common.Call(object, 'GetName')
+        local named, name = Common.TryCall(object, 'GetName')
+        if not named then return true end
         if type(name) == 'string' then
             name = name:lower()
             for _, word in ipairs(NON_CARRIED_NAMES) do
@@ -72,44 +83,108 @@ function Common.NonCarried(button)
             local value = object[flag]
             if value ~= nil and value ~= false and type(value) ~= 'function' then return true end
         end
-        if Common.Call(object, 'IsCached') == true then return true end
+        local checked, cached = Common.TryCall(object, 'IsCached')
+        if not checked or cached == true then return true end
         local frame = object.frame
-        if type(frame) == 'table' then object = frame else object = Common.Call(object, 'GetParent') end
+        if type(frame) == 'table' then
+            object = frame
+        else
+            local walked, parent = Common.TryCall(object, 'GetParent')
+            if not walked or (parent == nil and type(object.GetParent) ~= 'function') then return true end
+            object = parent
+        end
     end
     return true
 end
 
--- Seguimiento de botones de UN adaptador: cada boton recuerda su "lector" (funcion que devuelve
--- bag, slot [, itemID esperado], o nil para "sin marca"), asi se repinta sin esperar al addon.
-function Common.NewTracker(owner)
-    local tracker = { owner = owner, readers = setmetatable({}, { __mode = 'k' }) }
+local IDENTITY_NUMBERS = { 'itemID', 'itemId' }
+local IDENTITY_LINKS = { 'itemLink', 'hyperlink', 'link' }
+local IDENTITY_SOURCES = { 'info', 'BGR', 'details' }
 
-    -- Lee y marca. El itemID esperado, si viene, tiene que ser el que hay ahora en el slot: si el
-    -- addon aun no redibujo tras un cambio, queda sin marca hasta que lo haga.
-    function tracker:Apply(button, reader)
+-- ID del item que el boton MUESTRA segun su propia informacion (nunca lo que hay ahora en el slot):
+-- campos itemID/itemId/itemLink/hyperlink/link del boton o de su tabla info/BGR/details, o
+-- button:GetItemID(). Si hay varios y no coinciden, o ninguno, nil (sin identidad no se marca).
+-- Los campos y su orden salen de DisplayMatches de questjunksweeper (Bags.lua l.289-340).
+function Common.DisplayedID(button)
+    if type(button) ~= 'table' then return nil end
+    local source = button
+    for _, key in ipairs(IDENTITY_SOURCES) do
+        if type(button[key]) == 'table' then source = button[key]; break end
+    end
+    local found
+    local function add(id)
+        if id == nil then return true end
+        if found ~= nil and found ~= id then return false end
+        found = id
+        return true
+    end
+    for _, key in ipairs(IDENTITY_NUMBERS) do
+        if source[key] ~= nil then
+            if type(source[key]) ~= 'number' or not add(source[key]) then return nil end
+        end
+    end
+    for _, key in ipairs(IDENTITY_LINKS) do
+        if source[key] ~= nil then
+            local id = Common.ItemIDOf(source[key])
+            if not id or not add(id) then return nil end
+        end
+    end
+    if found == nil then
+        local success, id = Common.TryCall(button, 'GetItemID')
+        if success and type(id) == 'number' then found = id end
+    end
+    return found
+end
+
+-- Seguimiento de botones de UN adaptador. El lector es una funcion SIN capturas
+-- reader(boton, contexto) -> bag, slot, itemID MOSTRADO (el que el propio addon de bolsas dice que
+-- dibuja en el boton), o nil para "sin marca"; sin itemID mostrado no hay marca. Cada boton recuerda
+-- su lector y un contexto minimo (escalares: nunca el propio boton), asi se repinta y se retoma una
+-- marca pendiente sin esperar al addon, pero siempre volviendo a leer lo que el addon muestra y
+-- contrastandolo con lo que hay AHORA en el slot.
+function Common.NewTracker(owner)
+    local tracker = { owner = owner, readers = setmetatable({}, { __mode = 'k' }), contexts = setmetatable({}, { __mode = 'k' }) }
+
+    -- bag, slot, itemID mostrado de la lectura vigente, o nil. Nunca lanza.
+    function tracker:Read(button)
+        local reader = self.readers[button]
+        if not reader then return nil end
+        local success, bag, slot, shown = pcall(reader, button, self.contexts[button])
+        if not success or type(bag) ~= 'number' or type(slot) ~= 'number' or type(shown) ~= 'number' then return nil end
+        return bag, slot, shown
+    end
+
+    -- Lee y marca. Si el addon muestra un item distinto del que hay ahora en el slot (aun no
+    -- redibujo tras un cambio) o no da identidad, queda sin marca hasta su proximo callback.
+    function tracker:Apply(button, reader, context)
         if type(button) ~= 'table' then return end
-        self.readers[button] = reader
-        local success, bag, slot, expected = pcall(reader, button)
-        if not success or type(bag) ~= 'number' or type(slot) ~= 'number' then return ns.Marks.Clear(button) end
-        if expected ~= nil and Common.LiveItemID(bag, slot) ~= expected then return ns.Marks.Clear(button) end
+        self.readers[button], self.contexts[button] = reader, context
+        local bag, slot, shown = self:Read(button)
+        if not bag or Common.LiveItemID(bag, slot) ~= shown then return ns.Marks.Clear(button) end
         ns.Marks.Update(button, bag, slot, self.owner)
     end
 
     function tracker:Release(button)
         if type(button) ~= 'table' then return end
-        self.readers[button] = nil
+        self.readers[button], self.contexts[button] = nil, nil
         ns.Marks.Clear(button)
     end
 
-    -- Repinta lo recordado; un boton oculto se deja (se repinta cuando el addon lo redibuje).
+    -- Repinta lo recordado volviendo a leer; un boton oculto se deja (se repinta cuando el addon
+    -- lo redibuje).
     function tracker:Refresh()
         for button, reader in pairs(self.readers) do
-            local shown = Common.Call(button, 'IsShown')
-            if shown ~= false then pcall(self.Apply, self, button, reader) end
+            if Common.Call(button, 'IsShown') ~= false then
+                pcall(self.Apply, self, button, reader, self.contexts[button])
+            end
         end
     end
 
-    function tracker:Reset() self.readers = setmetatable({}, { __mode = 'k' }) end
+    function tracker:Reset()
+        self.readers = setmetatable({}, { __mode = 'k' })
+        self.contexts = setmetatable({}, { __mode = 'k' })
+    end
     Common.OnReset(function() tracker:Reset() end)
+    Common.trackers[#Common.trackers + 1] = tracker
     return tracker
 end

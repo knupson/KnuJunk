@@ -358,3 +358,135 @@ test('Verdict: marca del slot, pendiente sin datos y nunca lanza', function()
     ns.Player.ReadItem = saved
     ok(success and result == nil, 'un error devuelve nil')
 end)
+
+-- ---------------------------------------------------------------------------
+-- Retomar lo pendiente sin pintar a ciegas, y combate sobre botones protegidos
+-- ---------------------------------------------------------------------------
+
+test('dato pendiente: si el slot cambia de item antes de llegar los datos, sin marca', function()
+    addItem(200, { quality = 0 })              -- gris: moneda
+    FAKE.bags['0:1'] = 200
+    local saved = ns.Player.ReadItem
+    ns.Player.ReadItem = function() return nil end -- el cliente aun no tiene los datos
+    local button = newButton()
+    ns.Marks.Update(button, 0, 1, 'generic')
+    ns.Player.ReadItem = saved
+    addItem(201, { quality = 0 })
+    FAKE.bags['0:1'] = 201                     -- el slot cambia a otro gris
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(not visible(button), 'el item esperado ya no esta en el slot')
+    FAKE.bags['0:1'] = 200
+    ns.Player.ReadItem = function() return nil end
+    ns.Marks.Update(button, 0, 1, 'generic')
+    ns.Player.ReadItem = saved
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(visible(button), 'control: sin cambios se marca')
+end)
+
+test('adaptador con revalidate: la vista debe seguir mostrando el mismo item', function()
+    addItem(200, { quality = 0 }); addItem(201, { quality = 0 })
+    FAKE.bags['0:1'] = 200; FAKE.bags['0:2'] = 200; FAKE.bags['0:3'] = 200
+    local view = { bag = 0, slot = 1, shown = 200 }
+    ns.Bags.Register('Falso', { install = function() return true end, revalidate = function() return view.bag, view.slot, view.shown end })
+    local function pend(button)
+        local saved = ns.Player.ReadItem
+        ns.Player.ReadItem = function() return nil end
+        ns.Marks.Update(button, 0, 1, 'Falso')
+        ns.Player.ReadItem = saved
+    end
+    local one = newButton(); pend(one)
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(visible(one), 'control: la vista sigue igual')
+    local offline = newButton(); pend(offline)
+    view.bag = nil                                 -- la vista dejo de ser una casilla viva (offline/banco)
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(not visible(offline), 'vista sin casilla viva: sin marca')
+    view.bag = 0
+    local bank = newButton(); pend(bank)
+    view.bag, view.slot = -1, 4                    -- ahora muestra el banco
+    FAKE.bags['-1:4'] = 200
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(not visible(bank), 'banco: sin marca')
+    view.bag, view.slot = 0, 1
+    local other = newButton(); pend(other)
+    view.shown = 201                               -- la vista dibuja otro item
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(not visible(other), 'la vista muestra otro item: sin marca')
+    local boom = newButton(); view.shown = 200; pend(boom)
+    ns.Bags.Revalidator('Falso') -- existe
+    view.bag = 'roto'
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 200, true)
+    ok(not visible(boom), 'lectura invalida: sin marca')
+end)
+
+-- Boton protegido: crear la textura en combate falla como en el cliente (lo simulamos con un error).
+local function protectedButton()
+    local button = CreateFrame('Button')
+    function button:IsProtected() return true end
+    function button:CreateTexture(...)
+        if FAKE.inCombat then error('accion bloqueada: CreateTexture en combate') end
+        return CreateFrame('Texture', ...)
+    end
+    return button
+end
+
+test('combate: un boton protegido sin textura nuestra no se toca; se marca al salir revalidando', function()
+    addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
+    local button = protectedButton()
+    FAKE.inCombat = true
+    ns.Marks.Update(button, 0, 1, 'generic')
+    ok(button.KnuJunkMark == nil, 'no se creo la textura en combate')
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    ok(visible(button), 'marcado al salir del combate')
+end)
+
+test('combate: lo diferido se revalida (el slot cambio) y UpdateLink tambien se difiere', function()
+    addItem(100, { quality = 0 }); addItem(101, { quality = 1, classID = 2, subclassID = 0, spell = true })
+    FAKE.bags['0:1'] = 100
+    local button = protectedButton()
+    FAKE.inCombat = true
+    ns.Marks.Update(button, 0, 1, 'generic')
+    FAKE.bags['0:1'] = 101                      -- cambia durante el combate
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    ok(not visible(button), 'el item ya no es el que se difirio')
+    local loot = protectedButton()
+    FAKE.inCombat = true
+    ns.Marks.UpdateLink(loot, FAKE.linkOf(100), 'loot')
+    ok(loot.KnuJunkMark == nil, 'botin: sin textura en combate')
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    ok(visible(loot), 'botin marcado al salir')
+end)
+
+test('combate: una textura nuestra ya creada si se actualiza; botones sin proteger tambien', function()
+    addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
+    local button = protectedButton()
+    ns.Marks.Update(button, 0, 1, 'generic')    -- fuera de combate: se crea
+    ok(visible(button))
+    FAKE.inCombat = true
+    ns.Marks.Update(button, 0, 2, 'generic')    -- slot vacio: se oculta sin crear nada
+    ok(not visible(button), 'actualiza la textura existente')
+    ns.Marks.Update(button, 0, 1, 'generic')
+    ok(visible(button), 'y la vuelve a mostrar')
+    local plain = newButton()
+    ns.Marks.Update(plain, 0, 1, 'generic')
+    ok(visible(plain), 'boton no protegido: se marca en combate')
+    local failing = newButton()
+    function failing:IsProtected() error('roto') end
+    ns.Marks.Update(failing, 0, 1, 'generic')
+    ok(failing.KnuJunkMark == nil, 'IsProtected que falla cuenta como protegido')
+    FAKE.inCombat = false
+end)
+
+test('combate: Clear olvida lo diferido', function()
+    addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
+    local button = protectedButton()
+    FAKE.inCombat = true
+    ns.Marks.Update(button, 0, 1, 'generic')
+    ns.Marks.Clear(button)
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    ok(not visible(button))
+end)

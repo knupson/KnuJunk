@@ -54,9 +54,11 @@ local function marked(button)
     return texture ~= nil and texture:IsShown() == true
 end
 
-local function slotButton(name, parent, id)
+-- Boton de bolsa que MUESTRA el item itemID (por defecto el 100) segun su propio campo itemID.
+local function slotButton(name, parent, id, itemID)
     local button = CreateFrame('Button', name, parent)
     button.id = id
+    button.itemID = itemID == nil and 100 or itemID
     return button
 end
 
@@ -323,21 +325,26 @@ local BAG_LOCATION, VAULT_LOCATION = 1, 4
 
 local function ark()
     local state = { offline = {} }
+    -- Contrato de ArkInventory 3.12.17: ArkInventoryConst.lua:1066 (Location), ArkInventoryAPI.lua:113
+    -- (ItemFrameUpdated(frame, loc_id, bag_id, slot_id)) y :273 (LocationIsOffline: true/false/nil).
     ArkInventory = {
-        Const = { Location = { Bag = BAG_LOCATION, Vault = VAULT_LOCATION } },
+        Const = { Location = { Bag = BAG_LOCATION, Keyring = 2, Bank = 3, Vault = VAULT_LOCATION } },
         API = {
             ItemFrameUpdated = function() end,
-            LocationIsOffline = function(location) return state.offline[location] == true end,
+            LocationIsOffline = function(location)
+                if location ~= BAG_LOCATION and location ~= 2 and location ~= 3 and location ~= VAULT_LOCATION then return nil end
+                return state.offline[location] == true
+            end,
             ItemFrameItemTableGet = function(frame) return frame.item end,
         },
     }
-    state.fire = function(frame, location) ArkInventory.API.ItemFrameUpdated(frame, location) end
+    state.fire = function(frame, location) ArkInventory.API.ItemFrameUpdated(frame, location, frame.ARK_Data and frame.ARK_Data.bag_id, frame.ARK_Data and frame.ARK_Data.slot_id) end
     return state
 end
 
 local function arkFrame(bag, slot, itemID)
     local frame = CreateFrame('Button')
-    frame.ARK_Data = { blizzard_id = bag, slot_id = slot }
+    frame.ARK_Data = { loc_id = BAG_LOCATION, bag_id = 1, blizzard_id = bag, slot_id = slot }
     frame.item = itemID and { h = FAKE.linkOf(itemID) } or nil
     return frame
 end
@@ -608,6 +615,7 @@ local function tdButton(bag, slot, buttonMeta)
     local frame = CreateFrame('Frame', 'tdBag2Frame1')
     local button = CreateFrame('Button', nil, frame)
     button.bag, button.slot, button.meta = bag, slot, buttonMeta
+    button.itemID = 100
     return button
 end
 
@@ -651,7 +659,7 @@ test('tdBag2: otro personaje, banco o sin meta -> sin marca; el propio se pinta'
     ok(not marked(noBag), 'sin bolsa')
     local bankFrame = CreateFrame('Frame', 'tdBag2BankFrame')
     local inBank = CreateFrame('Button', nil, bankFrame)
-    inBank.bag, inBank.slot, inBank.meta = 0, 1, meta(true, true)
+    inBank.bag, inBank.slot, inBank.meta, inBank.itemID = 0, 1, meta(true, true), 100
     state.plugin.update(inBank)
     ok(not marked(inBank), 'colgado de un marco de banco')
 end)
@@ -789,12 +797,257 @@ test('un fallo del lector o de Marks.Update no rompe al addon de bolsas', functi
     local state = adiBags()
     withLibs(state.libs, function()
         install('AdiBags')
+        addItem(100); FAKE.bags['0:1'] = 100
         local button = CreateFrame('Button')
-        button.bag, button.slot = 0, 1
+        button.bag, button.slot, button.itemId = 0, 1, 100
         local saved = ns.Marks.Update
         ns.Marks.Update = function() error('Marks roto') end
         local success = pcall(state.handlers.AdiBags_UpdateButton, 'AdiBags_UpdateButton', button)
         ns.Marks.Update = saved
         ok(success, 'el callback no propaga el error')
     end)
+end)
+
+-- ---------------------------------------------------------------------------
+-- Ronda de arreglos 1: identidad del item mostrado, retomar sin pintar a ciegas, ascendencia
+-- ---------------------------------------------------------------------------
+
+-- Hace que Player.ReadItem no tenga datos durante fn (el cliente aun no conoce el item).
+local function withoutItemData(fn)
+    local saved = ns.Player.ReadItem
+    ns.Player.ReadItem = function() return nil end
+    local success, err = pcall(fn)
+    ns.Player.ReadItem = saved
+    if not success then error(err, 0) end
+end
+
+test('BetterBags: datos pendientes + el slot pasa a un gris sin redibujar -> sin moneda', function()
+    local state = betterBags()
+    withLibs(state.libs, function()
+        install('BetterBags')
+        addItem(100, { quality = 1, classID = 2, subclassID = 0, spell = true }) -- util
+        addItem(101)                                                              -- gris
+        FAKE.bags['0:3'] = 100
+        local decoration = CreateFrame('Button')
+        withoutItemData(function()
+            state.handlers['item/Updated'](nil, betterItem(0, 3, 100), decoration)
+        end)
+        ok(not marked(decoration), 'aun sin datos: sin marca')
+        FAKE.bags['0:3'] = 101       -- el boton todavia dice 100
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+        ok(not marked(decoration), 'el addon sigue mostrando 100 pero el slot tiene otro item')
+    end)
+end)
+
+test('BetterBags: control, datos pendientes que llegan con el mismo item -> se marca', function()
+    local state = betterBags()
+    withLibs(state.libs, function()
+        install('BetterBags')
+        addItem(100); FAKE.bags['0:3'] = 100
+        local decoration = CreateFrame('Button')
+        withoutItemData(function() state.handlers['item/Updated'](nil, betterItem(0, 3, 100), decoration) end)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+        ok(marked(decoration))
+        eq(decoration.KnuJunkOwner, 'BetterBags')
+    end)
+end)
+
+test('BetterBags: la vista pasa a hueco virtual o a banco antes de llegar los datos -> sin marca', function()
+    local state = betterBags()
+    withLibs(state.libs, function()
+        install('BetterBags')
+        addItem(100); FAKE.bags['0:3'] = 100; FAKE.bags['6:1'] = 100
+        local virtual, bank = CreateFrame('Button'), CreateFrame('Button')
+        local virtualItem = betterItem(0, 3, 100)
+        local bankData = { bagid = 0, slotid = 3, itemInfo = { itemID = 100 } }
+        local bankItem = { GetItemData = function() return bankData end }
+        withoutItemData(function()
+            state.handlers['item/Updated'](nil, virtualItem, virtual)
+            state.handlers['item/Updated'](nil, bankItem, bank)
+        end)
+        virtualItem.isVirtual = true
+        bankData.bagid, bankData.slotid = 6, 1
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+        ok(not marked(virtual), 'hueco virtual')
+        ok(not marked(bank), 'banco')
+    end)
+end)
+
+test('ArkInventory: la vista pasa a offline antes de llegar los datos -> sin marca', function()
+    local state = ark()
+    install('ArkInventory')
+    addItem(100); FAKE.bags['0:1'] = 100
+    local frame = arkFrame(0, 1, 100)
+    withoutItemData(function() state.fire(frame, BAG_LOCATION) end)
+    state.offline[BAG_LOCATION] = true
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+    ok(not marked(frame), 'offline antes de que lleguen los datos')
+end)
+
+test('ArkInventory: LocationIsOffline nil (ubicacion invalida) o ARK_Data.loc_id distinto -> sin marca', function()
+    local state = ark()
+    install('ArkInventory')
+    addItem(100); FAKE.bags['0:1'] = 100
+    local frame = arkFrame(0, 1, 100)
+    ArkInventory.API.LocationIsOffline = function() return nil end
+    state.fire(frame, BAG_LOCATION)
+    ok(not marked(frame), 'nil = invalida, no online')
+    ArkInventory.API.LocationIsOffline = function() return false end
+    frame.ARK_Data.loc_id = VAULT_LOCATION
+    state.fire(frame, BAG_LOCATION)
+    ok(not marked(frame), 'el frame dice otra ubicacion')
+    frame.ARK_Data.loc_id = BAG_LOCATION
+    state.fire(frame, BAG_LOCATION)
+    ok(marked(frame), 'control')
+end)
+
+test('ArkInventory: Location.Bag = 1 como en ArkInventoryConst.lua (la hermandad es la 4 y se rechaza)', function()
+    local state = ark()
+    install('ArkInventory')
+    eq(ArkInventory.Const.Location.Bag, 1); eq(ArkInventory.Const.Location.Vault, 4)
+    addItem(100); FAKE.bags['2:1'] = 100
+    local vault = arkFrame(2, 1, 100)
+    vault.ARK_Data.loc_id = VAULT_LOCATION
+    state.fire(vault, VAULT_LOCATION)
+    ok(not marked(vault), 'pestana de hermandad online no es una bolsa')
+end)
+
+test('EllesmereUIBags: callback sin info ni itemLink -> sin marca (no hay identidad)', function()
+    local state = eui()
+    install('EllesmereUIBags')
+    addItem(100); FAKE.bags['0:1'] = 100
+    local button = CreateFrame('Button')
+    state.callback(button, { bag = 0, slot = 1 })
+    ok(not marked(button), 'sin identidad no se pinta')
+    state.callback(button, { bag = 0, slot = 1, info = {} })
+    ok(not marked(button), 'info sin itemID')
+    state.callback(button, { bag = 0, slot = 1, info = { itemID = 100 } })
+    ok(marked(button), 'control')
+end)
+
+test('EllesmereUIBags: el refresco no marca si el slot cambio sin nuevo callback', function()
+    local state = eui()
+    install('EllesmereUIBags')
+    addItem(100); addItem(101)
+    FAKE.bags['0:1'] = 100
+    local button = CreateFrame('Button')
+    state.callback(button, { bag = 0, slot = 1, info = { itemID = 100 } })
+    ok(marked(button))
+    FAKE.bags['0:1'] = 101
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(not marked(button), 'el refresco limpia: el addon aun muestra 100')
+end)
+
+test('LiteBag: el slot pasa a un gris sin redibujar -> el refresco limpia, sin moneda', function()
+    local state = liteBag()
+    install('LiteBag')
+    addItem(100, { quality = 1, classID = 2, subclassID = 0, spell = true }); addItem(101)
+    FAKE.bags['0:1'] = 100
+    local panel = CreateFrame('Frame', 'LiteBagBackpackPanel'); panel.id = 0
+    local button = slotButton(nil, panel, 1, 100)
+    state.callback(button)
+    ok(not marked(button), 'el 100 es util')
+    FAKE.bags['0:1'] = 101
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(not marked(button), 'el boton muestra 100: no se pinta la moneda del 101')
+end)
+
+test('LiteBag, tdBag2 y Baggins: sin itemID mostrado por el boton -> sin marca', function()
+    local lite, td, bag = liteBag(), tdBag2Fake(), bagginsFake()
+    FAKE.addons.LiteBag, FAKE.addons.tdBag2, FAKE.addons.Baggins = true, true, true
+    ns.Bags.InstallAll()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local panel = CreateFrame('Frame', 'LiteBagBackpackPanel'); panel.id = 0
+    local liteButton = slotButton(nil, panel, 1, false)
+    liteButton.itemID = nil
+    lite.callback(liteButton)
+    ok(not marked(liteButton), 'LiteBag')
+    local tdb = tdButton(0, 1, meta(true, true)); tdb.itemID = nil
+    td.plugin.update(tdb)
+    ok(not marked(tdb), 'tdBag2')
+    local signal = bag.signals.Baggins_ItemButtonUpdated
+    local baggins = bagginsButton('n', 0, 1); baggins.itemID = nil
+    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', baggins)
+    ok(not marked(baggins), 'Baggins')
+    -- con identidad por itemLink, por info o por GetItemID si se marca
+    local viaLink = slotButton(nil, panel, 1, false); viaLink.itemID = nil; viaLink.itemLink = FAKE.linkOf(100)
+    lite.callback(viaLink); ok(marked(viaLink), 'itemLink')
+    local viaInfo = slotButton(nil, panel, 1, false); viaInfo.itemID = nil; viaInfo.info = { itemID = 100 }
+    lite.callback(viaInfo); ok(marked(viaInfo), 'info.itemID')
+    local viaGetter = slotButton(nil, panel, 1, false); viaGetter.itemID = nil
+    function viaGetter:GetItemID() return 100 end
+    lite.callback(viaGetter); ok(marked(viaGetter), 'GetItemID')
+    local conflict = slotButton(nil, panel, 1, false); conflict.itemID = 100; conflict.itemLink = FAKE.linkOf(101)
+    lite.callback(conflict); ok(not marked(conflict), 'campos que no coinciden')
+end)
+
+test('AdiBags sin itemId no llama a Update', function()
+    local state = adiBags()
+    withLibs(state.libs, function()
+        install('AdiBags')
+        addItem(100); FAKE.bags['0:1'] = 100
+        local button = CreateFrame('Button'); button.bag, button.slot = 0, 1
+        spy(function(updates, clears)
+            state.handlers.AdiBags_UpdateButton('AdiBags_UpdateButton', button)
+            eq(#updates, 0); eq(#clears, 1)
+        end)
+    end)
+end)
+
+test('Common.NonCarried: GetParent, IsCached o GetName que fallan -> no probado como portado', function()
+    local Common = ns.Bags.Common
+    local function frameWith(fields)
+        local panel = CreateFrame('Frame', 'PanelOk'); panel.id = 0
+        for key, value in pairs(fields) do panel[key] = value end
+        return slotButton(nil, panel, 1)
+    end
+    ok(Common.NonCarried(frameWith({})) == false, 'control')
+    ok(Common.NonCarried(frameWith({ GetParent = function() error('roto') end })) == true, 'GetParent lanza')
+    ok(Common.NonCarried(frameWith({ IsCached = function() error('roto') end })) == true, 'IsCached lanza')
+    ok(Common.NonCarried(frameWith({ GetName = function() error('roto') end })) == true, 'GetName lanza')
+    local bare = {}
+    ok(Common.NonCarried(bare) == true, 'sin GetParent no se puede probar')
+    local button = CreateFrame('Button')
+    button.GetParent = function() error('roto') end
+    ok(Common.NonCarried(button) == true, 'el propio boton falla')
+end)
+
+test('LiteBag: un padre cuyo GetParent falla deja el boton sin marca', function()
+    local state = liteBag()
+    install('LiteBag')
+    addItem(100); FAKE.bags['0:1'] = 100
+    local panel = CreateFrame('Frame', 'LiteBagBackpackPanelBroken'); panel.id = 0
+    panel.GetParent = function() error('roto') end
+    local button = slotButton(nil, panel, 1)
+    state.callback(button)
+    ok(not marked(button))
+end)
+
+test('los lectores de los seguimientos no capturan el boton', function()
+    local state = betterBags()
+    withLibs(state.libs, function()
+        install('BetterBags')
+        addItem(100); FAKE.bags['0:3'] = 100
+        local decoration = CreateFrame('Button')
+        state.handlers['item/Updated'](nil, betterItem(0, 3, 100), decoration)
+    end)
+    local euiState = eui()
+    install('EllesmereUIBags')
+    local button = CreateFrame('Button')
+    euiState.callback(button, { bag = 0, slot = 1, info = { itemID = 100 } })
+    local checked = 0
+    for _, tracker in ipairs(ns.Bags.Common.trackers) do
+        for key, reader in pairs(tracker.readers) do
+            checked = checked + 1
+            local index = 1
+            while true do
+                local name, value = debug.getupvalue(reader, index)
+                if not name then break end
+                ok(value ~= key, 'el lector captura el boton')
+                index = index + 1
+            end
+            ok(tracker.contexts[key] ~= key, 'el contexto es el boton')
+        end
+    end
+    ok(checked >= 2, 'se revisaron lectores')
 end)

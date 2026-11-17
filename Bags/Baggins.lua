@@ -9,6 +9,8 @@ local _, ns = ...
 --     todo al abrir; es lo que usa Refresh.
 --   * bolsa = button:GetParent():GetID(), slot = button:GetID() (Peddler l.261-272).
 --   * sin marca: banco/hermandad/vault/cache (Common.NonCarried); bolsas fuera de 0-4 las descarta Marks.
+--   * identidad: el item que el boton muestra (Common.DisplayedID); si Baggins no lo expone (SIN
+--     VERIFICAR) no se marca nada.
 -- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1173-1175, peddler Peddler.lua
 -- l.261-272 y 663-665.
 local OWNER = 'Baggins'
@@ -22,8 +24,10 @@ local registered = {}
 
 local function reader(button)
     if Common.NonCarried(button) then return nil end
-    return Common.Call(Common.Call(button, 'GetParent'), 'GetID'), Common.Call(button, 'GetID')
+    return Common.Call(Common.Call(button, 'GetParent'), 'GetID'), Common.Call(button, 'GetID'), Common.DisplayedID(button)
 end
+
+local function revalidate(button) return tracker:Read(button) end
 
 local function root()
     local baggins = rawget(_G, 'Baggins')
@@ -90,4 +94,5 @@ end
 function Adapter.ResetState() registered = {} end
 Common.OnReset(Adapter.ResetState)
 
-ns.Bags.Register('Baggins', { addon = 'Baggins', install = Adapter.Install, refresh = Adapter.Refresh })
+ns.Bags.Register('Baggins', { addon = 'Baggins', install = Adapter.Install, refresh = Adapter.Refresh,
+    revalidate = revalidate })

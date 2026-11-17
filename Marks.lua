@@ -23,6 +23,9 @@ local OTHER_ALPHA = 0.7
 
 -- [boton] = { id = itemID, bag =, slot = | link =, owner = }: botones esperando datos del item.
 local pending = setmetatable({}, { __mode = 'k' })
+-- [boton] = { bag =, slot =, id = | link =, id =, owner = }: botones protegidos que, en combate, no
+-- tenian aun nuestra textura: no se crea ahora; se retoma (revalidando todo) al salir del combate.
+local queued = setmetatable({}, { __mode = 'k' })
 
 local function itemIDOf(link)
     if type(link) == 'number' then return link end
@@ -104,6 +107,7 @@ end
 function Marks.Clear(button)
     if type(button) ~= 'table' then return end
     pending[button] = nil
+    queued[button] = nil
     hide(button)
 end
 
@@ -142,10 +146,35 @@ local function safely(button, fn, ...)
     end
 end
 
+-- En combate no se toca un boton protegido ajeno que aun no tiene nuestra textura (crearla y
+-- anclarla seria una operacion sobre un frame protegido): se difiere hasta salir del combate.
+-- Actualizar una textura nuestra ya creada si se permite. Un IsProtected que falla cuenta como
+-- protegido (ante la duda, no se toca).
+local function mustDefer(button)
+    if button.KnuJunkMark then return false end
+    if type(InCombatLockdown) ~= 'function' or not InCombatLockdown() then return false end
+    if type(button.IsProtected) ~= 'function' then return false end
+    local success, isProtected = pcall(button.IsProtected, button)
+    return not success or (isProtected and true or false)
+end
+
+local function defer(button, entry)
+    pending[button] = nil
+    queued[button] = nil
+    if entry.link then
+        entry.id = itemIDOf(entry.link)
+    else
+        local success, id = pcall(slotItemID, entry.bag, entry.slot)
+        entry.id = success and id or nil
+    end
+    if entry.id then queued[button] = entry end
+end
+
 -- Marca el item de bolsa `bag`/`slot` (solo bolsas 0-4) en `button`. 'quest' no se dibuja aqui.
 function Marks.Update(button, bag, slot, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
+    if mustDefer(button) then return defer(button, { bag = bag, slot = slot, owner = owner }) end
     safely(button, updateSlot, bag, slot, owner)
 end
 
@@ -153,6 +182,7 @@ end
 function Marks.UpdateLink(button, link, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
+    if mustDefer(button) then return defer(button, { link = link, owner = owner }) end
     safely(button, updateLinkBody, link, owner)
 end
 
@@ -185,23 +215,46 @@ end
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Marks.ResetState()
     pending = setmetatable({}, { __mode = 'k' })
+    queued = setmetatable({}, { __mode = 'k' })
+end
+
+-- Retoma lo que quedo esperando (datos del item o fin del combate) SIN confiar en lo guardado:
+-- el slot tiene que seguir teniendo el item que se esperaba y, si el adaptador del dueno sabe
+-- revalidar (spec.revalidate(boton) -> bag, slot, itemID mostrado), su vista tiene que seguir
+-- siendo una casilla viva con ese mismo item. Si algo no coincide: sin marca.
+local function resume(button, entry)
+    if entry.link then return Marks.UpdateLink(button, entry.link, entry.owner) end
+    local bag, slot = entry.bag, entry.slot
+    local revalidate = ns.Bags and ns.Bags.Revalidator and ns.Bags.Revalidator(entry.owner or 'generic')
+    if revalidate then
+        local success, b, s, shown = pcall(revalidate, button)
+        if not success or type(b) ~= 'number' or type(s) ~= 'number' or shown ~= entry.id then return Marks.Clear(button) end
+        bag, slot = b, s
+    end
+    local success, live = pcall(slotItemID, bag, slot)
+    if not success or live ~= entry.id then return Marks.Clear(button) end
+    Marks.Update(button, bag, slot, entry.owner)
 end
 
 -- Los datos del item llegaron: se vuelve a marcar solo lo que esperaba ESE item. Si el cliente
--- dice que no existe (success == false) se olvida la espera.
+-- dice que no existe (success == false) se olvida la espera. Al salir del combate se retoma lo
+-- diferido.
 local frame = CreateFrame('Frame')
 pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
-frame:SetScript('OnEvent', function(_, _, itemID, success)
+pcall(frame.RegisterEvent, frame, 'PLAYER_REGEN_ENABLED')
+frame:SetScript('OnEvent', function(_, event, itemID, success)
     local ready = {}
+    if event == 'PLAYER_REGEN_ENABLED' then
+        for button, entry in pairs(queued) do ready[#ready + 1] = { button = button, entry = entry } end
+        for _, job in ipairs(ready) do queued[job.button] = nil end
+        for _, job in ipairs(ready) do pcall(resume, job.button, job.entry) end
+        return
+    end
     for button, entry in pairs(pending) do
         if entry.id == itemID then ready[#ready + 1] = { button = button, entry = entry } end
     end
     for _, job in ipairs(ready) do
-        local button, entry = job.button, job.entry
-        pending[button] = nil
-        if success ~= false then
-            if entry.link then Marks.UpdateLink(button, entry.link, entry.owner)
-            else Marks.Update(button, entry.bag, entry.slot, entry.owner) end
-        end
+        pending[job.button] = nil
+        if success ~= false then pcall(resume, job.button, job.entry) end
     end
 end)

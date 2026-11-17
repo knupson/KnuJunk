@@ -8,7 +8,8 @@ local _, ns = ...
 --     decoracion (donde esta el icono); si no llega, en item.button.
 --   * datos del slot: item:GetItemData() -> bagid, slotid, itemInfo.itemID (o item.currentData).
 --   * sin marca: hueco libre/virtual/soltado/estatico (item.isFreeSlot, isVirtual, released, blank,
---     staticData), data.isItemEmpty, o si el slot de bolsa 0-4 ya no tiene el item mostrado.
+--     staticData), data.isItemEmpty, sin itemInfo.itemID (identidad del item mostrado), o si el slot
+--     de bolsa 0-4 ya no tiene el item mostrado (tambien al retomar una marca pendiente: revalidate).
 --     BetterBags no tiene vista de otros personajes; el banco usa bolsas fuera de 0-4.
 -- Referencias leidas (competencia/): magic-eraser Tint-Junk.lua l.358-384, keep-or-toss-forever
 -- BagMarks.lua l.225-238, questjunksweeper Bags.lua l.1051-1118.
@@ -19,6 +20,7 @@ ns.BetterBagsAdapter = Adapter
 local Common = ns.Bags.Common
 local tracker = Common.NewTracker(OWNER)
 local registered = {}   -- [mensaje] = true
+local items = setmetatable({}, { __mode = 'kv' })   -- [boton marcado] = item de BetterBags (ambos debiles)
 local NOT_A_SLOT = { 'isFreeSlot', 'isVirtual', 'released', 'blank', 'staticData' }
 
 local function eventsModule()
@@ -46,15 +48,16 @@ local function itemData(item)
     return data
 end
 
-local function reader(item)
-    return function()
-        local data = itemData(item)
-        if not data then return nil end
-        local info = data.itemInfo
-        if type(info) ~= 'table' or type(info.itemID) ~= 'number' then return nil end
-        return data.bagid, data.slotid, info.itemID
-    end
+-- Lector sin capturas: el item de BetterBags se busca por el boton marcado.
+local function reader(target)
+    local data = itemData(items[target])
+    if not data then return nil end
+    local info = data.itemInfo
+    if type(info) ~= 'table' or type(info.itemID) ~= 'number' then return nil end
+    return data.bagid, data.slotid, info.itemID
 end
+
+local function revalidate(button) return tracker:Read(button) end
 
 local function targetOf(item, decoration)
     if type(decoration) == 'table' then return decoration end
@@ -64,12 +67,19 @@ end
 local function onUpdated(_, item, decoration)
     pcall(function()
         local target = targetOf(item, decoration)
-        if target then tracker:Apply(target, reader(item)) end
+        if target then
+            items[target] = item
+            tracker:Apply(target, reader)
+        end
     end)
 end
 
 local function onClearing(_, item, decoration)
-    pcall(function() tracker:Release(targetOf(item, decoration)) end)
+    pcall(function()
+        local target = targetOf(item, decoration)
+        if target then items[target] = nil end
+        tracker:Release(target)
+    end)
 end
 
 local HANDLERS = { ['item/Updated'] = onUpdated, ['item/NewButton'] = onUpdated, ['item/Clearing'] = onClearing }
@@ -104,7 +114,8 @@ function Adapter.Refresh()
     tracker:Refresh()
 end
 
-function Adapter.ResetState() registered = {} end
+function Adapter.ResetState() registered, items = {}, setmetatable({}, { __mode = 'kv' }) end
 Common.OnReset(Adapter.ResetState)
 
-ns.Bags.Register('BetterBags', { addon = 'BetterBags', install = Adapter.Install, refresh = Adapter.Refresh })
+ns.Bags.Register('BetterBags', { addon = 'BetterBags', install = Adapter.Install, refresh = Adapter.Refresh,
+    revalidate = revalidate })
