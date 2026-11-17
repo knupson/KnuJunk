@@ -2,6 +2,7 @@ local _, ns = ...
 
 -- Clasificador de marcas: funcion pura. Regla de oro: ante cualquier duda, sin marca.
 -- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price }
+--   hasUseOrEquipSpell = true tambien cuando no se puede saber (sin API de hechizos).
 -- ctx  = { class, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
 --          questItemsInLog = {[itemID]=true}, questieUses(itemID)->{ {questID=, repeatable=} }|nil,
 --          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
@@ -34,7 +35,6 @@ local function classCannotUse(item, ctx)
     if item.classID == ITEM_CLASS_ARMOR then kind = 'armor'
     elseif item.classID == ITEM_CLASS_WEAPON then kind = 'weapon'
     else return false end
-    if item.hasUseOrEquipSpell or item.isSetPiece then return false end
     local subclassID = item.subclassID
     if type(subclassID) ~= 'number' or not isKnownSubclass(kind, subclassID) then return false end
     local gear = ctx.class and ns.ClassGear[ctx.class]
@@ -69,6 +69,7 @@ function ns.Classify(item, ctx)
         return result
     end
     local uses = type(ctx.questieUses) == 'function' and ctx.questieUses(id) or nil
+    local repeatable
     if uses then
         for _, use in ipairs(uses) do
             if not questDone(ctx, use.questID) then
@@ -76,6 +77,7 @@ function ns.Classify(item, ctx)
                 reasons[#reasons + 1] = { kind = 'quest_active', questID = use.questID }
                 return result
             end
+            if use.repeatable then repeatable = repeatable or use.questID end
         end
     end
 
@@ -106,6 +108,18 @@ function ns.Classify(item, ctx)
         return result
     end
 
+    -- Protecciones previas a TODA moneda automatica (gris, mision terminada, clase):
+    -- una mision repetible conocida puede volver a pedir el item, y un item con efecto de
+    -- uso/equipar (o sin poder saberlo: ver Player.ReadLink) o pieza de set conserva utilidad.
+    if repeatable then
+        reasons[#reasons + 1] = { kind = 'quest_repeatable', questID = repeatable }
+        return result
+    end
+    if item.hasUseOrEquipSpell or item.isSetPiece then
+        reasons[#reasons + 1] = { kind = 'useful' }
+        return result
+    end
+
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
         reasons[#reasons + 1] = { kind = 'gray' }
@@ -116,7 +130,7 @@ function ns.Classify(item, ctx)
     if uses and #uses > 0 then
         local allDone = true
         for _, use in ipairs(uses) do
-            if use.repeatable or not questDone(ctx, use.questID) then allDone = false; break end
+            if not questDone(ctx, use.questID) then allDone = false; break end
         end
         if allDone then reasons[#reasons + 1] = { kind = 'quest_done', questID = uses[1].questID } end
     end

@@ -233,3 +233,53 @@ test('ClassGear: generado desde datos con build', function()
     local first = file:read('*l'); file:close()
     ok(first:find('Generado por tools/build_data.py', 1, true), 'cabecera generada: ' .. tostring(first))
 end)
+
+-- Item 2 de la ola final: un uso repetible conocido por Questie bloquea TODA moneda automatica.
+test('mision repetible hecha bloquea gris, iniciador hecho y clase', function()
+    withData({}, { [9000] = 99001 }, function()
+        local repeatable = function() return { { questID = 99001, repeatable = true } } end
+        local done = function() return true end
+        local starter = ns.Classify(item(), ctx { questieUses = repeatable, isQuestDone = done })
+        eq(starter.mark, nil, 'iniciador de repetible')
+        ok(not hasReason(starter, 'quest_done'), 'sin quest_done')
+    end)
+    withData({}, {}, function()
+        local repeatable = function() return { { questID = 99001, repeatable = true } } end
+        local done = function() return true end
+        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done }).mark, nil, 'gris')
+        local plate = item { classID = 4, subclassID = 4, quality = 2, hasUseOrEquipSpell = false, isSetPiece = false }
+        eq(ns.Classify(plate, ctx { class = 'MAGE', questieUses = repeatable, isQuestDone = done }).mark, nil, 'clase')
+        local mixed = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = true } } end
+        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = mixed, isQuestDone = done }).mark, nil, 'mezcla')
+        local sold = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done,
+            overrides = { [9000] = 'sell' } })
+        eq(sold.mark, 'coin', 'override_sell sigue valiendo')
+    end)
+end)
+
+-- Item 5: efecto de uso/equipar o pieza de set => ninguna moneda automatica (gris, mision
+-- terminada incluida la de Questie, clase). override_sell sigue valiendo.
+test('utilidad del item precede a toda moneda automatica', function()
+    withData({}, {}, function()
+        local done = function() return true end
+        local questie = function() return { { questID = 1, repeatable = false } } end
+        -- Arma usable por el mago con efecto de uso y set, objetivo de una mision entregada.
+        local weapon = item { classID = 2, subclassID = 7, quality = 2, hasUseOrEquipSpell = true, isSetPiece = true }
+        eq(ns.Classify(weapon, ctx { questieUses = questie, isQuestDone = done }).mark, nil, 'arma usable')
+        -- Consumible con efecto de uso, objetivo de una mision entregada.
+        local potion = item { classID = 0, subclassID = 1, quality = 1, hasUseOrEquipSpell = true }
+        eq(ns.Classify(potion, ctx { questieUses = questie, isQuestDone = done }).mark, nil, 'consumible')
+        -- Pieza de set sin hechizo, mision entregada.
+        local setPiece = item { classID = 4, subclassID = 1, quality = 2, isSetPiece = true }
+        eq(ns.Classify(setPiece, ctx { questieUses = questie, isQuestDone = done }).mark, nil, 'set')
+        -- Gris con efecto de uso.
+        eq(ns.Classify(item { quality = 0, price = 5, hasUseOrEquipSpell = true }, ctx()).mark, nil, 'gris con uso')
+        -- override_sell sobre un item util sigue dando moneda.
+        local sold = ns.Classify(potion, ctx { overrides = { [9000] = 'sell' } })
+        eq(sold.mark, 'coin', 'override_sell')
+    end)
+    withData({}, { [9000] = 123 }, function()
+        local starter = item { hasUseOrEquipSpell = true }
+        eq(ns.Classify(starter, ctx { isQuestDone = function() return true end }).mark, nil, 'iniciador con uso')
+    end)
+end)
