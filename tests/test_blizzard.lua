@@ -197,3 +197,18 @@ test('Blizzard: un frame que nace despues se engancha en el siguiente refresco',
         end)
     end)
 end)
+
+test('Blizzard: un boton que falla no impide marcar los demas', function()
+    withGlobals({ 'ContainerFrame1' }, function()
+        local broken = modernButton(0, 1)
+        function broken:GetID() error('boton roto') end
+        local good = modernButton(0, 2)
+        local frame = modernFrame('ContainerFrame1', { broken, good })
+        ContainerFrame1 = frame
+        addItem(100); FAKE.bags['0:2'] = 100
+        ns.Bags.InstallAll()
+        frame:UpdateItems()
+        ok(good.KnuJunkMark and good.KnuJunkMark:IsShown(), 'el boton sano se marca')
+        ok(not (broken.KnuJunkMark and broken.KnuJunkMark:IsShown()), 'el roto queda sin marca')
+    end)
+end)

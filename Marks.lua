@@ -98,37 +98,53 @@ function Marks.Clear(button)
     hide(button)
 end
 
+-- Cuerpo de Update: puede lanzar error (lecturas del cliente); el llamador lo aisla con pcall.
+local function updateSlot(button, bag, slot, owner)
+    if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return end
+    local id = slotItemID(bag, slot)
+    if not id then return end -- slot vacio
+    local item = ns.Player.ReadItem(bag, slot)
+    if not item then
+        pending[button] = { id = id, bag = bag, slot = slot, owner = owner }
+        return
+    end
+    paint(button, verdict(item), false)
+end
+
+local function updateLinkBody(button, link, owner)
+    local id = itemIDOf(link)
+    if not enabled() or not shows('loot') or not id then return end
+    local item = ns.Player.ReadLink(link)
+    if not item then
+        pending[button] = { id = id, link = link, owner = owner }
+        return
+    end
+    paint(button, verdict(item), true)
+end
+
+-- Los botones se reciclan: la marca vieja se oculta ANTES de cualquier lectura, y si la lectura
+-- falla el boton queda sin marca (una moneda falsa es el peor fallo).
+local function safely(button, fn, ...)
+    pending[button] = nil
+    pcall(hide, button)
+    if not pcall(fn, button, ...) then
+        pending[button] = nil
+        pcall(hide, button)
+    end
+end
+
 -- Marca el item de bolsa `bag`/`slot` (solo bolsas 0-4) en `button`. 'quest' no se dibuja aqui.
 function Marks.Update(button, bag, slot, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
-    pending[button] = nil
-    if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then
-        return hide(button)
-    end
-    local id = slotItemID(bag, slot)
-    if not id then return hide(button) end -- slot vacio
-    local item = ns.Player.ReadItem(bag, slot)
-    if not item then
-        pending[button] = { id = id, bag = bag, slot = slot, owner = owner }
-        return hide(button)
-    end
-    paint(button, verdict(item), false)
+    safely(button, updateSlot, bag, slot, owner)
 end
 
 -- Marca un item por enlace (ventana de botin). Aqui si se dibuja 'quest'.
 function Marks.UpdateLink(button, link, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
-    pending[button] = nil
-    local id = itemIDOf(link)
-    if not enabled() or not shows('loot') or not id then return hide(button) end
-    local item = ns.Player.ReadLink(link)
-    if not item then
-        pending[button] = { id = id, link = link, owner = owner }
-        return hide(button)
-    end
-    paint(button, verdict(item), true)
+    safely(button, updateLinkBody, link, owner)
 end
 
 -- Solo para pruebas: deja el modulo como recien cargado.

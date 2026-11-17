@@ -319,3 +319,24 @@ test('un refresh que falla no rompe a los otros', function()
     ns.Bags.RefreshAll(); FAKE.Advance(0.2)
     eq(good.refreshed, 1)
 end)
+
+test('Update que lanza deja la marca oculta', function()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local button = newButton()
+    ns.Marks.Update(button, 0, 1)
+    ok(visible(button), 'parte con moneda')
+    local saved = ns.Player.ReadItem
+    ns.Player.ReadItem = function() error('lectura rota') end
+    local success, err = pcall(ns.Marks.Update, button, 0, 1)
+    ns.Player.ReadItem = saved
+    ok(success, 'el error no se propaga: ' .. tostring(err))
+    ok(not visible(button), 'la marca vieja no sobrevive a la lectura que falla')
+    local link = newButton()
+    ns.Marks.UpdateLink(link, FAKE.linkOf(100))
+    ok(visible(link))
+    local savedLink = ns.Player.ReadLink
+    ns.Player.ReadLink = function() error('lectura rota') end
+    success = pcall(ns.Marks.UpdateLink, link, FAKE.linkOf(100))
+    ns.Player.ReadLink = savedLink
+    ok(success and not visible(link), 'UpdateLink tambien queda oculto')
+end)

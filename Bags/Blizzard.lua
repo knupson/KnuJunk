@@ -41,10 +41,13 @@ local function eachButton(frame, fn)
     end
 end
 
--- Un error nuestro jamas debe romper el redibujado de Blizzard.
+-- Un error nuestro jamas debe romper el redibujado de Blizzard, ni un boton que falla frenar a los
+-- demas: cada boton va aislado y, si falla, queda sin marca.
 local function paintFrame(frame)
     if type(frame) ~= 'table' then return end
-    pcall(eachButton, frame, function(button) paintButton(button, frame) end)
+    pcall(eachButton, frame, function(button)
+        if not pcall(paintButton, button, frame) then pcall(ns.Marks.Clear, button) end
+    end)
 end
 
 local function knownFrames()
