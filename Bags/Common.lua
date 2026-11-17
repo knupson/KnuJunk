@@ -103,7 +103,8 @@ local IDENTITY_SOURCES = { 'info', 'BGR', 'details' }
 
 -- ID del item que el boton MUESTRA segun su propia informacion (nunca lo que hay ahora en el slot):
 -- campos itemID/itemId/itemLink/hyperlink/link del boton o de su tabla info/BGR/details, o
--- button:GetItemID(). Si hay varios y no coinciden, o ninguno, nil (sin identidad no se marca).
+-- button:GetItemID(). Ninguno: nil. Campos invalidos o que se contradicen: nil, true (el boton dice
+-- algo incoherente: sin marca).
 -- Los campos y su orden salen de DisplayMatches de questjunksweeper (Bags.lua l.289-340).
 function Common.DisplayedID(button)
     if type(button) ~= 'table' then return nil end
@@ -120,13 +121,13 @@ function Common.DisplayedID(button)
     end
     for _, key in ipairs(IDENTITY_NUMBERS) do
         if source[key] ~= nil then
-            if type(source[key]) ~= 'number' or not add(source[key]) then return nil end
+            if type(source[key]) ~= 'number' or not add(source[key]) then return nil, true end
         end
     end
     for _, key in ipairs(IDENTITY_LINKS) do
         if source[key] ~= nil then
             local id = Common.ItemIDOf(source[key])
-            if not id or not add(id) then return nil end
+            if not id or not add(id) then return nil, true end
         end
     end
     if found == nil then
@@ -134,6 +135,32 @@ function Common.DisplayedID(button)
         if success and type(id) == 'number' then found = id end
     end
     return found
+end
+
+-- Para botones cuyo addon NO publica el item que dibuja (SIN VERIFICAR para LiteBag y tdBag2; real
+-- en Baggins 5.9.9: UpdateItemButton guarda itemID/link solo en locales): la identidad se toma en
+-- el CALLBACK de redibujado, que corre sincrono justo despues de que el addon dibujo ese slot,
+-- asi que el slot vivo en ese instante es lo que el addon acaba de dibujar (Common.Capture).
+-- En cualquier refresco posterior (sin callback) solo se vuelve a marcar si lo capturado sigue
+-- siendo el item vivo del slot; si no, sin marca hasta el proximo callback. Un campo que el boton
+-- SI exponga (Common.DisplayedID) manda sobre lo capturado.
+-- locate(boton) -> bag, slot, o nil si el boton no es una casilla portada.
+function Common.Capture(bag, slot)
+    return { bag = bag, slot = slot, id = Common.LiveItemID(bag, slot) }
+end
+
+function Common.CapturingReader(locate)
+    return function(button, context)
+        local bag, slot = locate(button)
+        if type(bag) ~= 'number' or type(slot) ~= 'number' then return nil end
+        local shown, contradictory = Common.DisplayedID(button)
+        if contradictory then return nil end
+        if shown == nil then
+            if type(context) ~= 'table' or context.bag ~= bag or context.slot ~= slot then return nil end
+            shown = context.id
+        end
+        return bag, slot, shown
+    end
 end
 
 -- Seguimiento de botones de UN adaptador. El lector es una funcion SIN capturas

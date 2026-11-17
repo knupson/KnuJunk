@@ -7,8 +7,9 @@ local _, ns = ...
 --   * tdBag2 puede mostrar a otros personajes y bancos: button.meta debe ser un objeto con
 --     meta:IsBag() y meta:IsSelf() verdaderos (bolsa del personaje actual); sin meta o con otra
 --     respuesta, sin marca. Ademas Common.NonCarried descarta banco/hermandad/vault/cache.
---   * identidad: el item que el boton muestra (Common.DisplayedID); si tdBag2 no lo expone (SIN
---     VERIFICAR) no se marca nada.
+--   * identidad: si el boton expone el item que muestra (Common.DisplayedID) manda; si no (SIN
+--     VERIFICAR), el slot vivo leido DURANTE el callback init/update (Common.Capture); los
+--     refrescos posteriores solo remarcan si sigue igual.
 -- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1157-1165 (y l.355-361 para meta).
 local OWNER = 'tdBag2'
 local Adapter = {}
@@ -18,19 +19,25 @@ local Common = ns.Bags.Common
 local tracker = Common.NewTracker(OWNER)
 local registered = false
 
-local function reader(button)
+local function locate(button)
     local meta = button.meta
     if type(meta) ~= 'table' or Common.Call(meta, 'IsBag') ~= true or Common.Call(meta, 'IsSelf') ~= true then
         return nil
     end
     if Common.NonCarried(button) then return nil end
-    return button.bag, button.slot, Common.DisplayedID(button)
+    return button.bag, button.slot
 end
+
+local reader = Common.CapturingReader(locate)
 
 local function revalidate(button) return tracker:Read(button) end
 
 local function onItem(button)
-    pcall(function() tracker:Apply(button, reader) end)
+    pcall(function()
+        local bag, slot = locate(button)
+        if type(bag) ~= 'number' or type(slot) ~= 'number' then return tracker:Release(button) end
+        tracker:Apply(button, reader, Common.Capture(bag, slot))
+    end)
 end
 
 -- true cuando el plugin esta registrado (idempotente).

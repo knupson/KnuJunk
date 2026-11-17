@@ -54,11 +54,11 @@ local function marked(button)
     return texture ~= nil and texture:IsShown() == true
 end
 
--- Boton de bolsa que MUESTRA el item itemID (por defecto el 100) segun su propio campo itemID.
+-- Boton de bolsa sin campos de identidad (como los de Baggins); itemID opcional lo simula expuesto.
 local function slotButton(name, parent, id, itemID)
     local button = CreateFrame('Button', name, parent)
     button.id = id
-    button.itemID = itemID == nil and 100 or itemID
+    button.itemID = itemID or nil
     return button
 end
 
@@ -615,7 +615,6 @@ local function tdButton(bag, slot, buttonMeta)
     local frame = CreateFrame('Frame', 'tdBag2Frame1')
     local button = CreateFrame('Button', nil, frame)
     button.bag, button.slot, button.meta = bag, slot, buttonMeta
-    button.itemID = 100
     return button
 end
 
@@ -659,7 +658,7 @@ test('tdBag2: otro personaje, banco o sin meta -> sin marca; el propio se pinta'
     ok(not marked(noBag), 'sin bolsa')
     local bankFrame = CreateFrame('Frame', 'tdBag2BankFrame')
     local inBank = CreateFrame('Button', nil, bankFrame)
-    inBank.bag, inBank.slot, inBank.meta, inBank.itemID = 0, 1, meta(true, true), 100
+    inBank.bag, inBank.slot, inBank.meta = 0, 1, meta(true, true)
     state.plugin.update(inBank)
     ok(not marked(inBank), 'colgado de un marco de banco')
 end)
@@ -681,84 +680,115 @@ end)
 -- Baggins
 -- ---------------------------------------------------------------------------
 
+-- Falso de Baggins Forever 5.9.9 segun su codigo: Baggins.lua:280-293 (RegisterSignal(name, handler,
+-- arg1) falla sin arg1; FireSignal llama handler(arg1, ...)) y :3643
+-- (FireSignal('Baggins_ItemButtonUpdated', bagframe, button, bag, slot)). El boton NO guarda
+-- itemID/link (UpdateItemButton los usa como locales): no tiene ningun campo de identidad.
 local function bagginsFake()
     local state = { signals = {}, calls = 0 }
     Baggins = {
         bagframes = {},
-        RegisterSignal = function(self, signal, fn, receiver)
+        RegisterSignal = function(self, name, handler, arg1)
             assert(self == Baggins, 'se llama con dos puntos')
+            if not arg1 then error('Usage: Baggins:RegisterSignal(name, handler, arg1)') end
             state.calls = state.calls + 1
-            state.signals[signal] = { fn = fn, receiver = receiver }
+            state.signals[name] = { fn = handler, receiver = arg1 }
         end,
     }
+    state.fire = function(name, ...)
+        local signal = state.signals[name]
+        if signal then signal.fn(signal.receiver, ...) end
+    end
+    -- UpdateItemButton termina disparando esto tras SetID(slot) y colgar el boton del padre con ID bag.
+    state.update = function(button, bag, slot)
+        state.fire('Baggins_ItemButtonUpdated', CreateFrame('Frame'), button, bag, slot)
+    end
     return state
 end
 
+-- Boton de Baggins: sin campos de identidad (itemID, itemLink, info...), colgado de un marco con ID = bolsa.
 local function bagginsButton(name, bag, slot, frameName)
     local bagFrame = CreateFrame('Frame', frameName or ('BagginsBag' .. bag .. name)); bagFrame.id = bag
     return slotButton(nil, bagFrame, slot)
 end
 
-test('Baggins: registra senales y ItemButtonUpdated llama Update con bag (del padre), slot y owner', function()
+test('Baggins: registra senales y ItemButtonUpdated (firma real) llama Update con bag, slot y owner', function()
     local state = bagginsFake()
     install('Baggins')
     ok(isInstalled('Baggins'))
     ok(state.signals.Baggins_ItemButtonUpdated and state.signals.Baggins_BagOpened)
     addItem(100); FAKE.bags['0:5'] = 100
     local button = bagginsButton('a', 0, 5)
-    local signal = state.signals.Baggins_ItemButtonUpdated
+    ok(button.itemID == nil and button.itemLink == nil and button.info == nil, 'el boton no publica identidad')
     spy(function(updates)
-        signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', button)
+        state.update(button, 0, 5)
         eq(#updates, 1)
         eq(updates[1].button, button); eq(updates[1].bag, 0); eq(updates[1].slot, 5); eq(updates[1].owner, 'Baggins')
-        signal.fn(button) -- por si Baggins lo pasa como unico argumento
-        eq(#updates, 2)
-        signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated')
-        eq(#updates, 2, 'sin boton no hace nada')
+        state.fire('Baggins_ItemButtonUpdated', CreateFrame('Frame'), nil, 0, 5)
+        eq(#updates, 1, 'sin boton no hace nada')
     end)
     ns.BagginsAdapter.Install()
     eq(state.calls, 2, 'no se registra dos veces')
 end)
 
-test('Baggins: pinta la moneda; banco, hermandad o vista cacheada -> sin marca', function()
+test('Baggins: la identidad sale del slot vivo durante el callback y pinta la moneda', function()
+    local state = bagginsFake()
+    install('Baggins')
+    addItem(100); FAKE.bags['0:5'] = 100
+    local button = bagginsButton('live', 0, 5)
+    state.update(button, 0, 5)
+    ok(marked(button), 'moneda desde el slot vivo')
+    eq(button.KnuJunkOwner, 'Baggins')
+end)
+
+test('Baggins: el slot cambia sin nueva senal -> el refresco y BagOpened limpian, sin moneda', function()
+    local state = bagginsFake()
+    install('Baggins')
+    addItem(100, { quality = 1, classID = 2, subclassID = 0, spell = true }); addItem(101)
+    FAKE.bags['0:5'] = 101
+    local gray = bagginsButton('g', 0, 5)
+    state.update(gray, 0, 5)
+    ok(marked(gray), 'control: 101 gris con senal')
+    FAKE.bags['0:5'] = 100          -- ahora util, Baggins aun no redibujo
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(not marked(gray), 'el refresco limpia')
+    FAKE.bags['0:5'] = 101
+    state.update(gray, 0, 5)
+    ok(marked(gray))
+    FAKE.bags['0:5'] = 100
+    state.fire('Baggins_BagOpened')
+    ok(not marked(gray), 'BagOpened tambien revalida sin pintar a ciegas')
+    -- el mismo slot, ahora util en el callback: no hay moneda
+    local useful = bagginsButton('u', 0, 5)
+    state.update(useful, 0, 5)
+    ok(not marked(useful), 'item util en el callback')
+    -- slot cambiado a un gris SIN senal: sigue sin moneda tras refrescar
+    FAKE.bags['0:5'] = 101
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(not marked(useful), 'el boton dibujo el 100: no hereda la moneda del 101')
+end)
+
+test('Baggins: banco, hermandad, vista cacheada o senal inconsistente -> sin marca', function()
     local state = bagginsFake()
     install('Baggins')
     addItem(100); FAKE.bags['0:5'] = 100; FAKE.bags['-1:5'] = 100
-    local signal = state.signals.Baggins_ItemButtonUpdated
-    local live = bagginsButton('live', 0, 5)
-    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', live)
-    ok(marked(live), 'moneda')
     local bank = bagginsButton('bank', -1, 5)
-    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', bank)
+    state.update(bank, -1, 5)
     ok(not marked(bank), 'bolsa -1')
     local named = bagginsButton('named', 0, 5, 'BagginsBankFrame')
-    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', named)
+    state.update(named, 0, 5)
     ok(not marked(named), 'marco de banco')
     local cached = bagginsButton('cached', 0, 5)
     cached.parent.isCached = true
-    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', cached)
+    state.update(cached, 0, 5)
     ok(not marked(cached), 'cache')
-end)
-
-test('Baggins: BagOpened y el refresco recorren bagframes[i].sections[j].items[k]', function()
-    local state = bagginsFake()
-    install('Baggins')
-    addItem(100); FAKE.bags['0:1'] = 100; FAKE.bags['0:2'] = 100
-    local first, second = bagginsButton('x', 0, 1), bagginsButton('y', 0, 2)
-    local hidden = bagginsButton('z', 0, 3); hidden:Hide()
-    Baggins.bagframes = { { sections = { { items = { first, second } }, { items = { hidden } } } }, {}, { sections = {} } }
-    spy(function(updates)
-        local opened = state.signals.Baggins_BagOpened
-        opened.fn(opened.receiver)
-        eq(#updates, 2, 'los dos visibles')
-        eq(updates[1].button, first); eq(updates[2].button, second); eq(updates[2].slot, 2)
-    end)
-    spy(function(updates)
-        ns.Bags.RefreshAll(); FAKE.Advance(1)
-        ok(#updates >= 2, 'el refresco tambien recorre')
-    end)
-    Baggins.bagframes = 'roto'
-    ns.Bags.RefreshAll(); FAKE.Advance(1) -- no lanza
+    local mismatch = bagginsButton('mm', 0, 5)
+    state.update(mismatch, 0, 6)
+    ok(not marked(mismatch), 'la senal dice otro slot que el boton')
+    state.update(mismatch, 1, 5)
+    ok(not marked(mismatch), 'la senal dice otra bolsa que el boton')
+    state.update(mismatch, 0, 5)
+    ok(marked(mismatch), 'control')
 end)
 
 test('Baggins: sin RegisterSignal o con registro roto -> install false; BagOpened es opcional', function()
@@ -952,32 +982,51 @@ test('LiteBag: el slot pasa a un gris sin redibujar -> el refresco limpia, sin m
     ok(not marked(button), 'el boton muestra 100: no se pinta la moneda del 101')
 end)
 
-test('LiteBag, tdBag2 y Baggins: sin itemID mostrado por el boton -> sin marca', function()
+test('LiteBag, tdBag2 y Baggins: sin identidad expuesta, la toman del slot vivo durante el callback', function()
     local lite, td, bag = liteBag(), tdBag2Fake(), bagginsFake()
     FAKE.addons.LiteBag, FAKE.addons.tdBag2, FAKE.addons.Baggins = true, true, true
     ns.Bags.InstallAll()
-    addItem(100); FAKE.bags['0:1'] = 100
+    addItem(100); addItem(101, { quality = 1, classID = 2, subclassID = 0, spell = true })
+    FAKE.bags['0:1'] = 100
     local panel = CreateFrame('Frame', 'LiteBagBackpackPanel'); panel.id = 0
-    local liteButton = slotButton(nil, panel, 1, false)
-    liteButton.itemID = nil
+    local liteButton = slotButton(nil, panel, 1)
     lite.callback(liteButton)
-    ok(not marked(liteButton), 'LiteBag')
-    local tdb = tdButton(0, 1, meta(true, true)); tdb.itemID = nil
+    ok(marked(liteButton), 'LiteBag')
+    local tdb = tdButton(0, 1, meta(true, true))
     td.plugin.update(tdb)
-    ok(not marked(tdb), 'tdBag2')
-    local signal = bag.signals.Baggins_ItemButtonUpdated
-    local baggins = bagginsButton('n', 0, 1); baggins.itemID = nil
-    signal.fn(signal.receiver, 'Baggins_ItemButtonUpdated', baggins)
-    ok(not marked(baggins), 'Baggins')
-    -- con identidad por itemLink, por info o por GetItemID si se marca
-    local viaLink = slotButton(nil, panel, 1, false); viaLink.itemID = nil; viaLink.itemLink = FAKE.linkOf(100)
-    lite.callback(viaLink); ok(marked(viaLink), 'itemLink')
-    local viaInfo = slotButton(nil, panel, 1, false); viaInfo.itemID = nil; viaInfo.info = { itemID = 100 }
-    lite.callback(viaInfo); ok(marked(viaInfo), 'info.itemID')
-    local viaGetter = slotButton(nil, panel, 1, false); viaGetter.itemID = nil
+    ok(marked(tdb), 'tdBag2')
+    local baggins = bagginsButton('n', 0, 1)
+    bag.update(baggins, 0, 1)
+    ok(marked(baggins), 'Baggins')
+    -- el slot cambia a un util sin nuevo callback: el refresco limpia las tres
+    FAKE.bags['0:1'] = 101
+    ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(not marked(liteButton) and not marked(tdb) and not marked(baggins), 'refresco sin callback: se limpian')
+    -- slot vacio en el callback: nada que marcar
+    FAKE.bags['0:1'] = nil
+    lite.callback(liteButton); td.plugin.update(tdb); bag.update(baggins, 0, 1)
+    ok(not marked(liteButton) and not marked(tdb) and not marked(baggins), 'slot vacio')
+end)
+
+test('LiteBag, tdBag2 y Baggins: un campo de identidad expuesto manda sobre el slot vivo', function()
+    local lite, td = liteBag(), tdBag2Fake()
+    FAKE.addons.LiteBag, FAKE.addons.tdBag2 = true, true
+    ns.Bags.InstallAll()
+    addItem(100); addItem(101)
+    FAKE.bags['0:1'] = 100
+    local panel = CreateFrame('Frame', 'LiteBagBackpackPanel'); panel.id = 0
+    local viaLink = slotButton(nil, panel, 1); viaLink.itemLink = FAKE.linkOf(100)
+    lite.callback(viaLink); ok(marked(viaLink), 'itemLink que coincide')
+    local viaInfo = slotButton(nil, panel, 1); viaInfo.info = { itemID = 100 }
+    lite.callback(viaInfo); ok(marked(viaInfo), 'info.itemID que coincide')
+    local viaGetter = slotButton(nil, panel, 1)
     function viaGetter:GetItemID() return 100 end
-    lite.callback(viaGetter); ok(marked(viaGetter), 'GetItemID')
-    local conflict = slotButton(nil, panel, 1, false); conflict.itemID = 100; conflict.itemLink = FAKE.linkOf(101)
+    lite.callback(viaGetter); ok(marked(viaGetter), 'GetItemID que coincide')
+    local stale = slotButton(nil, panel, 1, 101)
+    lite.callback(stale); ok(not marked(stale), 'el boton dice 101 y el slot tiene 100')
+    local tdb = tdButton(0, 1, meta(true, true)); tdb.itemID = 101
+    td.plugin.update(tdb); ok(not marked(tdb), 'tdBag2: idem')
+    local conflict = slotButton(nil, panel, 1, 100); conflict.itemLink = FAKE.linkOf(101)
     lite.callback(conflict); ok(not marked(conflict), 'campos que no coinciden')
 end)
 
@@ -1051,3 +1100,16 @@ test('los lectores de los seguimientos no capturan el boton', function()
     end
     ok(checked >= 2, 'se revisaron lectores')
 end)
+
+test('Baggins: datos pendientes y el slot cambia antes de llegar -> sin moneda', function()
+    local state = bagginsFake()
+    install('Baggins')
+    addItem(100, { quality = 1, classID = 2, subclassID = 0, spell = true }); addItem(101)
+    FAKE.bags['0:5'] = 100
+    local button = bagginsButton('p', 0, 5)
+    withoutItemData(function() state.update(button, 0, 5) end)
+    FAKE.bags['0:5'] = 101
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 100, true)
+    ok(not marked(button))
+end)
+
