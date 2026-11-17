@@ -16,10 +16,10 @@ It only shows icons. KnuJunk never sells, destroys or moves anything.
 
 ### Features
 
-- **Coin** on items that are safe to sell or drop: grey items with a vendor price, items that start a quest you have already finished, and armor or weapons your class can never equip. Gear with a use or equip effect, set pieces, and slots without an armor or weapon type (rings, trinkets, cloaks, shirts, tabards) are left alone.
+- **Coin** on items that are safe to sell or drop: grey items with a vendor price, items that start a quest you have already finished, and armor or weapons your class can never equip (the class table comes from Forever's own data, build 1.60.1.70959). Items with a use or equip effect (or when the game can't tell), set pieces, and slots without an armor or weapon type (rings, trinkets, cloaks, shirts, tabards) never get an automatic coin.
 - **Hammer** on profession materials. Green: one of your professions uses it. Grey: it belongs to a profession you don't have. Main professions and Cooking, First Aid and Fishing count. The material table was generated from wago.tools data for the Forever build 1.60.1.70959.
-- **Quest items are protected.** An item a quest in your log needs never gets a coin. Neither does an item that starts a quest you haven't finished, or any item when the game hasn't given the data yet. When there is doubt, there is no icon.
-- **Tooltip reason.** Hover a marked item and the tooltip tells you why: "Junk: sells", "Quest finished: ...", "Your class can't use Plate", "Your profession: Mining", "Profession you don't have: Blacksmithing". Items without an icon get no extra line.
+- **Quest items are protected.** An item a quest in your log needs never gets a coin. Neither does an item that starts a quest you haven't finished, or any item when the game hasn't given the data yet. If the quest log can't be read in full (for example collapsed headers in combat after you accept a quest), no automatic coin is shown until it can. When there is doubt, there is no icon.
+- **Tooltip reason.** Hover a marked item and the tooltip tells you why: "Junk: sells", "Quest finished: ...", "Your class can't use Plate", "Your profession: Mining", "Profession you don't have: Blacksmithing". Items without an icon get no extra line, except "Marked by hand: keep" when you chose to keep the item.
 - **Loot window.** The Blizzard loot window shows the same coin and hammer, plus a quest sign on items a quest still needs (the quests in your log, and with QuestieDB any quest you haven't finished). With autoloot on there is no window, so nothing is marked.
 - **Your call wins.** `/knu junk keep <item>` stops an item from getting a coin, `/knu junk sell <item>` forces one, `/knu junk clear <item>` removes your choice. The item can be a link or an item ID.
 - **Only your own bags.** Icons go on your character's bags 0 to 4 and on the loot window. The bank, the guild bank and cached views of other characters get no icon.
@@ -56,7 +56,7 @@ Untested (no code read; written from how other addons describe them):
 - BaudBag
 - Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI and RealUI_Inventory. For these eight, KnuJunk will stay silent until the window name of each addon has been checked in game.
 
-Any other bag addon goes through a generic hook that only marks buttons inside Blizzard's own bag frames.
+Any other bag addon goes through a generic hook that only marks buttons inside declared containers, which today are only Blizzard's own bag frames. So in practice it adds nothing for third-party bags.
 
 Some of these addons have no Forever version on CurseForge today (AdiBags, LiteBag, tdBag2, OneBag3, DerpyStuffing, famBags), and ElvUI is not on CurseForge. Those can't be tested. See `docs/prueba-bolsas.md` for the full table with links.
 
@@ -68,7 +68,7 @@ KnuJunk never writes to Baganator's settings. Baganator may pick the KnuJunk plu
 
 ### QuestieDB (optional)
 
-KnuJunk works without Questie. Without it, a coin on quest leftovers appears only on items that start a quest you have already finished. With QuestieDB loaded, KnuJunk also reads quest objectives, required items and turn-in items, and gives a coin to leftovers of quests that are all finished and not repeatable. While QuestieDB is still building its index, no coin is shown at all, except the ones you set by hand. KnuJunk does not include or copy any QuestieDB code or data; it asks QuestieDB through its public API on your machine.
+KnuJunk works without Questie. Without it, a coin on quest leftovers appears only on items that start a quest you have already finished. With QuestieDB loaded, KnuJunk also reads quest objectives, hidden objectives, required items and turn-in items, and gives a coin to leftovers of quests that are all finished. If any quest that uses the item is repeatable, the item gets no automatic coin of any kind. While QuestieDB is still building its index, no coin is shown at all, except the ones you set by hand. KnuJunk does not include or copy any QuestieDB code or data; it asks QuestieDB through its public API on your machine.
 
 ### Beta notes
 
@@ -79,6 +79,13 @@ This is the first beta and nothing has been tested in game yet. What has been do
 - How tooltip lines look in Forever.
 - The Baganator behavior described above.
 
+Known limitations:
+
+- Without QuestieDB, an item that starts a quest you finished gets a coin even if that quest is repeatable: without Questie KnuJunk can't know.
+- Quests your race or class can never do don't give a coin yet.
+- Whether Forever reports equip-only effects is not verified; if it can't tell, the item gets no automatic coin.
+- Baganator: only the backpack views of the skins that ship with Baganator are recognized.
+
 If you see a coin on something you needed, please tell us the item and the bag addon you use. A false coin is the one thing KnuJunk is built to avoid.
 
 ### Notes
@@ -86,7 +93,7 @@ If you see a coin on something you needed, please tell us the item and the bag a
 - Settings and your manual marks are saved in `KnuJunkDB`.
 - Written from scratch for Forever. It contains no code from other junk or bag addons.
 - Requires nothing. Optional: QuestieDB, and any of the bag addons above.
-- Source code and issues: https://github.com/knupson/KnuJunk (MIT license).
+- Source code and issues: TODO, repository URL not verified yet; fill it in before publishing. MIT license.
 
 ---
 
@@ -94,15 +101,15 @@ If you see a coin on something you needed, please tell us the item and the bag a
 
 **KnuJunk** pone un ícono chico en los items de tus bolsas y en la ventana de botín para que veas de un vistazo qué podés vender o tirar y qué materiales usa una profesión. Está hecho para **World of Warcraft: Forever** (1.60.1). Sólo muestra íconos: nunca vende, rompe ni mueve nada.
 
-- **Monedita** en lo que se puede vender o tirar: items grises con precio de venta, items que inician una misión que ya hiciste y armaduras o armas que tu clase nunca puede equipar. El equipo con efecto de uso o de equipar, las piezas de set y las ranuras sin tipo de arma o armadura (anillos, abalorios, capas, camisas, tabardos) se dejan en paz.
+- **Monedita** en lo que se puede vender o tirar: items grises con precio de venta, items que inician una misión que ya hiciste y armaduras o armas que tu clase nunca puede equipar (según los datos de Forever). Los items con efecto de uso o de equipar (o si el juego no lo dice), las piezas de set y las ranuras sin tipo de arma o armadura (anillos, abalorios, capas, camisas, tabardos) nunca llevan monedita automática.
 - **Martillito** en los materiales de profesión: verde si una profesión tuya lo usa, gris si es de una profesión que no tenés. Cuentan las principales y Cocina, Primeros auxilios y Pesca.
-- **Lo que necesita una misión nunca lleva monedita.** Tampoco lo que inicia una misión sin terminar, ni nada cuyos datos el juego todavía no dio. Ante la duda, sin ícono.
-- **Tooltip** con el motivo de cada ícono.
+- **Lo que necesita una misión nunca lleva monedita.** Tampoco lo que inicia una misión sin terminar, ni nada cuyos datos el juego todavía no dio. Si el diario no se puede leer entero, no hay monedita automática hasta leerlo. Ante la duda, sin ícono.
+- **Tooltip** con el motivo de cada ícono. Un item sin ícono no suma líneas, salvo «Marcado a mano: guardar» si elegiste conservarlo.
 - **Ventana de botín** de Blizzard con las mismas marcas y un signo de misión para lo que pide una misión activa. Con autolooteo no hay ventana y no se marca nada.
 - **Tu decisión manda:** `/knu junk keep <item>`, `/knu junk sell <item>` y `/knu junk clear <item>` (enlace o ID). También `/knu junk on|off`, `/knu junk coin|hammer|loot on|off` y `/knu junk status`.
 - **Sólo tus bolsas:** bolsas 0 a 4 de tu personaje y el botín. El banco, el banco de hermandad y las vistas guardadas de otros personajes no llevan ícono.
-- **QuestieDB opcional:** sin Questie, la monedita en sobrantes de misión sólo sale en items que inician una misión ya hecha. Con QuestieDB también cuenta objetivos y entregas.
-- **Bolsas:** Blizzard y su ventana de botín, más Baganator, ArkInventory, Baggins, Bagnon, ElvUI e Inventorian (revisadas contra el código de cada addon, sin probar en el juego) y el resto de la lista en inglés (sin probar). En Baganator, KnuJunk registra un plugin de basura; Baganator puede elegirlo solo si su opción actual no es un plugin, y KnuJunk nunca escribe la configuración de Baganator. El martillito se ubica solo arriba a la derecha.
+- **QuestieDB opcional:** sin Questie, la monedita en sobrantes de misión sólo sale en items que inician una misión ya hecha (aunque sea repetible: sin Questie no se sabe). Con QuestieDB también cuenta objetivos, objetivos ocultos y entregas, y un item de una misión repetible no lleva monedita automática.
+- **Bolsas:** Blizzard y su ventana de botín, más Baganator, ArkInventory, Baggins, Bagnon, ElvUI e Inventorian (revisadas contra el código de cada addon, sin probar en el juego) y el resto de la lista en inglés (sin probar). Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI y RealUI_Inventory hoy no muestran ninguna marca hasta verificar en el juego el nombre de su ventana. En Baganator, KnuJunk registra un plugin de basura; Baganator puede elegirlo solo si su opción actual no es un plugin, y KnuJunk nunca escribe la configuración de Baganator. El martillito se ubica solo arriba a la derecha.
 
 Es la primera beta y todavía no se probó en el juego. Si ves una monedita en algo que necesitabas, avisá qué item y qué bolsa usás. Código propio, licencia MIT.
 
