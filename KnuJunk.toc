@@ -6,7 +6,7 @@
 ## Author: Alejandro Benzoni (KnuPwns)
 ## SavedVariables: KnuJunkDB
 ## OptionalDeps: QuestieDB, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag, Combuctor, OneBag3, Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI, RealUI_Inventory
-## Version: 0.1.0
+## Version: @project-version@
 ## X-License: MIT
 ## X-Website: https://knunet.com
 
