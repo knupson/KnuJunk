@@ -16,7 +16,7 @@ local GRAY = { 0.6, 0.6, 0.6 }
 local WHITE = { 1, 1, 1 }
 
 local hooked = false
-local guard = setmetatable({}, { __mode = 'k' }) -- [tooltip] = enlace ya decorado (respaldo si no se leen sus lineas)
+local guard = setmetatable({}, { __mode = 'k' }) -- [tooltip] = { link, done[texto] } (respaldo si no se leen sus lineas)
 
 local function enabled()
     local db = ns.DB
@@ -133,29 +133,51 @@ local function supported(tooltip)
     return tooltip == rawget(_G, 'GameTooltip') or tooltip == rawget(_G, 'ItemRefTooltip')
 end
 
--- ¿Ya tiene el tooltip alguna de nuestras lineas? Se leen sus lineas de la izquierda
--- (<nombre>TextLeft<i>); si no se pueden leer, se recurre al registro (tooltip -> enlace ya
--- decorado), que OnTooltipCleared borra.
-local function alreadyDecorated(tooltip, link, lines)
+-- Texto sin el icono en linea (|T..|t) ni espacios de los bordes: el cliente podria devolver las
+-- lineas sin el escape, y se compara igual.
+local function plain(text)
+    if type(text) ~= 'string' then return nil end
+    text = text:gsub('|T.-|t', ''):gsub('^%s+', ''):gsub('%s+$', '')
+    return text
+end
+
+-- Lineas de `lines` que el tooltip aun no tiene, linea por linea (una decoracion parcial se completa
+-- al reintentar sin repetir las ya puestas). Las regiones <nombre>TextLeft<i> leibles son la
+-- autoridad: si el tooltip las expone, se mira solo lo que dicen. Si no se pueden leer (sin
+-- GetNumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
+-- que OnTooltipCleared borra.
+local function missingLines(tooltip, link, lines)
     if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
         local success, count = pcall(tooltip.GetNumLines, tooltip)
         local name = success and tooltip:GetName()
         if success and type(count) == 'number' and type(name) == 'string' then
-            local wanted = {}
-            for _, line in ipairs(lines) do wanted[line.text] = true end
-            local readable = count == 0
+            local present, readable = {}, count == 0
             for index = 1, count do
                 local region = rawget(_G, name .. 'TextLeft' .. index)
                 if type(region) == 'table' and type(region.GetText) == 'function' then
-                    readable = true
-                    local ok, text = pcall(region.GetText, region)
-                    if ok and wanted[text] then return true end
+                    local got, text = pcall(region.GetText, region)
+                    if got and type(text) == 'string' then
+                        readable = true
+                        present[plain(text)] = true
+                    end
                 end
             end
-            if readable then return false end
+            if readable then
+                local missing = {}
+                for _, line in ipairs(lines) do
+                    if not present[plain(line.text)] then missing[#missing + 1] = line end
+                end
+                return missing
+            end
         end
     end
-    return guard[tooltip] == link
+    local record = guard[tooltip]
+    if type(record) ~= 'table' or record.link ~= link then return lines end
+    local missing = {}
+    for _, line in ipairs(lines) do
+        if not record.done[line.text] then missing[#missing + 1] = line end
+    end
+    return missing
 end
 
 local function decorate(tooltip, data)
@@ -163,11 +185,18 @@ local function decorate(tooltip, data)
     local link = tooltipLink(tooltip, data)
     if not link then return end
     local lines = Tooltip.Lines(link)
-    if #lines == 0 or alreadyDecorated(tooltip, link, lines) then return end
-    for _, line in ipairs(lines) do
-        tooltip:AddLine(line.text, line.r, line.g, line.b)
+    if #lines == 0 then return end
+    local missing = missingLines(tooltip, link, lines)
+    if #missing == 0 then return end
+    local record = guard[tooltip]
+    if type(record) ~= 'table' or record.link ~= link then
+        record = { link = link, done = {} }
+        guard[tooltip] = record
     end
-    guard[tooltip] = link -- solo tras agregar: un intento pendiente o fallido se reintenta
+    for _, line in ipairs(missing) do
+        tooltip:AddLine(line.text, line.r, line.g, line.b)
+        record.done[line.text] = true -- solo tras agregar: lo que falla se reintenta
+    end
 end
 
 -- Punto de entrada de los hooks: nunca lanza.

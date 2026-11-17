@@ -243,8 +243,10 @@ end)
 test('Tooltip: clear y rearmado del mismo item -> las lineas vuelven', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
-    ns.Tooltip.Hook()
     local tooltip = newTooltip(100)
+    GameTooltip = tooltip -- el frame probado es el que recibe los hooks (OnTooltipCleared)
+    ns.Tooltip.Hook()
+    ok(tooltip.scripts.OnTooltipCleared, 'hook de limpieza instalado en el frame probado')
     local data = {}
     run(processor, tooltip, data)
     eq(#tooltip.lines, 1)
@@ -328,11 +330,12 @@ test('Tooltip: un error del clasificador o del tooltip no lo rompe y se recupera
     local processor = withProcessor()
     ns.Tooltip.Hook()
     local tooltip = newTooltip(100)
+    local data = {} -- la MISMA tabla en los dos intentos
     withClassify(function() error('roto') end, function()
-        run(processor, tooltip, {})
+        run(processor, tooltip, data)
         eq(#tooltip.lines, 0)
     end)
-    run(processor, tooltip, {}) -- mismo enlace: el intento fallido no cuenta como hecho
+    run(processor, tooltip, data) -- mismo enlace y mismos datos: el intento fallido no cuenta como hecho
     eq(#tooltip.lines, 1)
     local weird = newTooltip(100)
     weird.GetItem = function() error('roto') end
@@ -353,6 +356,87 @@ test('Tooltip: sin datos del item todavia -> sin lineas y se reintenta cuando ll
     eq(#tooltip.lines, 1)
     run(processor, tooltip, data)
     eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: decoracion parcial (la 2.a AddLine falla una vez) -> el reintento agrega solo la que falta', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    local tooltip = newTooltip(100)
+    GameTooltip = tooltip
+    ns.Tooltip.Hook()
+    local original, calls = tooltip.AddLine, 0
+    function tooltip:AddLine(...)
+        calls = calls + 1
+        if calls == 2 then error('fallo transitorio') end
+        return original(self, ...)
+    end
+    local data = {}
+    withClassify(function()
+        return { mark = 'coin', reasons = { { kind = 'gray' }, { kind = 'quest_done', questID = 5 } } }
+    end, function()
+        run(processor, tooltip, data)
+        eq(#tooltip.lines, 1)
+        line(tooltip, 1, 'Basura: se vende')
+        run(processor, tooltip, data)
+        eq(#tooltip.lines, 2)
+        line(tooltip, 1, 'Basura: se vende'); line(tooltip, 2, 'Misión terminada: #5')
+        run(processor, tooltip, data)
+        eq(#tooltip.lines, 2)
+    end)
+end)
+
+test('Tooltip: parcial tambien con el tooltip ilegible (respaldo por registro)', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    local tooltip = newTooltip(100)
+    tooltip.GetNumLines = nil
+    GameTooltip = tooltip
+    ns.Tooltip.Hook()
+    local original, calls = tooltip.AddLine, 0
+    function tooltip:AddLine(...)
+        calls = calls + 1
+        if calls == 2 then error('fallo transitorio') end
+        return original(self, ...)
+    end
+    withClassify(function()
+        return { mark = 'coin', reasons = { { kind = 'gray' }, { kind = 'quest_done', questID = 5 } } }
+    end, function()
+        run(processor, tooltip, {})
+        run(processor, tooltip, {})
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 2)
+        tooltip:Clear()
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 2)
+    end)
+end)
+
+test('Tooltip: regiones legibles con el icono quitado por el cliente -> no se duplica', function()
+    addItem(100, { quality = 0, price = 5 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    function tooltip:AddLine(text, r, g, b)
+        self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
+        local shown = text:gsub('|T.-|t', '') -- el cliente devuelve el texto sin el escape del icono
+        CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(' ' .. shown)
+    end
+    run(processor, tooltip, {})
+    run(processor, tooltip, {})
+    eq(#tooltip.lines, 1)
+end)
+
+test('Tooltip: regiones legibles con otro texto son la autoridad (no se cae al registro)', function()
+    addItem(100, { quality = 0, price = 5 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local tooltip = newTooltip(100)
+    run(processor, tooltip, {})
+    eq(#tooltip.lines, 1)
+    -- el tooltip se rearmo con otro contenido sin avisar: las regiones ya no tienen nuestra linea
+    CreateFrame('FontString', tooltip:GetName() .. 'TextLeft1'):SetText('Otra cosa')
+    run(processor, tooltip, {})
+    eq(#tooltip.lines, 2)
 end)
 
 test('Tooltip: aislamiento - un fallo dentro de withClassify no deja el clasificador falso', function()
