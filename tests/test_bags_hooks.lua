@@ -884,3 +884,66 @@ test('registro: ninguno de los nuevos se instala sin su addon, salvo el generico
     end
     ok(isInstalled('GenericHook'))
 end)
+
+-- Item 7 de la ola final: Inventorian. Abrir la ventana pide un refresco agrupado (HookScript
+-- OnShow), y un boton del pool (Item.lua l.73-97: Free/Set) que pasa al banco o a una vista
+-- cacheada pierde la marca sin esperar otro evento.
+local function inventorianButton(index, bag, slot, link)
+    local parent = CreateFrame('Frame', nil, InventorianBagFrame); parent.id = bag
+    local button = CreateFrame('Button', 'InventorianItemButton' .. index, parent)
+    button.id, button.bag, button.slot, button.itemLink = slot, bag, slot, link
+    -- Imitacion minima del mixin de Inventorian (no es su codigo): Free/Set/Update en el boton.
+    function button:Update() if self:IsVisible() then self.itemLink = FAKE.linkOf(FAKE.bags[self.bag .. ':' .. self.id]) end end
+    function button:Free() self:Hide(); self.parent = nil; self.id = 0 end
+    function button:Set(container, newBag, newSlot)
+        local holder = CreateFrame('Frame', nil, container); holder.id = newBag
+        self.bag, self.parent, self.id = newBag, holder, newSlot
+        if self:IsVisible() then self:Update() else self:Show() end
+    end
+    button.scripts.OnShow = function(self) if self.parent then self:Update() end end
+    return button
+end
+
+test('Inventorian: abrir la ventana cerrada marca sin otros eventos', function()
+    FAKE.addons.Inventorian = true
+    local frame = CreateFrame('Frame', 'InventorianBagFrame', UIParent)
+    frame.shown = false
+    local button = inventorianButton(1, 0, 3, junk(100, 0, 3))
+    ns.Bags.InstallAll(); FAKE.Advance(1)
+    ok(not marked(button), 'cerrada: sin marca')
+    frame:Show()
+    FAKE.Advance(1)
+    ok(marked(button), 'al abrir: moneda sin BAG_UPDATE_DELAYED ni RefreshAll a mano')
+end)
+
+test('Inventorian: ventana creada despues de instalar tambien se engancha', function()
+    FAKE.addons.Inventorian = true
+    ns.Bags.InstallAll(); FAKE.Advance(1)
+    local frame = CreateFrame('Frame', 'InventorianBagFrame', UIParent)
+    frame.shown = false
+    local button = inventorianButton(1, 0, 3, junk(100, 0, 3))
+    FAKE.Advance(5) -- reintentos de enganche
+    frame:Show()
+    FAKE.Advance(1)
+    ok(marked(button), 'moneda al abrir la ventana creada tarde')
+end)
+
+test('Inventorian: boton del pool que pasa al banco o a una vista cacheada pierde la marca', function()
+    FAKE.addons.Inventorian = true
+    CreateFrame('Frame', 'InventorianBagFrame', UIParent)
+    local button = inventorianButton(1, 0, 3, junk(100, 0, 3))
+    ns.Bags.InstallAll(); FAKE.Advance(1)
+    ok(marked(button), 'marcado en la bolsa')
+    local bank = CreateFrame('Frame', 'InventorianBankFrame', UIParent)
+    junk(100, -1, 2)
+    button:Free()
+    button:Set(bank, -1, 2)
+    ok(not marked(button), 'en el banco: sin moneda, sin refresco')
+    -- De vuelta a la bolsa y luego a una vista cacheada de otro personaje.
+    button:Free(); button:Set(InventorianBagFrame, 0, 3)
+    FAKE.Advance(1); ns.Bags.RefreshAll(); FAKE.Advance(1)
+    ok(marked(button), 'de nuevo en la bolsa')
+    button.IsCached = function() return true end
+    button:Free(); button:Set(InventorianBagFrame, 0, 3)
+    ok(not marked(button), 'vista cacheada: sin moneda')
+end)

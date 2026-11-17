@@ -28,7 +28,8 @@ local _, ns = ...
 -- _G.InventorianBagFrame (Inventorian.lua l.81) y no se recorre mientras esta oculta.
 -- Un boton con otro dueno dedicado (Marks.KnuJunkOwner de otro adaptador) no se toca; uno con dueno
 -- generico ('generic' o 'GenericHook') se toma (Common.MayTakeOver) y el generico deja de seguirlo. Los refrescos llegan
--- por Registry (instalacion y BAG_UPDATE_DELAYED).
+-- por Registry (instalacion y BAG_UPDATE_DELAYED) y, con contenedor verificado, al abrir su ventana
+-- (HookScript OnShow). Inventorian recicla botones en un pool: ver hookPooled.
 -- SIN VERIFICAR EN EL JUEGO: ninguno de estos addons esta instalado aqui salvo lo leido de
 -- Inventorian; los nombres son los de la competencia.
 local Frames = {}
@@ -53,7 +54,7 @@ local ENTRIES = {
     { name = 'OneBag3', addon = 'OneBag3', scans = {
         { from = 0, to = BAG_COUNT, max = MAX_BAG_SLOTS, name = function(bag, slot) return 'OneBagFrameBag' .. bag .. 'Item' .. slot end },
     } },
-    { name = 'Inventorian', addon = 'Inventorian', frame = 'InventorianBagFrame', identity = inventorianLink, scans = {
+    { name = 'Inventorian', addon = 'Inventorian', frame = 'InventorianBagFrame', identity = inventorianLink, pooled = true, scans = {
         { from = 1, to = NUM_CONTAINER_FRAMES or 13, max = 36, name = function(frame, slot) return 'ContainerFrame' .. frame .. 'Item' .. slot end },
         { max = MAX_INDEX, name = function(index) return 'InventorianItemButton' .. index end },
     } },
@@ -151,12 +152,62 @@ local function newAdapter(entry)
         pcall(tracker.Apply, tracker, button, reader)
     end
 
-    function adapter.Install() return true end   -- no hay nada que enganchar: solo se recorre
+    -- Abrir la ventana del addon pide un refresco agrupado (HookScript, nunca SetScript). La
+    -- ventana puede crearse despues de instalar: se reintenta en cada Refresh y unos segundos
+    -- tras instalar.
+    local hookedFrame -- la ventana ya enganchada (si el global pasa a ser otra, se engancha esa)
+    local function hookShow()
+        if not entry.frame then return true end
+        local frame = rawget(_G, entry.frame)
+        if frame == hookedFrame then return frame ~= nil end
+        if type(frame) ~= 'table' or type(frame.HookScript) ~= 'function' then return false end
+        if pcall(frame.HookScript, frame, 'OnShow', function() ns.Bags.RefreshAll() end) then hookedFrame = frame end
+        return hookedFrame == frame
+    end
+
+    -- Botones de un pool (Inventorian Item.lua l.73-97): Free los suelta (oculto, sin padre) y Set
+    -- los reasigna a cualquier contenedor, banco incluido, y los redibuja con Update. Se engancha
+    -- cada boton la primera vez que se lo ve (solo uno visto puede llevar nuestra marca): Free
+    -- quita la marca; Set y Update vuelven a leer lo que muestra (banco, vista cacheada o bolsa
+    -- fuera de 0-4: sin marca).
+    local pooledHooks = setmetatable({}, { __mode = 'k' })
+    local function release(button)
+        if button.KnuJunkOwner == entry.name then tracker:Release(button) end
+    end
+    local function reread(button)
+        if button.KnuJunkOwner ~= entry.name then return end
+        if visible(button) then paint(button) else tracker:Release(button) end
+    end
+    local function hookPooled(button)
+        if not entry.pooled or pooledHooks[button] then return end
+        pooledHooks[button] = true
+        if type(button.Free) == 'function' then pcall(hooksecurefunc, button, 'Free', release) end
+        if type(button.Set) == 'function' then pcall(hooksecurefunc, button, 'Set', reread) end
+        if type(button.Update) == 'function' then pcall(hooksecurefunc, button, 'Update', reread) end
+    end
+
+    local function visit(button)
+        hookPooled(button)
+        paint(button)
+    end
+
+    function adapter.Install()
+        if not hookShow() and C_Timer and C_Timer.After then
+            local tries = 0
+            local function retry()
+                tries = tries + 1
+                if not hookShow() and tries < 10 then C_Timer.After(1, retry) end
+            end
+            C_Timer.After(1, retry)
+        end
+        return true
+    end
 
     -- Recorre las series del addon (solo con su ventana visible) y repinta lo que encuentra.
     function adapter.Refresh()
+        hookShow()
         if not frameOpen() then return end
-        eachButton(entry, paint)
+        eachButton(entry, visit)
     end
 
     local function revalidate(button) return tracker:Read(button) end
