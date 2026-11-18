@@ -13,6 +13,9 @@ local questMemo, skillMemo = {}, {} -- {fp=, data=}: resultado del ultimo escane
 local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos sincronicos se ignoran
 local pending = false -- hay una reconstruccion diferida programada
 local changedCallbacks = {}
+-- Efectos vistos en el tooltip (regla 30): [itemID] = true|false, solo lecturas completas.
+local effectCache = {}
+local scanTip -- GameTooltip oculto de respaldo (sin C_TooltipInfo), creado al primer uso
 local signatures = setmetatable({}, { __mode = 'k' }) -- [ctx] = firma de contenido
 -- Sube con cada alta, baja o entrega de mision: isQuestDone puede responder distinto aunque
 -- el resto del contexto sea igual, y eso tiene que avisar por OnChanged. Los ecos de expandir
@@ -34,6 +37,7 @@ function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 function Player.ResetState()
     cache, previous, lastQuestFound, scanning, pending = nil, nil, nil, false, false
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
+    effectCache, scanTip = {}, nil
 end
 
 local MIN_EXPAND_INTERVAL = 1 -- sin huella, no se expande mas de una vez por segundo
@@ -408,11 +412,92 @@ end
 -- Items
 -- ---------------------------------------------------------------------------
 
--- true si el item tiene (o puede tener) hechizo de uso/equipar; false solo si la API
--- respondio sin nombre NI id. Se conservan los dos retornos: el nombre puede llegar tarde y el
--- id solo ya es evidencia. Sin API, o si la API falla, no se sabe: true (conservador, ninguna
--- moneda automatica). Que GetItemSpell informe efectos SOLO de equipar en Forever no esta
--- verificado en el juego.
+local function bare(text)
+    if type(text) ~= 'string' then return nil end
+    return (text:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''):gsub('^%s+', ''))
+end
+
+-- Prefijos de las lineas de efecto: las globales del cliente (localizadas) y, por si faltan, ingles y
+-- castellano. "Probabilidad al acertar" (proc de arma) tambien es un efecto.
+local function triggers()
+    local list = {}
+    for _, global in ipairs({ 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE', 'ITEM_SPELL_TRIGGER_ONPROC' }) do
+        local value = rawget(_G, global)
+        if type(value) == 'string' and value ~= '' then list[#list + 1] = value end
+    end
+    for _, value in ipairs({ 'Equip:', 'Use:', 'Chance on hit:', 'Equipar:', 'Uso:', 'Probabilidad al acertar:' }) do
+        list[#list + 1] = value
+    end
+    return list
+end
+
+-- Textos de las lineas del tooltip del item, o nil si no se pudieron leer. C_TooltipInfo.GetHyperlink
+-- (leftText, o args en clientes que lo traen sin "surface"); si no existe, un GameTooltip oculto.
+local function tooltipTexts(id)
+    local link = 'item:' .. id
+    if type(C_TooltipInfo) == 'table' and type(C_TooltipInfo.GetHyperlink) == 'function' then
+        local success, data = pcall(C_TooltipInfo.GetHyperlink, link)
+        if not success or type(data) ~= 'table' or type(data.lines) ~= 'table' or #data.lines == 0 then return nil end
+        local texts = {}
+        for index, line in ipairs(data.lines) do
+            local text = type(line) == 'table' and line.leftText or nil
+            if text == nil and type(line) == 'table' and type(line.args) == 'table' then
+                for _, arg in ipairs(line.args) do
+                    if type(arg) == 'table' and arg.field == 'leftText' then text = arg.stringVal end
+                end
+            end
+            texts[index] = type(text) == 'string' and text or ''
+        end
+        if texts[1] == '' then return nil end -- sin el nombre: el cliente aun no tiene el item
+        return texts
+    end
+    if type(CreateFrame) ~= 'function' then return nil end
+    local success, texts = pcall(function()
+        if not scanTip then
+            scanTip = CreateFrame('GameTooltip', 'KnuJunkScanTooltip', nil, 'GameTooltipTemplate')
+        end
+        if type(scanTip.NumLines) ~= 'function' or type(scanTip.SetHyperlink) ~= 'function' then return nil end
+        if type(scanTip.SetOwner) == 'function' then scanTip:SetOwner(rawget(_G, 'WorldFrame') or UIParent, 'ANCHOR_NONE') end
+        if type(scanTip.ClearLines) == 'function' then scanTip:ClearLines() end
+        scanTip:SetHyperlink(link)
+        local count = scanTip:NumLines()
+        if type(count) ~= 'number' or count == 0 then return nil end
+        local list = {}
+        for index = 1, count do
+            local region = rawget(_G, 'KnuJunkScanTooltipTextLeft' .. index)
+            local text = type(region) == 'table' and type(region.GetText) == 'function' and region:GetText() or nil
+            list[index] = type(text) == 'string' and text or ''
+        end
+        if list[1] == '' then return nil end
+        return list
+    end)
+    if success then return texts end
+    return nil
+end
+
+-- true/false si el tooltip se pudo leer (con/sin linea de efecto); nil si no.
+local function tooltipEffect(id)
+    if effectCache[id] ~= nil then return effectCache[id] end
+    local texts = tooltipTexts(id)
+    if not texts then return nil end
+    local prefixes = triggers()
+    local found = false
+    for index = 2, #texts do
+        local text = bare(texts[index]) or ''
+        for _, prefix in ipairs(prefixes) do
+            if text:sub(1, #prefix) == prefix then found = true; break end
+        end
+        if found then break end
+    end
+    effectCache[id] = found
+    return found
+end
+
+-- true si el item tiene (o puede tener) efecto de uso/equipar; false solo si GetItemSpell respondio
+-- sin nombre NI id Y el tooltip del item se leyo sin ninguna linea "Equipar:"/"Uso:"/"Probabilidad
+-- al acertar:" (regla 30: los efectos pasivos de equipar no siempre los informa GetItemSpell). Se
+-- conservan los dos retornos: el nombre puede llegar tarde y el id solo ya es evidencia. Sin API, si
+-- la API falla o si el tooltip no se puede leer, no se sabe: true (conservador, ninguna moneda).
 local function hasItemSpell(id)
     local api
     if C_Item and type(C_Item.GetItemSpell) == 'function' then api = C_Item.GetItemSpell
@@ -420,7 +505,10 @@ local function hasItemSpell(id)
     if not api then return true end
     local success, name, spellID = pcall(api, id)
     if not success then return true end
-    return name ~= nil or spellID ~= nil
+    if name ~= nil or spellID ~= nil then return true end
+    local effect = tooltipEffect(id)
+    if effect == nil then return true end
+    return effect
 end
 
 -- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, hasUseOrEquipSpell, isSetPiece };

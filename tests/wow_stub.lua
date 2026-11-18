@@ -110,7 +110,7 @@ local function installClient()
     FAKE.skillLines = {}    -- GetSkillLineInfo: { {name=, isHeader=}, ... }
     FAKE.completed = {}     -- [questID] = true
     FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
-    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell= }
+    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell=, tooltip={textos} }
     FAKE.bags = {}          -- ['bag:slot'] = itemID
     FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
@@ -235,6 +235,18 @@ local function installClient()
         local _, d = itemOf(key)
         if d and d.spell then return 'Hechizo', 1234 end
     end
+    -- Tooltip de un enlace: la primera linea es el nombre; despues FAKE.items[id].tooltip (textos).
+    FAKE.tooltipCalls = 0
+    C_TooltipInfo = {
+        GetHyperlink = function(link)
+            FAKE.tooltipCalls = FAKE.tooltipCalls + 1
+            local _, d = itemOf(link)
+            if not d then return nil end
+            local lines = { { leftText = d.name } }
+            for _, text in ipairs(d.tooltip or {}) do lines[#lines + 1] = { leftText = text } end
+            return { lines = lines }
+        end,
+    }
     C_Container = {
         GetContainerItemInfo = function(bag, slot)
             local id = FAKE.bags[bag .. ':' .. slot]
@@ -318,7 +330,8 @@ function FAKE.Reset()
         'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS',
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
         'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
-        'BankPanel', 'BankFrame', 'ItemLocation' }) do _G[name] = nil end
+        'BankPanel', 'BankFrame', 'ItemLocation', 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE',
+        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()

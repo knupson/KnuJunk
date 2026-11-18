@@ -140,6 +140,74 @@ test('ReadItem: C_Item.IsBound con ItemLocation gana; si falla, GetContainerItem
     C_Item = nil
 end)
 
+-- Tanda 1, regla 30: si GetItemSpell no informa nada, el tooltip del item decide: una linea
+-- "Equipar:" / "Uso:" / "Probabilidad al acertar:" (o en ingles) es un efecto. Sin poder leerlo: no se
+-- sabe (true, conservador). El resultado se guarda por itemID solo si se pudo leer.
+test('efecto solo de equipar visto en el tooltip -> hasUseOrEquipSpell', function()
+    addItem(730, { tooltip = { 'Placas', 'Equipar: Aumenta tu probabilidad de bloquear un 1%.' } })
+    addItem(731, { tooltip = { 'Uso: Te teletransporta.' } })
+    addItem(732, { tooltip = { '|cff00ff00Equip: Increases your armor by 10.|r' } })
+    addItem(733, { tooltip = { 'Chance on hit: Hits for 10 damage.' } })
+    addItem(734, { tooltip = { 'Durabilidad 30 / 30', 'Requiere nivel 10' } })
+    for id = 730, 733 do eq(ns.Player.ReadLink(FAKE.linkOf(id)).hasUseOrEquipSpell, true, 'item ' .. id) end
+    eq(ns.Player.ReadLink(FAKE.linkOf(734)).hasUseOrEquipSpell, false, 'sin efecto')
+    -- Prefijo localizado por la global del cliente.
+    ITEM_SPELL_TRIGGER_ONEQUIP = 'Equipado:'
+    addItem(735, { tooltip = { 'Equipado: algo.' } })
+    eq(ns.Player.ReadLink(FAKE.linkOf(735)).hasUseOrEquipSpell, true, 'global ITEM_SPELL_TRIGGER_ONEQUIP')
+end)
+
+test('tooltip del efecto: cache por itemID solo si se pudo leer; ilegible = no se sabe', function()
+    addItem(740, {})
+    local real = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function() FAKE.tooltipCalls = FAKE.tooltipCalls + 1; return nil end
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true, 'sin datos del tooltip: conservador')
+    C_TooltipInfo.GetHyperlink = function() error('roto') end
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true, 'error: conservador')
+    C_TooltipInfo.GetHyperlink = real
+    FAKE.tooltipCalls = 0
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, false, 'legible y sin efecto')
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, false)
+    eq(FAKE.tooltipCalls, 1, 'la segunda lectura sale de la cache')
+    -- Con hechizo informado no se lee el tooltip.
+    addItem(741, { spell = true })
+    FAKE.tooltipCalls = 0
+    eq(ns.Player.ReadLink(FAKE.linkOf(741)).hasUseOrEquipSpell, true)
+    eq(FAKE.tooltipCalls, 0)
+end)
+
+test('sin C_TooltipInfo: GameTooltip oculto; si tampoco se puede leer -> conservador', function()
+    FAKE.Remove('C_TooltipInfo')
+    addItem(750, { tooltip = { 'Equipar: algo.' } })
+    addItem(751, { tooltip = { 'Durabilidad 30 / 30' } })
+    -- El GameTooltip del stub no tiene NumLines: ilegible.
+    eq(ns.Player.ReadLink(FAKE.linkOf(751)).hasUseOrEquipSpell, true, 'ilegible')
+    ns.Player.ResetState()
+    local realCreate = CreateFrame
+    CreateFrame = function(kind, name, parent, template)
+        local frame = realCreate(kind, name, parent, template)
+        if kind == 'GameTooltip' then
+            frame.count = 0
+            function frame:ClearLines() self.count = 0 end
+            function frame:NumLines() return self.count end
+            function frame:SetHyperlink(link)
+                local id = tonumber(link:match('item:(%d+)'))
+                local texts = { FAKE.items[id].name }
+                for _, text in ipairs(FAKE.items[id].tooltip or {}) do texts[#texts + 1] = text end
+                for index, text in ipairs(texts) do realCreate('FontString', name .. 'TextLeft' .. index):SetText(text) end
+                self.count = #texts
+            end
+        end
+        return frame
+    end
+    local success, err = pcall(function()
+        eq(ns.Player.ReadLink(FAKE.linkOf(750)).hasUseOrEquipSpell, true, 'efecto por GameTooltip')
+        eq(ns.Player.ReadLink(FAKE.linkOf(751)).hasUseOrEquipSpell, false, 'sin efecto por GameTooltip')
+    end)
+    CreateFrame = realCreate
+    if not success then error(err, 0) end
+end)
+
 test('ReadItem y ReadLink devuelven subclassName (7mo valor de GetItemInfo)', function()
     addItem(710, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
     FAKE.bags['0:1'] = 710
