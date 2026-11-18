@@ -376,7 +376,7 @@ test('Loot: martillo verde y gris en el botin; el tinte no se hereda al reciclar
     with('hammer_mine', open)
     local texture = buttons[1].KnuJunkMark
     ok(visible(buttons[1])); eq(texture.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
-    eq(texture.vertex[1], (95/255)); eq(texture.vertex[2], (208/255)); eq(texture.vertex[3], (104/255))
+    eq(texture.vertex[1], (111/255)); eq(texture.vertex[2], (211/255)); eq(texture.vertex[3], (106/255))
     ok(not texture.desaturated)
     with('hammer_other', function() LootFrame_Update() end)
     ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 1); eq(texture.vertex[3], (60/255))

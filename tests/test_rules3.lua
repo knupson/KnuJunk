@@ -145,8 +145,8 @@ test('R14/R24: tooltip localizado, requisito opcional y colores', function()
             ns.Classify=function() return {mark=mark,reasons={{kind='recipe',skillLine=165,rank=65}}} end
             local lines=ns.Tooltip.Lines(FAKE.linkOf(ID))
             eq(#lines,2); ok(lines[2].text:find('Receta de ',1,true)); ok(lines[2].text:find(', requiere 65',1,true))
-            eq(lines[2].r,mark=='hammer_mine' and (95/255) or 1)
-            eq(lines[2].g,mark=='hammer_mine' and 208/255 or 154/255)
+            eq(lines[2].r,mark=="hammer_mine" and (111/255) or 1)
+            eq(lines[2].g,mark=="hammer_mine" and 211/255 or 154/255)
         end
         ns.Classify=function() return {reasons={{kind='recipe',skillLine=165}},mark='hammer_other'} end
         ok(not ns.Tooltip.Lines(FAKE.linkOf(ID))[2].text:find('requiere',1,true))

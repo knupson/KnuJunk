@@ -216,7 +216,7 @@ test('íconos: leyendas y colores en ambos idiomas',function()
             ns.DB.overrides[ID]=nil
             auction(120); lines=ns.Tooltip.Lines(FAKE.linkOf(ID))
             ok(lines[1].text:find(ns.L['%dg %ds %dc']:format(0,1,20),1,true)); ok(lines[1].text:find(ns.L['%dg %ds %dc']:format(0,0,10),1,true))
-            eq(lines[1].r,194/255)
+            eq(lines[1].r,1)
         end
     end)
     ns.L,FAKE.locale=savedL,nil
@@ -272,7 +272,7 @@ test('subasta: regla de oro conserva útil aunque haya cotización',function()
 end)
 
 test('íconos: sliders y radios aplican inmediatamente sin superponer anclas',function()
-    local panel=ns.Options.Build(); panel:Show()
+    local panel=ns.Options.Build(); panel:SetSize(650,500); panel:Show()
     panel.controls['icons.size'].widget:SetValue(19)
     eq(ns.DB.icons.size,19)
     panel.controls['icons.opacity'].widget:SetValue(65)
@@ -285,14 +285,14 @@ test('íconos: sliders y radios aplican inmediatamente sin superponer anclas',fu
     radio:GetScript('OnClick')(radio); eq(ns.DB.icons.corner,'BOTTOMLEFT')
     ok(radio:GetChecked())
     ok(panel.controls['icons.size'].widget.points[1][2] ~= panel.title)
-    ok(panel.viewport.scrollChild == panel.content)
+    ok(panel.tabs.Icons.viewport.scrollChild == panel.tabs.Icons.content)
 end)
 
 test('íconos: selector moderno aplica y cancela color sin compartir defaults',function()
     local options
     ColorPickerFrame={SetupColorPickerAndShow=function(_,value) options=value end,
         GetColorRGB=function() return .1,.2,.3 end}
-    local panel=ns.Options.Build(); panel:Show()
+    local panel=ns.Options.Build(); panel:SetSize(650,500); panel:Show()
     local swatch=panel.swatches.protected
     ok(swatch); swatch:GetScript('OnClick')(swatch)
     eq(options.hasOpacity,false); eq(options.r,111/255)
@@ -309,7 +309,7 @@ test('íconos: selector clásico y API ausente',function()
     local panel=ns.Options.Build()
     panel.swatches.quest:GetScript('OnClick')()
     eq(shown,1); ColorPickerFrame.func(); eq(ns.DB.icons.colors.quest[1],.4)
-    ColorPickerFrame.cancelFunc(); eq(ns.DB.icons.colors.quest[1],242/255)
+    ColorPickerFrame.cancelFunc(); eq(ns.DB.icons.colors.quest[1],111/255)
     ns.Options.ResetState(); ColorPickerFrame={}
     panel=ns.Options.Build(); eq(next(panel.swatches),nil)
 end)
@@ -320,6 +320,18 @@ test('íconos: defaults completos y color propio del martillo ajeno',function()
     for _, kind in ipairs(ns.IconKinds) do eq(ns.DB.show[kind],true) end
     eq(ns.DB.icons.colors.hammer_other[2],154/255)
     ns.DB.icons.colors.coin[1]=.2; eq(ns.IconColors.coin[1],1)
+end)
+
+test('íconos: útil usa verde y conserva una forma distinta del martillo propio', function()
+    local expected = {111/255, 211/255, 106/255}
+    for channel, value in ipairs(expected) do
+        eq(ns.IconColors.useful[channel], value)
+        eq(ns.DB.icons.colors.useful[channel], value)
+    end
+    ok(ns.Marks.TEXTURES.useful ~= ns.Marks.TEXTURES.hammer_mine)
+    ns.Options.SetColor('useful', .1, .2, .3)
+    ns.Options.RestoreColors()
+    for channel, value in ipairs(expected) do eq(ns.DB.icons.colors.useful[channel], value) end
 end)
 
 test('íconos: ocultar botín no oculta misión en bolsa',function()
@@ -339,4 +351,17 @@ test('Baganator: gris usa widget propio si la moneda nativa está desactivada',f
     eq(entry.onUpdate(widget,details),true)
     state.activeWidgets.junk=true
     eq(entry.onUpdate(widget,details),false)
+end)
+
+test('íconos: los colores por defecto viejos migran a la paleta de 4 colores; los elegidos por el usuario no', function()
+    local colors = {
+        protected = {111/255,179/255,1}, quest = {242/255,227/255,179/255}, useful = {138/255,138/255,138/255},
+        trash = {224/255,106/255,90/255}, coin = {0.1, 0.2, 0.3},
+    }
+    ns.MigrateIconColors(colors)
+    eq(colors.protected[1], 111/255); eq(colors.protected[2], 211/255); eq(colors.protected[3], 106/255)
+    eq(colors.quest[2], 211/255); eq(colors.useful[2], 211/255)
+    eq(colors.trash[1], 232/255); eq(colors.trash[2], 90/255)
+    eq(colors.coin[1], 0.1); eq(colors.coin[2], 0.2); eq(colors.coin[3], 0.3)
+    ns.MigrateIconColors(nil)
 end)

@@ -30,6 +30,7 @@ end
 -- Panel construido y a la vista (el panel real nace oculto y lo muestra la ventana de opciones).
 local function openPanel()
     local panel = ns.Options.Build()
+    panel:SetSize(650, 500)
     panel:Show()
     return panel
 end
@@ -53,8 +54,200 @@ test('los interruptores incluyen protección del vendedor, en orden y con ayuda'
     for index, path in ipairs(PATHS) do
         local toggle = ns.Options.TOGGLES[index]
         eq(toggle.path, path)
-        ok(toggle.label and toggle.help, 'texto de ' .. path)
+        ok(toggle.label, 'texto de ' .. path)
+        if path:match('^show%.') and path ~= 'show.loot' then eq(toggle.help, nil)
+        else ok(toggle.help, 'ayuda de ' .. path) end
     end
+end)
+
+test('pestañas: espera un ancho positivo y distribuye al mostrar por primera vez', function()
+    local panel = ns.Options.Build()
+    eq(panel:GetWidth(), 0)
+    panel:Show()
+    eq(panel.layoutCount, nil)
+    for _, key in ipairs(ns.Options.TABS) do
+        for _, frame in ipairs(panel.tabs[key].rows) do eq(frame:GetWidth(), 0) end
+    end
+    -- Simula que Settings le da tamaño antes del OnShow sin emitir OnSizeChanged.
+    panel.w, panel.h = 650, 500
+    panel:Show()
+    ok(panel.layoutCount > 0)
+    eq(panel.tabs.General.rows[1]:GetWidth(), 618)
+end)
+
+test('pestañas: recalcula ancho, alto medido y scroll cuando cambia el tamaño', function()
+    local panel = ns.Options.Build()
+    panel:SetSize(650, 500); panel:Show()
+    local count = panel.layoutCount
+    local help = panel.checks['rules.food'].help
+    local height = help:GetHeight()
+    panel:SetWidth(400)
+    eq(panel.layoutCount, count + 1)
+    eq(panel.tabs.Rules.rows[1]:GetWidth(), 368)
+    eq(help:GetWidth(), 342)
+    ok(help:GetHeight() > height)
+    panel:SetHeight(220)
+    ok(panel.tabs.Icons.limit > 0)
+    local viewport = panel.tabs.Icons.viewport
+    viewport:GetScript('OnMouseWheel')(viewport, -1000)
+    eq(viewport:GetVerticalScroll(), panel.tabs.Icons.limit)
+    panel:SetHeight(2000)
+    eq(panel.tabs.Icons.limit, 0)
+    eq(viewport:GetVerticalScroll(), 0)
+    count = panel.layoutCount
+    panel:SetWidth(0)
+    eq(panel.layoutCount, count)
+end)
+
+test('pestañas: una sola página visible y selección persistente al reconstruir', function()
+    local panel = ns.Options.Build(); panel:SetSize(650, 500); panel:Show()
+    eq(ns.DB.ui.tab, 'General')
+    for _, selected in ipairs(ns.Options.TABS) do
+        panel.tabs[selected].button:GetScript('OnClick')()
+        eq(ns.DB.ui.tab, selected)
+        for _, key in ipairs(ns.Options.TABS) do
+            eq(panel.tabs[key].viewport:IsVisible(), key == selected)
+            eq(panel.tabs[key].highlight:IsShown(), key == selected)
+        end
+    end
+    panel:Hide()
+    ns.Options.ResetState()
+    panel = ns.Options.Build(); panel:SetSize(650, 500); panel:Show()
+    eq(panel.selectedTab, 'Marks')
+    ns.DB.ui.tab = 'inexistente'
+    ns.Options.ResetState()
+    panel = ns.Options.Build(); panel:Show()
+    eq(panel.selectedTab, 'General')
+    eq(ns.Options.SelectTab('inexistente'), false)
+end)
+
+test('pestañas: anchos de texto explícitos y filas sin superposición en ambos idiomas', function()
+    local realL = ns.L
+    local success, err = pcall(function()
+        for _, locale in ipairs({ 'esES', 'enUS' }) do
+            FAKE.locale = locale
+            assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+            ns.Options.ResetState()
+            local panel = ns.Options.Build()
+            for _, width in ipairs({ 650, 400, 900 }) do
+                panel:SetSize(width, 500); panel:Show()
+                for _, key in ipairs(ns.Options.TABS) do
+                    local page, bottom = panel.tabs[key], 0
+                    for index, frame in ipairs(page.rows) do
+                        local top = -frame.points[1][5]
+                        eq(frame:GetWidth(), width - 32)
+                        eq(frame.points[1][2], page.content)
+                        eq(top, index == 1 and 0 or bottom + frame.before)
+                        bottom = top + frame:GetHeight()
+                        for _, text in ipairs(FAKE.frames) do
+                            if text.parent == frame and text.kindType == 'FontString' then
+                                ok(text.wordWrap)
+                                eq(text.justifyH, 'LEFT')
+                                ok(text:GetWidth() > 0)
+                                eq(text.measuredWidth, text:GetWidth())
+                                local x = text.points[1][4]
+                                ok(x + text:GetWidth() <= frame:GetWidth() + .001)
+                                ok(-text.points[1][5] + text:GetHeight() <= frame:GetHeight() + .001)
+                            end
+                        end
+                    end
+                    eq(page.content:GetHeight(), bottom)
+                end
+                for _, toggle in ipairs(ns.Options.TOGGLES) do
+                    local check = panel.checks[toggle.path]
+                    if check.help then eq(check.help:GetWidth(), width - 32 - 26) end
+                end
+                eq(panel.baganatorNote:GetWidth(), width - 32)
+                for _, text in ipairs(panel.footer) do eq(text:GetWidth(), width - 32) end
+            end
+        end
+    end)
+    ns.L, FAKE.locale = realL, nil
+    if not success then error(err, 0) end
+end)
+
+test('pestañas: tecla y colores comparten la fila con su etiqueta', function()
+    ColorPickerFrame = { GetColorRGB = function() return 1, 1, 1 end, SetColorRGB = function() end }
+    local panel = ns.Options.Build(); panel:SetSize(650, 500); panel:Show()
+    eq(panel.bindingButton:GetParent(), panel.bindingRow)
+    eq(panel.bindingLabel:GetParent(), panel.bindingRow)
+    eq(panel.bindingKey:GetParent(), panel.bindingRow)
+    eq(panel.bindingButton.points[1][2], panel.bindingRow)
+    eq(panel.bindingButton.points[1][1], 'TOPRIGHT')
+    eq(panel.bindingButton.points[1][5], panel.bindingLabel.points[1][5])
+    for _, kind in ipairs(ns.IconKinds) do
+        local check, swatch = panel.checks['show.' .. kind], panel.swatches[kind]
+        eq(check.help, nil)
+        eq(swatch:GetParent(), check.row)
+        eq(check.label:GetParent(), check.row)
+        eq(swatch.points[1][2], check.points[1][2])
+        eq(swatch.points[1][5], check.points[1][5])
+        eq(swatch.points[1][1], 'TOPRIGHT')
+        eq(check.label:GetWidth(), check.row:GetWidth() - 26 - 30)
+    end
+    eq(panel.restoreColors.template, 'UIPanelButtonTemplate')
+    eq(panel.restoreColors.bg[1], ns.KL:GetTheme().backdrop.r)
+    local button = panel.bindingButton
+    button:GetScript('OnClick')(button)
+    ok(button.capturing)
+    ns.Options.SelectTab('Rules')
+    eq(button.capturing, false)
+    eq(button.keyboard, false)
+end)
+
+test('pestañas: esquina en cuadrícula de dos por dos y controles a todo el ancho', function()
+    local panel = ns.Options.Build(); panel:SetSize(650, 500); panel:Show()
+    local controls = panel.controls
+    local tl, tr = controls['icons.cornerTOPLEFT'].widget, controls['icons.cornerTOPRIGHT'].widget
+    local bl, br = controls['icons.cornerBOTTOMLEFT'].widget, controls['icons.cornerBOTTOMRIGHT'].widget
+    eq(tl.points[1][5], tr.points[1][5]); eq(bl.points[1][5], br.points[1][5])
+    eq(tl.points[1][4], bl.points[1][4]); eq(tr.points[1][4], br.points[1][4])
+    ok(bl.points[1][5] < tl.points[1][5])
+    for _, path in ipairs({ 'icons.size', 'icons.opacity', 'auction.factor', 'auction.minCopper' }) do
+        eq(controls[path].widget:GetWidth(), 650 - 32 - 16)
+        eq(controls[path].label:GetWidth(), 650 - 32)
+    end
+    eq(panel.list:GetWidth(), 650 - 32 - 16)
+end)
+
+test('pestañas: nombres largos de marcas se envuelven sin tapar Quitar ni el pie', function()
+    for id = 1, 12 do
+        addItem(id, string.rep('Cristal de prueba ', id % 3 + 2))
+        ns.DB.overrides[id] = 'sell'
+    end
+    local panel = ns.Options.Build(); panel:SetSize(400, 400); panel:Show()
+    ns.Options.SelectTab('Marks')
+    for offset = 0, panel.scroll.max do
+        panel.scroll:SetValue(offset)
+        local bottom = 0
+        for _, frame in ipairs(panel.rows) do
+            if frame:IsShown() then
+                local top = -frame.points[1][5]
+                ok(top >= bottom)
+                ok(frame.name:GetHeight() + 8 <= frame:GetHeight())
+                ok(frame.kind:GetHeight() + 8 <= frame:GetHeight())
+                ok(frame.name:GetWidth() > 0)
+                eq(frame.name.measuredWidth, frame.name:GetWidth())
+                bottom = top + frame:GetHeight()
+            end
+        end
+        ok(bottom <= panel.list:GetHeight())
+    end
+    local last
+    for _, frame in ipairs(panel.rows) do if frame:IsShown() then last = frame.id end end
+    eq(last, 12)
+end)
+
+test('pestañas: asignar una combinación larga vuelve a medir la fila de tecla', function()
+    local panel = ns.Options.Build(); panel:SetSize(400, 500); panel:Show()
+    local button = panel.bindingButton
+    button:GetScript('OnClick')(button)
+    FAKE.shift, FAKE.ctrl, FAKE.alt = true, true, true
+    button:GetScript('OnKeyDown')(button, 'NUMPADDECIMAL')
+    eq(panel.bindingKey:GetText(), 'SHIFT-CTRL-ALT-NUMPADDECIMAL')
+    ok(panel.bindingKey:GetHeight() > 24)
+    eq(panel.bindingKey:GetHeight(), panel.bindingKey:GetStringHeight())
+    ok(panel.bindingKey:GetHeight() < -panel.bindingHelp.points[1][5])
 end)
 
 test('Get lee la DB y Set la cambia y refresca una sola vez', function()
@@ -163,8 +356,8 @@ test('sin marcas manuales se ve el texto de lista vacia', function()
     local panel = openPanel()
     eq(#visibleRows(panel), 0)
     eq(panel.empty:IsShown(), true)
-    eq(panel.empty:GetText(), ns.L['No manual marks yet. Assign a key above to change an item mark under the mouse.'])
-    eq(panel.empty:GetText(), 'Todavía no hay marcas manuales. Asigná una tecla arriba para cambiar la marca del ítem bajo el mouse.')
+    eq(panel.empty:GetText(), ns.L['No manual marks yet. Choose a key in General to change the mark under the mouse.'])
+    eq(panel.empty:GetText(), 'Todavía no hay marcas manuales. Asigná una tecla en General para cambiar la marca del ítem bajo el mouse.')
 end)
 
 test('Quitar borra esa marca, refresca una vez y actualiza la lista', function()
@@ -270,7 +463,7 @@ end)
 test('todos los textos del panel tienen traduccion al castellano', function()
     withLocale('esES', function()
         local keys = { 'Marks', 'Optional rules (off by default)', 'Manual marks', 'Protected', 'Sell (legacy mark)', 'Remove',
-            'Item %d', 'No manual marks yet. Assign a key above to change an item mark under the mouse.' }
+            'Item %d', 'No manual marks yet. Choose a key in General to change the mark under the mouse.' }
         for _, toggle in ipairs(ns.Options.TOGGLES) do keys[#keys + 1] = toggle.label; keys[#keys + 1] = toggle.help end
         for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'sin traducir: ' .. key) end
         eq(ns.L['Marks'], 'Marcas'); eq(ns.L['Remove'], 'Quitar'); eq(ns.L['Protected'], 'Protegido'); eq(ns.L['Sell (legacy mark)'], 'Vender (marca vieja)')

@@ -4,14 +4,39 @@ ns.KL = KL
 ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, loot = true }, overrides = {} }
 ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false }
 ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful' }
+-- Paleta de 4 colores (decision del user 2026-11-18): el color dice que hacer, la forma por que.
+-- Verde = te sirve, naranja = le sirve a otro, amarillo = plata, rojo = tirar.
+local GREEN, ORANGE, YELLOW, RED = {111/255,211/255,106/255}, {1,154/255,60/255}, {1,210/255,60/255}, {232/255,90/255,74/255}
 ns.IconColors = {
-    protected = {111/255,179/255,1}, quest = {242/255,227/255,179/255},
-    hammer_mine = {95/255,208/255,104/255}, hammer_other = {1,154/255,60/255},
-    auction = {194/255,123/255,1}, coin = {1,210/255,60/255},
-    trash = {224/255,106/255,90/255}, useful = {138/255,138/255,138/255},
+    protected = GREEN, quest = GREEN, hammer_mine = GREEN, useful = GREEN,
+    hammer_other = ORANGE, auction = YELLOW, coin = YELLOW, trash = RED,
 }
+-- Colores por defecto de versiones anteriores: un color guardado identico a uno de estos se
+-- considera "nunca tocado" y pasa al nuevo valor por defecto.
+local OLD_DEFAULTS = {
+    protected = {{111/255,179/255,1}}, quest = {{242/255,227/255,179/255}},
+    hammer_mine = {{95/255,208/255,104/255}}, auction = {{194/255,123/255,1}},
+    trash = {{224/255,106/255,90/255}}, useful = {{138/255,138/255,138/255}, {123/255,201/255,111/255}},
+}
+function ns.MigrateIconColors(colors)
+    if type(colors) ~= 'table' then return end
+    for kind, olds in pairs(OLD_DEFAULTS) do
+        local saved = colors[kind]
+        if type(saved) == 'table' then
+            for _, old in ipairs(olds) do
+                if math.abs((saved[1] or -1) - old[1]) < 0.002 and math.abs((saved[2] or -1) - old[2]) < 0.002
+                    and math.abs((saved[3] or -1) - old[3]) < 0.002 then
+                    local new = ns.IconColors[kind]
+                    colors[kind] = { new[1], new[2], new[3] }
+                    break
+                end
+            end
+        end
+    end
+end
 ns.Defaults.icons = { size = 14, opacity = 1, background = true, corner = 'TOPRIGHT', coinStyle = 'Blizzard', colors = ns.IconColors }
 ns.Defaults.auction = { factor = 2, minCopper = 100 }
+ns.Defaults.ui = { tab = 'General' }
 for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
 ns.Print = KL:NewPrinter('Junk')
 ns.Data = ns.Data or {}
@@ -73,6 +98,7 @@ frame:SetScript('OnEvent', function(_, event, name)
             if show.hammer_other == nil then show.hammer_other = show.hammer end
             show.hammer = nil
         end
+        if type(KnuJunkDB.icons) == 'table' then ns.MigrateIconColors(KnuJunkDB.icons.colors) end
         merge(KnuJunkDB, ns.Defaults)
         ns.DB = KnuJunkDB
     elseif event == 'PLAYER_LOGIN' then

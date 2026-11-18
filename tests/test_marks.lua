@@ -115,7 +115,7 @@ test('martillo propio: verde; ajeno: gris claro; textura propia sin recorte ni d
     withMark('hammer_mine', function() ns.Marks.Update(button, 0, 1) end)
     ok(visible(button))
     eq(button.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
-    eq(button.KnuJunkMark.vertex[1], (95/255)); eq(button.KnuJunkMark.vertex[2], (208/255)); eq(button.KnuJunkMark.vertex[3], (104/255))
+    eq(button.KnuJunkMark.vertex[1], (111/255)); eq(button.KnuJunkMark.vertex[2], (211/255)); eq(button.KnuJunkMark.vertex[3], (106/255))
     ok(not button.KnuJunkMark.desaturated)
     eq(button.KnuJunkMark.alpha, 1)
     eq(table.concat(button.KnuJunkMark.texCoord, ','), '0,1,0,1')
