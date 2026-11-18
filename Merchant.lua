@@ -5,6 +5,7 @@ ns.Merchant = Merchant
 local opened, syncing = false, false
 local locked, allowed = {}, {}
 local buttons = setmetatable({}, { __mode = 'k' })
+local hoveredShield, hoveredButton, hoveredBag, hoveredSlot
 
 -- Toda API del cliente queda aislada; false explícito también indica fallo.
 local function call(fn, ...)
@@ -103,13 +104,79 @@ local function popup(bag, slot)
     if type(StaticPopupDialogs) ~= 'table' then return end
     if not StaticPopupDialogs.KNUJUNK_CONFIRM_SELL then
         StaticPopupDialogs.KNUJUNK_CONFIRM_SELL = {
-            text = ns.L['%s is marked «always keep». Sell it anyway?'],
+            text = ns.L['%s is protected. Sell it anyway?'],
             button1 = YES or ns.L['Yes'], button2 = NO or ns.L['No'],
             timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
             OnAccept = accept,
         }
     end
     call(StaticPopup_Show, 'KNUJUNK_CONFIRM_SELL', link, nil, { bag = bag, slot = slot, guid = guid })
+end
+
+-- Escudo compartido para bolsas que solo usan Verdict (por ejemplo Baganator).
+function Merchant.HideHoveredShield()
+    if hoveredShield then call(hoveredShield.Hide, hoveredShield) end
+    hoveredButton, hoveredBag, hoveredSlot = nil, nil, nil
+end
+
+function Merchant.ShowHoveredShield(bag, slot)
+    local function reject() Merchant.HideHoveredShield() end
+    if not opened or not enabled() or combat() or not shieldsAvailable() then return reject() end
+    if type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return reject() end
+    local guid = guidAt(bag, slot)
+    if not guid or not locked[guid] or not keepAt(bag, slot) then return reject() end
+    local success, focus
+    if type(GetMouseFoci) == 'function' then
+        local foci
+        success, foci = call(GetMouseFoci)
+        if success and type(foci) == 'table' then focus = foci[1] end
+    end
+    if not focus and type(GetMouseFocus) == 'function' then
+        success, focus = call(GetMouseFocus)
+        if not success then focus = nil end
+    end
+    -- Al reentrar por Show/OnEnter el foco puede ser nuestro propio escudo.
+    if hoveredShield and focus == hoveredShield then focus = hoveredShield.target end
+    if type(focus) ~= 'table' or focus == rawget(_G, 'GameTooltip') then return reject() end
+    local gotLevel, level = call(focus.GetFrameLevel, focus)
+    if not gotLevel or type(level) ~= 'number' then return reject() end
+    if focus == hoveredButton and bag == hoveredBag and slot == hoveredSlot
+        and hoveredShield and hoveredShield:IsShown() then return hoveredShield end
+    Merchant.HideHoveredShield()
+    if not hoveredShield then
+        local created, shield = call(CreateFrame, 'Frame', nil, UIParent)
+        if not created or not shield then return end
+        call(shield.Hide, shield)
+        if not call(shield.SetPassThroughButtons, shield, 'LeftButton') then return end
+        hoveredShield = shield
+        call(shield.EnableMouse, shield, true)
+        shield:SetScript('OnMouseUp', function(_, mouse)
+            if mouse == 'RightButton' and hoveredButton then pcall(popup, hoveredBag, hoveredSlot) end
+        end)
+        shield:SetScript('OnEnter', function()
+            local button = hoveredButton
+            if button then
+                local got, fn = call(button.GetScript, button, 'OnEnter')
+                if got then call(fn, button) end
+            end
+        end)
+        shield:SetScript('OnLeave', function()
+            local button = hoveredButton
+            if button then
+                local got, fn = call(button.GetScript, button, 'OnLeave')
+                if got then call(fn, button) end
+            end
+            Merchant.HideHoveredShield()
+        end)
+    end
+    call(hoveredShield.ClearAllPoints, hoveredShield)
+    if not call(hoveredShield.SetParent, hoveredShield, focus)
+        or not call(hoveredShield.SetAllPoints, hoveredShield, focus)
+        or not call(hoveredShield.SetFrameLevel, hoveredShield, level + 1) then return end
+    hoveredButton, hoveredBag, hoveredSlot = focus, bag, slot
+    hoveredShield.target = focus
+    call(hoveredShield.Show, hoveredShield)
+    return hoveredShield
 end
 
 local function updateShield(button, entry)
@@ -148,6 +215,8 @@ local function updateShield(button, entry)
 end
 
 local function syncBody()
+    -- Cualquier cambio puede reciclar el boton/slot o retirar el bloqueo.
+    Merchant.HideHoveredShield()
     if not opened or not enabled() then
         for guid in pairs(locked) do unlock(guid) end
     elseif not combat() and apiReady() then
@@ -227,6 +296,7 @@ end)
 -- Solo pruebas: restaura el estado del módulo entre clientes simulados.
 function Merchant.ResetState()
     opened, syncing = false, false
+    Merchant.HideHoveredShield()
     for button in pairs(buttons) do pcall(hide, button) end
     locked, allowed = {}, {}
     buttons = setmetatable({}, { __mode = 'k' })

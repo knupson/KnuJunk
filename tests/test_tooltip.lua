@@ -15,6 +15,9 @@ local function newTooltip(id)
     tooltip.lines = {}
     tooltip.link = id and FAKE.linkOf(id) or nil
     function tooltip:AddLine(text, r, g, b)
+        if text:find(ns.L['Icon: %s']:format(''),1,true) == 1 then
+            self.legend = {text=text,r=r,g=g,b=b}; return
+        end
         self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
         CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(text)
     end
@@ -124,7 +127,7 @@ test('Tooltip: lineas de mision activa, iniciador y quest_not_active', function(
     withClassify(function() return cases[1][1] end, function()
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
-        ok(tooltip.lines[1].text:find('AvailableQuestIcon', 1, true), 'signo de mision')
+        ok(tooltip.lines[1].text:find('media\\quest', 1, true), 'signo de mision')
     end)
 end)
 
@@ -165,8 +168,8 @@ test('Tooltip: hammer_other lista dos profesiones en el orden del clasificador, 
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
-        local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', { 1, 0.85, 0.2 })
-        ok(hasIcon(entry), 'icono'); ok(entry.text:find('media\\martillo:14:14:0:0:64:64:0:64:0:64:255:217:51|t ', 1, true), 'martillo ajeno gris: ' .. entry.text)
+        local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', {1,154/255,60/255})
+        ok(hasIcon(entry), 'icono'); ok(entry.text:find('media\\martillo:14:14:0:0:64:64:0:64:0:64:255:154:60|t ', 1, true), 'martillo ajeno gris: ' .. entry.text)
     end)
 end)
 
@@ -180,7 +183,7 @@ test('Tooltip: hammer_mine muestra tu profesion en verde', function()
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
-        line(tooltip, 1, 'Tu profesión: Herrería', { 0.25, 0.85, 0.35 })
+        line(tooltip, 1, 'Tu profesión: Herrería', {95/255,208/255,104/255})
     end)
 end)
 
@@ -202,7 +205,7 @@ test('Tooltip: herramienta de tu profesion en verde con martillo', function()
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
-        local entry = line(tooltip, 1, 'Herramienta de tu profesión: Herrería', { 0.25, 0.85, 0.35 })
+        local entry = line(tooltip, 1, 'Herramienta de tu profesión: Herrería', {95/255,208/255,104/255})
         ok(hasIcon(entry), 'icono')
     end)
 end)
@@ -216,7 +219,7 @@ test('Tooltip: herramienta de una profesion que no tenes en gris con martillo', 
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
-        local entry = line(tooltip, 1, 'Herramienta de profesión que no tenés: Minería', { 1, 0.85, 0.2 })
+        local entry = line(tooltip, 1, 'Herramienta de profesión que no tenés: Minería', {1,154/255,60/255})
         ok(hasIcon(entry), 'icono')
     end)
 end)
@@ -229,8 +232,8 @@ test('Tooltip: override visible (keep y sell), en blanco', function()
     ns.Tooltip.Hook()
     local keep, sell = newTooltip(100), newTooltip(101)
     run(processor, keep, {}); run(processor, sell, {})
-    eq(#keep.lines, 1); line(keep, 1, 'Marcado a mano: guardar', { 1, 1, 1 })
-    eq(#sell.lines, 1); line(sell, 1, 'Marcado a mano: vender', { 1, 1, 1 })
+    eq(#keep.lines, 1); line(keep, 1, 'Protegido (a mano)', { 1, 1, 1 })
+    eq(#sell.lines, 1); line(sell, 1, 'Vender (marca vieja)', { 1, 1, 1 })
     ok(hasIcon(sell.lines[1]), 'vender lleva la moneda')
 end)
 
@@ -406,7 +409,7 @@ end)
 
 test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
-        "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',
+        "Profession you don't have: %s", 'Protected (by hand)', 'Sell (legacy mark)',
         'Tool for your profession: %s', "Tool for a profession you don't have: %s" }
     for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'traduccion de ' .. key) end
 end)
@@ -437,7 +440,7 @@ test('Tooltip: cambio de item sin clear -> lineas del nuevo, sin repetir las ant
     run(processor, tooltip, data)
     run(processor, tooltip, data)
     eq(#tooltip.lines, 2)
-    line(tooltip, 1, 'Basura: se vende'); line(tooltip, 2, 'Marcado a mano: guardar')
+    line(tooltip, 1, 'Basura: se vende'); line(tooltip, 2, 'Protegido (a mano)')
 end)
 
 test('Tooltip: clear y rearmado del mismo item -> las lineas vuelven', function()
@@ -567,7 +570,7 @@ test('Tooltip: decoracion parcial (la 2.a AddLine falla una vez) -> el reintento
     local original, calls = tooltip.AddLine, 0
     function tooltip:AddLine(...)
         calls = calls + 1
-        if calls == 2 then error('fallo transitorio') end
+        if calls == 3 then error('fallo transitorio') end
         return original(self, ...)
     end
     local data = {}
@@ -595,7 +598,7 @@ test('Tooltip: parcial tambien con el tooltip ilegible (respaldo por registro)',
     local original, calls = tooltip.AddLine, 0
     function tooltip:AddLine(...)
         calls = calls + 1
-        if calls == 2 then error('fallo transitorio') end
+        if calls == 3 then error('fallo transitorio') end
         return original(self, ...)
     end
     withClassify(function()
@@ -617,6 +620,9 @@ test('Tooltip: regiones legibles con el icono quitado por el cliente -> no se du
     ns.Tooltip.Hook()
     local tooltip = newTooltip(100)
     function tooltip:AddLine(text, r, g, b)
+        if text:find(ns.L['Icon: %s']:format(''),1,true) == 1 then
+            self.legend = {text=text,r=r,g=g,b=b}; return
+        end
         self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
         local shown = text:gsub('|T.-|t', '') -- el cliente devuelve el texto sin el escape del icono
         CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(' ' .. shown)
@@ -671,8 +677,8 @@ test('Tooltip: reactivo con mision activa de Questie -> linea de mision y martil
             run(processor, plain, {})
             eq(#plain.lines, 2)
             local entry = line(plain, 1, 'Misión activa: #77', { 1, 1, 1 })
-            ok(entry.text:find('GossipFrame\\AvailableQuestIcon', 1, true), 'icono de mision: ' .. entry.text)
-            line(plain, 2, 'Profesión que no tenés: Herrería', { 1, 0.85, 0.2 })
+            ok(entry.text:find('media\\quest', 1, true), 'icono de mision: ' .. entry.text)
+            line(plain, 2, 'Profesión que no tenés: Herrería', {1,154/255,60/255})
             for _, l in ipairs(plain.lines) do ok(not l.text:find('UI-GoldIcon', 1, true), 'nunca moneda') end
             C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
             local named = newTooltip(100)

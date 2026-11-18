@@ -170,7 +170,7 @@ test('iniciador hecho con flags faltantes o invalidos en QuestieDB -> sin moneda
     local ctx = ns.Player.GetContext()
     for _, id in ipairs({ 620, 621 }) do
         local result = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(id)), ctx)
-        eq(result.mark, nil, 'item ' .. id)
+        eq(result.mark, 'useful', 'item ' .. id)
         eq(result.reasons[1].kind, 'quest_starter_done_unknown_repeat', 'item ' .. id)
     end
     local confirmed = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(622)), ctx)
@@ -356,7 +356,7 @@ test('indice sin terminar: item gris de una mision sin hacer no da moneda; con e
     FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
     local item = ns.Player.ReadLink(FAKE.linkOf(500))
     local before = ns.Classify(item, ns.Player.GetContext())
-    eq(before.mark, nil, 'sin moneda antes de terminar el indice')
+    eq(before.mark, 'useful', 'sin moneda antes de terminar el indice')
     eq(before.reasons[1].kind, 'quest_log_incomplete')
     FAKE.completed[10] = true
     FAKE.Advance(5)
@@ -373,7 +373,7 @@ test('item de clase que no puede usar tampoco da moneda mientras el indice esta 
     FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 501 } } } } })
     local item = ns.Player.ReadLink(FAKE.linkOf(501))
     item.hasUseOrEquipSpell = false
-    eq(ns.Classify(item, ns.Player.GetContext()).mark, nil)
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'useful')
     FAKE.Advance(5)
     FAKE.completed[10] = true
     ns.Player.Invalidate()
@@ -454,10 +454,10 @@ test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo
         local gray = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99012)), ctx)
         eq(gray.mark, 'quest'); eq(gray.reasons[1].kind, 'quest_active')
         local starter = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99013)), ctx)
-        eq(starter.mark, nil); eq(starter.reasons[1].kind, 'quest_repeatable')
+        eq(starter.mark, 'useful'); eq(starter.reasons[1].kind, 'quest_repeatable')
         local button = CreateFrame('Button', nil, UIParent)
         ns.Marks.Update(button, 0, 1)
-        ok(not (button.KnuJunkMark and button.KnuJunkMark:IsShown()), 'sin moneda visible en 0:1')
+        ok(button.KnuJunkMark:IsShown()); eq(button.KnuJunkMark.texture,ns.Marks.TEXTURES.quest)
     end)
     ns.Data.starters = savedStarters
     if not success then error(err, 0) end
@@ -477,7 +477,7 @@ test('startedBy: el uso del iniciador lleva starter = true y protege mientras la
     local item = ns.Player.ReadLink(FAKE.linkOf(600))
     ns.Player.Invalidate()
     local pending = ns.Classify(item, ns.Player.GetContext())
-    eq(pending.mark, nil); eq(pending.reasons[1].kind, 'quest_starter'); eq(pending.reasons[1].questID, 40)
+    eq(pending.mark, 'useful'); eq(pending.reasons[1].kind, 'quest_starter'); eq(pending.reasons[1].questID, 40)
     FAKE.completed[40] = true
     ns.Player.Invalidate()
     local done = ns.Classify(item, ns.Player.GetContext())

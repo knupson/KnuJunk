@@ -200,7 +200,7 @@ test('vendedor: tooltip agrega una sola línea mientras hay bloqueo propio', fun
     eq(matches, 1)
     FAKE.Fire('MERCHANT_CLOSED')
     lines = ns.Tooltip.Lines(FAKE.linkOf(100), nil, 0, 1)
-    for _, line in ipairs(lines) do ok(not line.text:find('Protegido', 1, true)) end
+    for _, line in ipairs(lines) do ok(line.text ~= ns.L['Protected: right-click to sell']) end
 end)
 
 test('vendedor: una venta con eventos sincrónicos no rebloquea el GUID', function()
@@ -259,8 +259,8 @@ end)
 test('vendedor: textos nuevos disponibles en esES, esMX y enUS', function()
     local previous, locale = ns.L, FAKE.locale
     local keys = {
-        '%s is marked «always keep». Sell it anyway?',
-        'Protect «always keep» items at the merchant',
+        '%s is protected. Sell it anyway?',
+        'Protect protected items at the merchant',
         'Locks them while the merchant is open; right-click asks before selling.',
         'Protected: right-click to sell', 'Protected while the merchant is open', 'Yes', 'No',
     }

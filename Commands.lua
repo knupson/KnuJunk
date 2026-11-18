@@ -23,7 +23,7 @@ function Commands.Help()
         'Options panel: /knu junk',
         'Marks on/off: /knu junk on | off',
         'One kind: /knu junk coin|hammer|loot on|off',
-        'By hand: /knu junk keep|sell|clear <item link or ID>',
+        'By hand: /knu junk keep|clear <item link or ID>',
         'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
@@ -43,7 +43,7 @@ function Commands.Status()
     say('QuestieDB: %s, index ready: %s', yesNo(info.questie), yesNo(info.ready))
     say('Bag adapters: %s', #info.adapters > 0 and table.concat(info.adapters, ', ') or L('none'))
     say('Marks: %s | coin: %s | hammer: %s | loot: %s', onOff(db.enabled), onOff(db.show.coin),
-        onOff(db.show.hammer), onOff(db.show.loot))
+        onOff(db.show.hammer_mine and db.show.hammer_other), onOff(db.show.loot))
     say('Manual marks: %d', info.overrides)
     Commands.RulesStatus()
 end
@@ -71,7 +71,7 @@ local function manual(action, rest)
         return
     end
     ns.Overrides.Set(id, action)
-    say('Item %d: %s', id, L(action == 'keep' and 'Marked by hand: keep' or 'Marked by hand: sell'))
+    say('Item %d: %s', id, L(action == 'keep' and 'Protected (by hand)' or 'Sell (legacy mark)'))
 end
 
 function Commands.Handle(args)
@@ -88,7 +88,7 @@ function Commands.Handle(args)
     elseif KINDS[sub] then
         local state = rest:lower()
         if state ~= 'on' and state ~= 'off' then say('Usage: /knu junk %s on|off', sub) return end
-        setFlag(function(value) db.show[sub] = value end, state == 'on', 'Mark %s: %s', sub)
+        setFlag(function(value) if sub == 'hammer' then db.show.hammer_mine, db.show.hammer_other = value, value else db.show[sub] = value end end, state == 'on', 'Mark %s: %s', sub)
     elseif sub == 'keep' or sub == 'sell' or sub == 'clear' then
         manual(sub, rest)
     elseif sub == 'status' then
@@ -113,7 +113,7 @@ function Commands.Register()
     local KL = LibStub('KnuLib-1.0')
     if KL.RegisterCommand then
         KL:RegisterCommand('junk', function(args) Commands.Handle(args) end,
-            L('Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status'), { 'kj' })
+            L('Junk marks: options panel, on/off, coin/hammer/loot, keep/clear, rules, status'), { 'kj' })
     end
 end
 
