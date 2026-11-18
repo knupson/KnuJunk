@@ -177,8 +177,8 @@ function ns.Classify(item, ctx)
     end
     -- Reactivo o herramienta de un hechizo de clase (Data/ClassReagents.lua: runas del mago, ankh,
     -- fragmento de alma, venenos...). Sin moneda y sin marca (nunca martillo, que es de profesiones);
-    -- no se exige que el hechizo ya este aprendido. Precedencia: martillo verde > reactivo de TU clase
-    -- > martillo amarillo (profesion que no tenes) > reactivo de otra clase. spells solo para tu clase.
+    -- no se exige que el hechizo ya este aprendido. Si ademas es material o herramienta de profesion,
+    -- manda el martillo (verde o amarillo): la clase solo evita la moneda. spells solo para tu clase.
     local classReagent = ns.Data.classReagents and ns.Data.classReagents[id]
     local classReason
     if type(classReagent) == 'table' then
@@ -190,10 +190,6 @@ function ns.Classify(item, ctx)
         local spells = own and type(classReagent.spells) == 'table' and classReagent.spells[ctx.class] or nil
         classReason = { kind = 'class_reagent', own = own, classes = classes, class = own and ctx.class or nil,
             spells = own and (type(spells) == 'table' and spells or {}) or nil }
-        if own then
-            reasons[#reasons + 1] = classReason
-            return result
-        end
     end
     if reagentLines then
         result.mark = 'hammer_other'

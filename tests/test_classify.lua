@@ -359,13 +359,13 @@ test('reactivo de clase propia o ajena -> sin moneda ni marca, motivo class_reag
             eq(sold.mark, 'coin', 'override_sell sigue valiendo')
         end)
     end)
-    -- Si ademas es reactivo de profesion: martillo verde > tu clase > martillo amarillo > otra clase.
+    -- Si ademas es reactivo de profesion manda el martillo (verde o amarillo), aunque sea de tu clase.
     withData({ [9000] = { 171 } }, {}, function()
         withClassReagents({ [9000] = { 'ROGUE', spells = { ROGUE = { 1 } } } }, function()
             eq(ns.Classify(item(), ctx { class = 'ROGUE', professions = { [171] = true } }).mark, 'hammer_mine', 'alquimista')
             local rogue = ns.Classify(item(), ctx { class = 'ROGUE' })
-            eq(rogue.mark, nil, 'picaro sin Alquimia: reactivo de su clase')
-            eq(hasReason(rogue, 'class_reagent').own, true)
+            eq(rogue.mark, 'hammer_other', 'picaro sin Alquimia: martillo amarillo igual')
+            ok(not hasReason(rogue, 'class_reagent'), 'el martillo explica el item')
             eq(ns.Classify(item(), ctx { class = 'MAGE' }).mark, 'hammer_other', 'otra clase sin Alquimia')
         end)
     end)
