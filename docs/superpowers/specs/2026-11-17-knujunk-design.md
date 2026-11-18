@@ -1,6 +1,6 @@
 # KnuJunk — diseño (2026-11-17)
 
-Addon de WoW Forever (Interface 16001, Lua 5.1) del ecosistema Knunet (KnuUI, KnuMail, KnuSonda, KnuLib). Idea del user. Material de respaldo en `E:\Repositorios\Personal\_datos\WOWAddons\knubags\`: `requisitos-user-2026-11-17.md`, `propuesta-2026-11-17.md`, `analisis/` (fichas de 18+ competidores con citas `archivo:línea`, comentarios de CurseForge, matriz de 69 addons, síntesis y auditoría).
+Addon de WoW Forever (Interface 16001, Lua 5.1) del ecosistema Knunet (KnuUI, KnuMail, KnuSonda, KnuLib). Idea del user. Material de respaldo en `E:\Repositorios\Personal\_datos\WOWAddons\knujunk\`: `requisitos-user-2026-11-17.md`, `propuesta-2026-11-17.md`, `analisis/` (fichas de 18+ competidores con citas `archivo:línea`, comentarios de CurseForge, matriz de 69 addons, síntesis y auditoría).
 
 ## 1. Intención
 El jugador abre la bolsa y sabe al instante qué puede vender o tirar y qué material le sirve a una profesión, sin pasar el mouse por cada item. Lo mismo al lootear un mob. Las cuatro molestias del user: bolsas llenas de basura, items de misiones viejas, no saber qué material guardar, miedo a tirar algo útil.
