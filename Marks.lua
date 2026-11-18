@@ -23,7 +23,7 @@ local TEXTURES = {
 }
 Marks.TEXTURES = TEXTURES -- las usa el tooltip para el icono en linea de cada motivo
 local MINE_TINT = { 0.25, 0.85, 0.35 }
-local OTHER_TINT = { 0.75, 0.75, 0.75 }
+local OTHER_TINT = { 1, 0.85, 0.2 } -- amarillo: material de una profesion que no tenes (vendible)
 -- Color de cada martillo (el tooltip lo usa para teñir su icono en linea igual que la marca).
 Marks.TINTS = { hammer_mine = MINE_TINT, hammer_other = OTHER_TINT }
 

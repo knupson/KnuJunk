@@ -123,7 +123,7 @@ test('martillo propio: verde; ajeno: gris claro; textura propia sin recorte ni d
     ok(visible(button))
     ok(not button.KnuJunkMark.desaturated, 'el martillo ajeno ya no se desatura')
     eq(button.KnuJunkMark.alpha, 1)
-    eq(button.KnuJunkMark.vertex[1], 0.75); eq(button.KnuJunkMark.vertex[2], 0.75); eq(button.KnuJunkMark.vertex[3], 0.75)
+    eq(button.KnuJunkMark.vertex[1], 1); eq(button.KnuJunkMark.vertex[2], 0.85); eq(button.KnuJunkMark.vertex[3], 0.2)
     eq(table.concat(button.KnuJunkMark.texCoord, ','), '0,1,0,1')
     withMark('coin', function() ns.Marks.Update(button, 0, 1) end)
     ok(not button.KnuJunkMark.desaturated, 'la moneda no hereda la desaturacion')

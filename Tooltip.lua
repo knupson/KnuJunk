@@ -12,7 +12,7 @@ ns.Tooltip = Tooltip
 local ICON_SIZE = 14
 local GOLD = { 1, 0.82, 0 }
 local GREEN = { 0.25, 0.85, 0.35 }
-local GRAY = { 0.6, 0.6, 0.6 }
+local GRAY = { 1, 0.85, 0.2 } -- amarillo, igual que el martillo ajeno
 local WHITE = { 1, 1, 1 }
 
 local hooked = false

@@ -365,7 +365,7 @@ test('Loot: martillo verde y gris en el botin; el tinte no se hereda al reciclar
     eq(texture.vertex[1], 0.25); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.35)
     ok(not texture.desaturated)
     with('hammer_other', function() LootFrame_Update() end)
-    ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 0.75); eq(texture.vertex[3], 0.75)
+    ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 1); eq(texture.vertex[3], 0.2)
     with('hammer_mine', function() LootFrame_Update() end)
     ok(not texture.desaturated, 'verde no hereda el desaturado del gris')
     eq(texture.alpha, 1)

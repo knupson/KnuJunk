@@ -166,7 +166,7 @@ test('widget de martillo devuelve true y textura verde para hammer_mine', functi
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
     end)
     ok(not texture.desaturated); eq(texture.alpha, 1)
-    eq(texture.vertex[1], 0.75); eq(texture.vertex[2], 0.75); eq(texture.vertex[3], 0.75)
+    eq(texture.vertex[1], 1); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.2)
     eq(table.concat(texture.texCoord, ','), '0,1,0,1')
     withMark('coin', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), false, 'el martillo no muestra monedas')
