@@ -311,7 +311,10 @@ class FilterTest(unittest.TestCase):
         self.assertEqual(dict(zip(self.COLUMNS, out)),
                          {'ID': '1', 'StartQuestID': '5', 'TotemCategoryID': '0',
                           'Display_lang': '', 'Description_lang': '', 'LockID': '0',
-                          'RequiredSkill': '0', 'RequiredSkillRank': '0'})
+                          'RequiredSkill': '0', 'RequiredSkillRank': '0', 'RequiredLevel': '0',
+                          'ItemLevel': '0', 'OverallQualityID': '0', 'AllowableClass': '0',
+                          'AllowableRace_0': '0', 'RequiredAbility': '0', 'MinFactionID': '0',
+                          'RequiredPVPRank': '0', 'RequiredHoliday': '0'})
 
     def test_special_items_keep_their_texts(self):
         book = self.row(Description_lang="A fine addition to any library's collection.")

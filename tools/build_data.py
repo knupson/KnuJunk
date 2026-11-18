@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua, Data/Special.lua y
-Data/ClassReagents.lua, Data/Locks.lua y Data/Recipes.lua desde las tablas DB2 de wago.tools (producto wowf).
+Data/ClassReagents.lua, Data/Locks.lua, Data/Recipes.lua, Data/Food.lua y Data/Ammo.lua desde DB2 de wago.tools (wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -40,11 +40,17 @@ REAGENT_SLOTS = ['Reagent_%d' % i for i in range(8)]
 COLUMNS = {
     'skilllineability': ['SkillLine', 'Spell', 'ClassMask', 'MinSkillLineRank'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
-    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID', 'RequiredSkill', 'RequiredSkillRank'],
+    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID', 'RequiredSkill', 'RequiredSkillRank',
+                   'RequiredLevel', 'ItemLevel', 'OverallQualityID', 'AllowableClass', 'AllowableRace_0', 'RequiredAbility', 'MinFactionID', 'RequiredPVPRank', 'RequiredHoliday'],
     'item': ['ID', 'ClassID', 'SubclassID'],
     'itemxitemeffect': ['ItemID', 'ItemEffectID'],
     'itemeffect': ['ID', 'SpellID', 'TriggerType'],
-    'spelleffect': ['SpellID', 'Effect', 'EffectTriggerSpell'],
+    'spelleffect': ['SpellID', 'Effect', 'EffectTriggerSpell', 'EffectAura', 'EffectBasePointsF',
+                    'EffectAuraPeriod', 'EffectMiscValue_0', 'EffectRealPointsPerLevel', 'ScalingClass', 'DifficultyID',
+                    'ImplicitTarget_0', 'ImplicitTarget_1'],
+    'spellmisc': ['SpellID', 'DurationIndex', 'DifficultyID'],
+    'spellduration': ['ID', 'Duration', 'DurationPerLevel', 'DurationPerResource'],
+    'itemdamageammo': ['ItemLevel'] + ['Quality_%d' % i for i in range(7)],
     'lock': ['ID'] + ['%s_%d' % (name, i) for name in ('Type', '_Index') for i in range(8)],
     'spelltotems': ['SpellID', 'RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1', 'Totem_0', 'Totem_1'],
     'totemcategory': ['ID', 'Name_lang', 'TotemCategoryType', 'TotemCategoryMask'],
@@ -393,6 +399,100 @@ def render_recipes_lua(recipes, build):
     return ''.join(lines)
 
 
+def _optional_items(item_rows, sparse_rows, class_id, subclasses):
+    sparse = {_int(r['ID']): r for r in sparse_rows}
+    for row in item_rows:
+        item = _int(row['ID'])
+        data = sparse.get(item)
+        if _int(row.get('ClassID')) != class_id or _int(row.get('SubclassID')) not in subclasses or not data:
+            continue
+        # Sólo alternativas sin restricciones extra que el nivel puede certificar.
+        if 'RequiredLevel' not in data or _int(data['RequiredLevel']) < 0:
+            continue
+        if any(_int(data.get(k)) > 0 for k in ('RequiredSkill', 'RequiredAbility', 'MinFactionID', 'RequiredPVPRank', 'RequiredHoliday')):
+            continue
+        if _int(data.get('AllowableClass', '-1')) not in (-1, 0) or _int(data.get('AllowableRace_0', '-1')) not in (-1, 0):
+            continue
+        yield item, _int(row['SubclassID']), data
+
+
+def compute_food(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, misc_rows, duration_rows):
+    """Sólo Food & Drink con UN hechizo de uso y exclusivamente restauración propia.
+
+    Aura 84/85: regeneración de salud/maná por 5 s; aura 8/24: restauración periódica.
+    Conservamos TODOS los efectos de cada hechizo: un buff, trigger, objetivo mascota,
+    escalado o dato incompleto excluye el item entero (no se ignora el efecto desconocido).
+    """
+    effects = {_int(r['ID']): r for r in effect_rows}
+    links, spells, misc = {}, {}, {}
+    for r in link_rows:
+        links.setdefault(_int(r['ItemID']), set()).add(_int(r['ItemEffectID']))
+    for r in spell_rows:
+        if _int(r.get('Effect')):
+            spells.setdefault(_int(r['SpellID']), []).append(r)
+    for r in misc_rows:
+        misc.setdefault(_int(r['SpellID']), []).append(r)
+    durations = {_int(r['ID']): r for r in duration_rows}
+    result = {}
+    for item, _, sparse in _optional_items(item_rows, sparse_rows, 0, {5}):
+        item_effects = [effects.get(e) for e in links.get(item, ())]
+        if len(item_effects) != 1 or not item_effects[0] or _int(item_effects[0].get('TriggerType')) != 0:
+            continue
+        spell = _int(item_effects[0].get('SpellID'))
+        metas = misc.get(spell, [])
+        if len(metas) != 1 or _int(metas[0].get('DifficultyID')) != 0:
+            continue
+        duration = durations.get(_int(metas[0].get('DurationIndex')), {})
+        ms = _int(duration.get('Duration'))
+        if ms <= 0 or _int(duration.get('DurationPerLevel')) or _int(duration.get('DurationPerResource')):
+            continue
+        entry = {'reqLevel': _int(sparse['RequiredLevel']), 'spell': spell}
+        valid = bool(spells.get(spell))
+        for r in spells.get(spell, ()):
+            aura = _int(r.get('EffectAura'))
+            amount = float(r.get('EffectBasePointsF', 0))
+            kind = 'health' if aura in (8, 84) else 'mana'
+            if (_int(r.get('Effect')) != 6 or aura not in (8, 24, 84, 85) or amount <= 0
+                    or _int(r.get('EffectTriggerSpell')) or _int(r.get('DifficultyID'))
+                    or float(r.get('EffectRealPointsPerLevel', 0)) or _int(r.get('ScalingClass'))
+                    or _int(r.get('ImplicitTarget_0', '1')) != 1 or _int(r.get('ImplicitTarget_1'))
+                    or (kind == 'mana' and _int(r.get('EffectMiscValue_0')) != 0)):
+                valid = False
+                break
+            period = 5000 if aura in (84, 85) else _int(r.get('EffectAuraPeriod'))
+            if period <= 0:
+                valid = False
+                break
+            entry[kind] = round(entry.get(kind, 0) + amount * ms / period, 6)
+        if valid:
+            result[item] = entry
+    return result
+
+
+def compute_ammo(item_rows, sparse_rows, link_rows, damage_rows):
+    # Cualquier efecto hace que la munición sea especial: se conserva.
+    special = {_int(r['ItemID']) for r in link_rows}
+    damage = {_int(r['ItemLevel']): r for r in damage_rows}
+    result = {}
+    for item, subclass, sparse in _optional_items(item_rows, sparse_rows, 6, {2, 3}):
+        if item in special or 'OverallQualityID' not in sparse:
+            continue
+        ilvl = _int(sparse.get('ItemLevel'))
+        value = damage.get(ilvl, {}).get('Quality_%d' % _int(sparse['OverallQualityID']))
+        if value is not None and float(value) > 0:
+            result[item] = {'reqLevel': _int(sparse['RequiredLevel']), 'ilvl': ilvl,
+                            'subclass': subclass, 'dps': float(value)}
+    return result
+
+
+def render_optional_lua(data, name, build):
+    lines = [_header(build), 'ns.Data.%s = {\n' % name]
+    for item, entry in sorted(data.items()):
+        fields = ', '.join('%s = %s' % (k, format(v, '.12g')) for k, v in sorted(entry.items()))
+        lines.append('    [%d] = { %s },\n' % (item, fields))
+    return ''.join(lines) + '}\n'
+
+
 def _header(build):
     return ('-- Generado por tools/build_data.py desde wago.tools %s %s. No editar.\n'
             'local _, ns = ...\n'
@@ -530,18 +630,19 @@ def latest_build():
     return version
 
 
-def filtered_row(table, row, columns):
+def filtered_row(table, row, columns, retain_ids=(), retain_spells=None):
     """Fila a guardar en data-raw (solo `columns`) o None si la tabla no la usa. En itemsparse los
     textos (nombre, descripcion) solo se conservan en los libros y cajones."""
     if table == 'itemsparse':
         special = _is_special(row)
-        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0 and _int(row.get('RequiredSkill')) == 0:
+        if not special and _int(row['ID']) not in retain_ids and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0 and _int(row.get('RequiredSkill')) == 0:
             return None
         return [row.get(c, '0') if special or c not in ITEM_TEXTS else '' for c in columns]
-    if table == 'item' and _int(row.get('ClassID')) not in (9, 13):
+    if table == 'item' and _int(row.get('ClassID')) not in (0, 6, 9, 13):
         return None
-    if table == 'spelleffect' and _int(row.get('Effect')) != 36:
-        return None
+    if table in ('spelleffect', 'spellmisc') and retain_spells is not None:
+        if _int(row['SpellID']) not in retain_spells and not (table == 'spelleffect' and _int(row.get('Effect')) == 36):
+            return None
     if table == 'lock' and not any(_int(row.get('Type_%d' % i)) == 1 and
                                   _int(row.get('_Index_%d' % i)) > 0 for i in range(8)):
         return None
@@ -552,7 +653,7 @@ def filtered_row(table, row, columns):
     return [row[c] for c in columns]
 
 
-def download_filtered(table, build):
+def download_filtered(table, build, retain_ids=(), retain_spells=None):
     """Baja la tabla en streaming y guarda en data-raw/ solo las columnas usadas. Devuelve la ruta."""
     columns = COLUMNS[table]
     # Lock usa la variante con nombre capitalizado; las demás tablas, producto wowf explícito.
@@ -573,7 +674,7 @@ def download_filtered(table, build):
                 writer.writerow(columns)
                 count = 0
                 for row in reader:
-                    out = filtered_row(table, row, columns)
+                    out = filtered_row(table, row, columns, retain_ids, retain_spells)
                     if out is not None:
                         writer.writerow(out)
                         count += 1
@@ -599,6 +700,14 @@ def write_lua(name, text):
     print('escrito %s' % os.path.relpath(path, ROOT))
 
 
+def food_spell_ids():
+    items = {_int(r['ID']) for r in read_csv(os.path.join(RAW_DIR, 'item.csv'))
+             if _int(r['ClassID']) == 0 and _int(r['SubclassID']) == 5}
+    effects = {_int(r['ItemEffectID']) for r in read_csv(os.path.join(RAW_DIR, 'itemxitemeffect.csv'))
+               if _int(r['ItemID']) in items}
+    return {_int(r['SpellID']) for r in read_csv(os.path.join(RAW_DIR, 'itemeffect.csv')) if _int(r['ID']) in effects}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Genera Data/*.lua desde wago.tools')
     parser.add_argument('--build', help='build de wowf (por defecto la mas nueva de api/builds)')
@@ -612,13 +721,24 @@ def main(argv=None):
             build = handle.read().strip()
     else:
         build = args.build or latest_build()
+        download_filtered('item', build)
+        candidates = {_int(r['ID']) for r in read_csv(os.path.join(RAW_DIR, 'item.csv'))
+                      if _int(r['ClassID']) in (0, 6)}
         for table in COLUMNS:
-            download_filtered(table, build)
+            if table != 'item':
+                spells = food_spell_ids() if table in ('spelleffect', 'spellmisc') else None
+                download_filtered(table, build, candidates, spells)
         with open(BUILD_FILE, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(build + '\n')
 
     def raw(table):
-        return read_csv(os.path.join(RAW_DIR, table + '.csv'))
+        path = os.path.join(RAW_DIR, table + '.csv')
+        with open(path, encoding='utf-8-sig', newline='') as handle:
+            fields = csv.DictReader(handle).fieldnames or []
+        missing = set(COLUMNS[table]) - set(fields)
+        if missing:
+            sys.exit('%s: faltan columnas %s; volvé a descargar con --build %s.' % (table, sorted(missing), build))
+        return read_csv(path)
 
     reagents = compute_reagents(raw('skilllineability'), raw('spellreagents'))
     starters = compute_starters(raw('itemsparse'))
@@ -628,6 +748,9 @@ def main(argv=None):
     keys, boxes = compute_locks(raw('item'), raw('itemsparse'))
     recipes = compute_recipes(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
                               raw('spelleffect'), raw('skilllineability'))
+    food = compute_food(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
+                        raw('spelleffect'), raw('spellmisc'), raw('spellduration'))
+    ammo = compute_ammo(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemdamageammo'))
     class_reagents = compute_class_reagents(raw('skilllineability'), raw('spellreagents'), raw('spelltotems'),
                                             raw('totemcategory'), raw('itemsparse'))
     if missing:
@@ -640,6 +763,9 @@ def main(argv=None):
     write_lua('ClassReagents.lua', render_class_reagents_lua(class_reagents, build))
     write_lua('Locks.lua', render_locks_lua(keys, boxes, build))
     write_lua('Recipes.lua', render_recipes_lua(recipes, build))
+    write_lua('Food.lua', render_optional_lua(food, 'food', build))
+    write_lua('Ammo.lua', render_optional_lua(ammo, 'ammo', build))
+    print('%d comidas/bebidas simples, %d municiones ordinarias' % (len(food), len(ammo)))
     print('%d recetas (%d con rango)' % (len(recipes), sum('rank' in r for r in recipes.values())))
     print('%d llaves/abridores, %d cajas con cerradura' % (len(keys), len(boxes)))
     print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
