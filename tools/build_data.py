@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua, Data/Special.lua y
-Data/ClassReagents.lua y Data/Locks.lua desde las tablas DB2 de wago.tools (producto wowf).
+Data/ClassReagents.lua, Data/Locks.lua y Data/Recipes.lua desde las tablas DB2 de wago.tools (producto wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -38,10 +38,13 @@ PROFESSIONS = {
 REAGENT_SLOTS = ['Reagent_%d' % i for i in range(8)]
 # tabla -> columnas que se conservan en data-raw/<tabla>.csv
 COLUMNS = {
-    'skilllineability': ['SkillLine', 'Spell', 'ClassMask'],
+    'skilllineability': ['SkillLine', 'Spell', 'ClassMask', 'MinSkillLineRank'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
-    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID'],
-    'item': ['ID', 'ClassID'],
+    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID', 'RequiredSkill', 'RequiredSkillRank'],
+    'item': ['ID', 'ClassID', 'SubclassID'],
+    'itemxitemeffect': ['ItemID', 'ItemEffectID'],
+    'itemeffect': ['ID', 'SpellID', 'TriggerType'],
+    'spelleffect': ['SpellID', 'Effect', 'EffectTriggerSpell'],
     'lock': ['ID'] + ['%s_%d' % (name, i) for name in ('Type', '_Index') for i in range(8)],
     'spelltotems': ['SpellID', 'RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1', 'Totem_0', 'Totem_1'],
     'totemcategory': ['ID', 'Name_lang', 'TotemCategoryType', 'TotemCategoryMask'],
@@ -327,6 +330,69 @@ def compute_class_gear(ability_rows):
     return gear, missing
 
 
+# Subclases de Recipe (clase 9); 0 = libro, no acredita profesión.
+RECIPE_SUBCLASSES = {1: 165, 2: 197, 3: 202, 4: 164, 5: 185,
+                     6: 171, 7: 129, 8: 333, 9: 356}
+
+
+def compute_recipes(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, ability_rows):
+    """Receta -> profesión/rango: Item -> ItemXItemEffect -> ItemEffect (learn, trigger 6)
+    o SpellEffect (learn spell, efecto 36) -> SkillLineAbility. Respaldo por subclase.
+    No se infiere una profesión de un hechizo de uso cualquiera. Conflictos: sin dato.
+    RequiredSkillRank del item gana al mínimo del hechizo; cero/ausente = desconocido.
+    """
+    items = {_int(r['ID']): _int(r.get('SubclassID')) for r in item_rows if _int(r.get('ClassID')) == 9}
+    sparse = {_int(r['ID']): r for r in sparse_rows}
+    abilities = {}
+    for row in ability_rows:
+        line = _int(row.get('SkillLine'))
+        if line in PROFESSIONS:
+            abilities.setdefault(_int(row.get('Spell')), {}).setdefault(line, set()).add(_int(row.get('MinSkillLineRank')))
+    teaches = {}
+    for row in spell_rows:
+        if _int(row.get('Effect')) == 36 and _int(row.get('EffectTriggerSpell')) > 0:
+            teaches.setdefault(_int(row['SpellID']), set()).add(_int(row['EffectTriggerSpell']))
+    effects = {}
+    for row in effect_rows:
+        spell = _int(row.get('SpellID'))
+        effects[_int(row['ID'])] = {spell} if _int(row.get('TriggerType')) == 6 else teaches.get(spell, set())
+    learned = {}
+    for row in link_rows:
+        item = _int(row.get('ItemID'))
+        if item in items:
+            learned.setdefault(item, set()).update(effects.get(_int(row.get('ItemEffectID')), ()))
+    result = {}
+    for item, subclass in items.items():
+        lines = {}
+        for spell in learned.get(item, ()):
+            for line, ranks in abilities.get(spell, {}).items():
+                lines.setdefault(line, set()).update(ranks)
+        if len(lines) > 1:
+            continue
+        line = next(iter(lines)) if lines else RECIPE_SUBCLASSES.get(subclass)
+        if line is None:
+            continue
+        entry = {'skillLine': line}
+        row = sparse.get(item, {})
+        rank = _int(row.get('RequiredSkillRank')) if _int(row.get('RequiredSkill')) == line else 0
+        ranks = lines.get(line, set())
+        if rank <= 0 and len(ranks) == 1:
+            rank = next(iter(ranks))
+        if rank > 0:
+            entry['rank'] = rank
+        result[item] = entry
+    return result
+
+
+def render_recipes_lua(recipes, build):
+    lines = [_header(build), '-- Recetas: item -> profesión y rango requerido, si se conoce.\n', 'ns.Data.recipes = {\n']
+    for item, recipe in sorted(recipes.items()):
+        rank = ', rank = %d' % recipe['rank'] if 'rank' in recipe else ''
+        lines.append('    [%d] = { skillLine = %d%s },\n' % (item, recipe['skillLine'], rank))
+    lines.append('}\n')
+    return ''.join(lines)
+
+
 def _header(build):
     return ('-- Generado por tools/build_data.py desde wago.tools %s %s. No editar.\n'
             'local _, ns = ...\n'
@@ -469,10 +535,12 @@ def filtered_row(table, row, columns):
     textos (nombre, descripcion) solo se conservan en los libros y cajones."""
     if table == 'itemsparse':
         special = _is_special(row)
-        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0:
+        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0 and _int(row.get('RequiredSkill')) == 0:
             return None
         return [row.get(c, '0') if special or c not in ITEM_TEXTS else '' for c in columns]
-    if table == 'item' and _int(row.get('ClassID')) != 13:
+    if table == 'item' and _int(row.get('ClassID')) not in (9, 13):
+        return None
+    if table == 'spelleffect' and _int(row.get('Effect')) != 36:
         return None
     if table == 'lock' and not any(_int(row.get('Type_%d' % i)) == 1 and
                                   _int(row.get('_Index_%d' % i)) > 0 for i in range(8)):
@@ -487,8 +555,8 @@ def filtered_row(table, row, columns):
 def download_filtered(table, build):
     """Baja la tabla en streaming y guarda en data-raw/ solo las columnas usadas. Devuelve la ruta."""
     columns = COLUMNS[table]
-    # La build identifica el producto; Item/Lock con product=wowf devolvieron 403.
-    url = ('%s/db2/%s/csv?build=%s' % (BASE, table.capitalize(), build) if table in ('item', 'lock')
+    # Lock usa la variante con nombre capitalizado; las demás tablas, producto wowf explícito.
+    url = ('%s/db2/%s/csv?build=%s' % (BASE, table.capitalize(), build) if table == 'lock'
            else '%s/db2/%s/csv?product=%s&build=%s' % (BASE, table, PRODUCT, build))
     target = os.path.join(RAW_DIR, table + '.csv')
     os.makedirs(RAW_DIR, exist_ok=True)
@@ -558,6 +626,8 @@ def main(argv=None):
     gear, missing = compute_class_gear(raw('skilllineability'))
     books, crates = compute_special(raw('itemsparse'))
     keys, boxes = compute_locks(raw('item'), raw('itemsparse'))
+    recipes = compute_recipes(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
+                              raw('spelleffect'), raw('skilllineability'))
     class_reagents = compute_class_reagents(raw('skilllineability'), raw('spellreagents'), raw('spelltotems'),
                                             raw('totemcategory'), raw('itemsparse'))
     if missing:
@@ -569,6 +639,8 @@ def main(argv=None):
     write_lua('Special.lua', render_special_lua(books, crates, build))
     write_lua('ClassReagents.lua', render_class_reagents_lua(class_reagents, build))
     write_lua('Locks.lua', render_locks_lua(keys, boxes, build))
+    write_lua('Recipes.lua', render_recipes_lua(recipes, build))
+    print('%d recetas (%d con rango)' % (len(recipes), sum('rank' in r for r in recipes.values())))
     print('%d llaves/abridores, %d cajas con cerradura' % (len(keys), len(boxes)))
     print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
           '%d libros de biblioteca, %d cajones arrebatados (%d llenos), %d reactivos de clase'

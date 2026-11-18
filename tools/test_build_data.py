@@ -310,7 +310,8 @@ class FilterTest(unittest.TestCase):
         out = build_data.filtered_row('itemsparse', self.row(StartQuestID='5'), self.COLUMNS)
         self.assertEqual(dict(zip(self.COLUMNS, out)),
                          {'ID': '1', 'StartQuestID': '5', 'TotemCategoryID': '0',
-                          'Display_lang': '', 'Description_lang': '', 'LockID': '0'})
+                          'Display_lang': '', 'Description_lang': '', 'LockID': '0',
+                          'RequiredSkill': '0', 'RequiredSkillRank': '0'})
 
     def test_special_items_keep_their_texts(self):
         book = self.row(Description_lang="A fine addition to any library's collection.")
