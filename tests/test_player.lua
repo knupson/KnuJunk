@@ -409,7 +409,7 @@ test('tooltip oculto con region sin texto (nil): pendiente; el gris igual lleva 
     local success, err = pcall(function()
         local gray = ns.Player.ReadLink(FAKE.linkOf(99785))
         eq(gray.effect, 'unknown')
-        eq(ns.Classify(gray, classifyCtx()).mark, 'useful', 'efecto desconocido nunca da moneda')
+        eq(ns.Classify(gray, classifyCtx()).mark, 'coin', 'gris con efecto desconocido lleva moneda')
         FAKE.bags['0:2'] = 99786; FAKE.bound['0:2'] = true
         local plate = ns.Player.ReadItem(0, 2)
         eq(plate.effect, 'unknown')
@@ -671,7 +671,7 @@ end)
 
 -- Item 3 de la ola final: un escaneo anterior no certifica un diario que cambio y no se
 -- puede releer (combate). La certificacion vuelve solo con un escaneo completo.
-test('mision aceptada en combate bajo encabezado plegado -> questLogIncomplete hasta reescanear', function()
+test('mision aceptada en combate: diario incompleto hasta reescanear; gris nuevo -> coin', function()
     collapsedLog()
     ns.Player.GetContext() -- escaneo completo fuera de combate
     FAKE.inCombat = true
@@ -682,7 +682,7 @@ test('mision aceptada en combate bajo encabezado plegado -> questLogIncomplete h
     local ctx = ns.Player.GetContext()
     eq(ctx.questLogIncomplete, true, 'diario cambiado sin poder releerlo')
     eq(ctx.questItemsInLog[500], true, 'lo del ultimo escaneo sigue protegiendo')
-    eq(ns.Classify(ns.Player.ReadLink(FAKE.linkOf(502)), ctx).mark, 'useful', 'gris nuevo sin moneda')
+    eq(ns.Classify(ns.Player.ReadLink(FAKE.linkOf(502)), ctx).mark, 'coin', 'gris nuevo lleva moneda con diario incompleto')
     eq(FAKE.calls.expand, 1, 'no expande en combate')
     -- Otro evento cualquiera en combate no devuelve la certificacion.
     FAKE.Fire('QUEST_LOG_UPDATE')
@@ -704,7 +704,7 @@ test('sin total y en combate: el escaneo anterior no certifica', function()
     eq(ns.Player.GetContext().questLogIncomplete, true)
 end)
 
-test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris sin moneda', function()
+test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris con moneda', function()
     collapsedLog()
     FAKE.inCombat = true
     local ctx = ns.Player.GetContext()
@@ -712,7 +712,7 @@ test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris sin m
     eq(FAKE.calls.expand, 0)
     addItem(900, { quality = 0, price = 5 })
     local result = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(900)), ctx)
-    eq(result.mark, 'useful')
+    eq(result.mark, 'coin')
     local found = false
     for _, reason in ipairs(result.reasons) do if reason.kind == 'quest_log_incomplete' then found = true end end
     ok(found, 'reason quest_log_incomplete')

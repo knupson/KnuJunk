@@ -157,9 +157,9 @@ test('repeatable: nil con flags faltantes o invalidos; true si un flag valido lo
 end)
 
 test('iniciador hecho con flags faltantes o invalidos en QuestieDB -> sin moneda (Uses -> Classify)', function()
-    FAKE.items[620] = { name = 'Carta A', quality = 0, price = 5, classID = 12, subclassID = 0 }
-    FAKE.items[621] = { name = 'Carta B', quality = 0, price = 5, classID = 12, subclassID = 0 }
-    FAKE.items[622] = { name = 'Carta C', quality = 0, price = 5, classID = 12, subclassID = 0 }
+    FAKE.items[620] = { name = 'Carta A', quality = 1, price = 5, classID = 12, subclassID = 0 }
+    FAKE.items[621] = { name = 'Carta B', quality = 1, price = 5, classID = 12, subclassID = 0 }
+    FAKE.items[622] = { name = 'Carta C', quality = 1, price = 5, classID = 12, subclassID = 0 }
     install({
         [50] = { startedBy = { nil, nil, { 620 } } },
         [51] = { startedBy = { nil, nil, { 621 } }, specialFlags = 'x', questFlags = {} },
@@ -351,12 +351,12 @@ test('Pending: esperando a Questie cuenta como pendiente; un fallo definitivo, n
     eq(ns.Questie.Pending(), false, 'fallo definitivo = sin Questie')
 end)
 
-test('indice sin terminar: item gris de una mision sin hacer no da moneda; con el indice listo y la mision hecha, si', function()
+test('indice pendiente o listo: gris lleva moneda aunque la mision este activa', function()
     FAKE.items[500] = { name = 'Pelo', quality = 0, price = 5, classID = 15, subclassID = 0 }
     FAKE.InstallQuestie({ [10] = { objectives = { nil, nil, { { 500 } } } } })
     local item = ns.Player.ReadLink(FAKE.linkOf(500))
     local before = ns.Classify(item, ns.Player.GetContext())
-    eq(before.mark, 'useful', 'sin moneda antes de terminar el indice')
+    eq(before.mark, 'coin', 'gris con moneda antes de terminar el indice')
     eq(before.reasons[1].kind, 'quest_log_incomplete')
     FAKE.completed[10] = true
     FAKE.Advance(5)
@@ -364,7 +364,7 @@ test('indice sin terminar: item gris de una mision sin hacer no da moneda; con e
     FAKE.completed[10] = nil
     FAKE.questLog = { { title = 'Diez', questID = 10 } }
     ns.Player.Invalidate()
-    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'indice listo y mision en el diario')
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'gris con moneda aun con mision en el diario')
 end)
 
 test('item de clase que no puede usar tampoco da moneda mientras el indice esta pendiente', function()
@@ -426,15 +426,15 @@ test('extraObjectives: un item referenciado cuenta como uso de la mision', funct
     local ctx = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
         isQuestDone = function(q) return q == 10 end, questieUses = ns.Questie.Uses,
         questInLog = function(q) return q == 20 end }
-    eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'quest')
+    eq(ns.Classify({ id = 500, quality = 1, price = 5 }, ctx).mark, 'quest')
     ctx.questInLog = function() return false end
-    eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'coin')
+    eq(ns.Classify({ id = 500, quality = 1, price = 5 }, ctx).mark, 'coin')
 end)
 
 -- Re-revision: una referencia ilegible en extraObjectives se saltea SOLA; el indice queda listo y
 -- los demas usos (otras misiones, iniciador repetible) siguen protegiendo.
 test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo', function()
-    FAKE.items[99012] = { name = 'Item99012', quality = 0, price = 10, classID = 15, subclassID = 0 }
+    FAKE.items[99012] = { name = 'Item99012', quality = 1, price = 10, classID = 15, subclassID = 0 }
     FAKE.items[99013] = { name = 'Item99013', quality = 1, price = 10, classID = 15, subclassID = 0 }
     FAKE.bags['0:1'] = 99012
     local savedStarters = ns.Data.starters
@@ -451,8 +451,8 @@ test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo
         FAKE.questLog = { { title = 'Diez', questID = 10 } }
         FAKE.Fire('QUEST_LOG_UPDATE')
         local ctx = ns.Player.GetContext()
-        local gray = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99012)), ctx)
-        eq(gray.mark, 'quest'); eq(gray.reasons[1].kind, 'quest_active')
+        local active = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99012)), ctx)
+        eq(active.mark, 'quest'); eq(active.reasons[1].kind, 'quest_active')
         local starter = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99013)), ctx)
         eq(starter.mark, 'useful'); eq(starter.reasons[1].kind, 'quest_repeatable')
         local button = CreateFrame('Button', nil, UIParent)

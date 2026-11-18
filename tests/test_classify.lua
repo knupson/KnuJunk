@@ -32,6 +32,55 @@ test('gris vendible -> coin', function()
     end)
 end)
 
+test('gris = basura como Leatrix', function()
+    local cases = {
+        { name = 'mision activa', context = { questItemsInLog = { [9000] = true } } },
+        { name = 'mision activa de Questie', context = {
+            questieUses = function() return { { questID = 123 } } end,
+            questInLog = function() return true end } },
+        { name = 'herramienta propia', data = { tools = { [9000] = { 164 } } },
+            context = { professions = { [164] = true } } },
+        { name = 'herramienta ajena', data = { tools = { [9000] = { 164 } } } },
+        { name = 'iniciador pendiente', data = { starters = { [9000] = 123 } } },
+        { name = 'llave', data = { keys = { [9000] = true } } },
+        { name = 'receta', fields = { classID = 9 },
+            data = { recipes = { [9000] = { skillLine = 164, rank = 1 } } } },
+        { name = 'efecto confirmado', fields = { effect = 'yes', hasUseOrEquipSpell = true } },
+        { name = 'efecto desconocido', fields = { effect = 'unknown', hasUseOrEquipSpell = true } },
+        { name = 'diario incompleto', context = { questLogIncomplete = true } },
+        { name = 'precio de subasta disponible', auction = true },
+    }
+    local fields = { 'reagents', 'starters', 'tools', 'keys', 'recipes' }
+    local saved, savedAuctionator = {}, Auctionator
+    for _, field in ipairs(fields) do saved[field] = ns.Data[field] end
+    local success, err = pcall(function()
+        for _, case in ipairs(cases) do
+            for _, field in ipairs(fields) do ns.Data[field] = case.data and case.data[field] or {} end
+            Auctionator = case.auction and { API = { v1 = { GetAuctionPriceByItemID = function(caller, id)
+                eq(caller, 'KnuJunk'); eq(id, 9000); return 1000
+            end } } } or nil
+            local value, context = item(case.fields), ctx(case.context)
+            value.quality, value.price = 0, 5
+            local result = ns.Classify(value, context)
+            eq(result.mark, 'coin', case.name)
+            ok(hasReason(result, 'gray'), case.name .. ': motivo gris')
+            eq(result.auctionPrice, nil, case.name .. ': sin prioridad de subasta')
+            value.price = 0
+            eq(ns.Classify(value, context).mark, 'trash', case.name .. ': sin valor de venta')
+            for _, price in ipairs({ 0, 5 }) do
+                value.price = price
+                context.overrides = { [9000] = 'keep' }
+                local kept = ns.Classify(value, context)
+                eq(kept.mark, 'protected', case.name .. ': candado manual')
+                ok(hasReason(kept, 'override_keep'), case.name .. ': motivo del candado')
+            end
+        end
+    end)
+    for _, field in ipairs(fields) do ns.Data[field] = saved[field] end
+    Auctionator = savedAuctionator
+    if not success then error(err, 0) end
+end)
+
 test('gris sin precio -> nil', function()
     withData({}, {}, function()
         eq(ns.Classify(item { quality = 0, price = 0 }, ctx()).mark, 'trash')
@@ -79,13 +128,13 @@ test('herramienta de otra profesion -> hammer_other con todas sus profesiones', 
     end, { [9000] = { 164, 202 } })
 end)
 
-test('herramienta gris con precio -> nunca monedita', function()
+test('herramienta gris con precio -> coin, tengas o no la profesion', function()
     withData({}, {}, function()
         local gray = item { quality = 0, price = 50 }
         local mine = ns.Classify(gray, ctx { professions = { [186] = true } })
-        eq(mine.mark, 'hammer_mine'); ok(not hasReason(mine, 'gray'), 'sin motivo gris')
+        eq(mine.mark, 'coin'); ok(hasReason(mine, 'gray'), 'motivo gris')
         local other = ns.Classify(gray, ctx())
-        eq(other.mark, 'hammer_other'); ok(not hasReason(other, 'gray'), 'sin motivo gris')
+        eq(other.mark, 'coin'); ok(hasReason(other, 'gray'), 'motivo gris')
     end, { [9000] = { 186 } })
 end)
 
@@ -127,10 +176,10 @@ test('iniciador con mision hecha y repetibilidad desconocida -> sin moneda', fun
             sinEntrada = function() return { { questID = 5, repeatable = false } } end,
             repetibleNil = function() return { { questID = 123 } } end,
         }) do
-            local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = done, questieUses = uses })
+            local result = ns.Classify(item { quality = 1, price = 5 }, ctx { isQuestDone = done, questieUses = uses })
             eq(result.mark, 'useful', label)
             eq(hasReason(result, 'quest_starter_done_unknown_repeat').questID, 123, label)
-            ok(not hasReason(result, 'gray'), label .. ': tampoco moneda gris')
+            ok(not hasReason(result, 'gray'), label .. ': sin motivo gris')
         end
         local noFn = ctx { isQuestDone = done }; noFn.questieUses = nil
         eq(ns.Classify(item(), noFn).mark, 'useful', 'sin questieUses')
@@ -148,21 +197,21 @@ test('iniciador con isQuestDone nil -> nil', function()
     end)
 end)
 
-test('gris iniciador de mision no hecha -> nil', function()
+test('gris iniciador de mision no hecha -> coin', function()
     withData({}, { [9000] = 123 }, function()
         local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = function() return false end })
-        eq(result.mark, 'useful')
+        eq(result.mark, 'coin')
         eq(hasReason(result, 'quest_starter').questID, 123)
-        ok(not hasReason(result, 'gray'), 'sin reason gray')
+        ok(hasReason(result, 'gray'), 'motivo gris')
     end)
 end)
 
-test('gris iniciador con isQuestDone nil -> nil', function()
+test('gris iniciador con isQuestDone desconocido o ausente -> coin', function()
     withData({}, { [9000] = 123 }, function()
         local gray = item { quality = 0, price = 5 }
-        eq(ns.Classify(gray, ctx { isQuestDone = function() return nil end }).mark, 'useful')
+        eq(ns.Classify(gray, ctx { isQuestDone = function() return nil end }).mark, 'coin')
         local noFn = ctx(); noFn.isQuestDone = nil
-        eq(ns.Classify(gray, noFn).mark, 'useful')
+        eq(ns.Classify(gray, noFn).mark, 'coin')
     end)
 end)
 
@@ -208,10 +257,10 @@ test('subclases fuera de la tabla o clase desconocida -> nunca coin', function()
     end)
 end)
 
-test('gris que esta en questItemsInLog -> quest, nunca coin', function()
+test('gris que esta en questItemsInLog -> coin', function()
     withData({}, {}, function()
         local result = ns.Classify(item { quality = 0, price = 5 }, ctx { questItemsInLog = { [9000] = true } })
-        eq(result.mark, 'quest'); ok(hasReason(result, 'quest_active'), 'reason quest_active')
+        eq(result.mark, 'coin'); ok(hasReason(result, 'quest_active'), 'reason quest_active'); ok(hasReason(result, 'gray'), 'motivo gris')
     end)
 end)
 
@@ -234,10 +283,10 @@ end)
 test('questie: mision futura que no esta en el diario -> coin quest_not_active', function()
     withData({}, {}, function()
         local uses = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = false } } end
-        local result = ns.Classify(item { quality = 0, price = 5 }, ctx {
+        local result = ns.Classify(item { quality = 1, price = 5 }, ctx {
             questieUses = uses, isQuestDone = function(q) return q == 1 end })
         eq(result.mark, 'coin'); ok(hasReason(result, 'quest_not_active'), 'reason quest_not_active')
-        local active = ns.Classify(item { quality = 0, price = 5 }, ctx {
+        local active = ns.Classify(item { quality = 1, price = 5 }, ctx {
             questieUses = uses, questInLog = function(q) return q == 2 end })
         eq(active.mark, 'quest'); eq(hasReason(active, 'quest_active').questID, 2)
     end)
@@ -343,19 +392,19 @@ end
 test('reactivo de clase propia o ajena -> sin moneda ni marca, motivo class_reagent', function()
     withData({}, {}, function()
         withClassReagents({ [9000] = { 'MAGE', 'PRIEST', spells = { MAGE = { 130 }, PRIEST = { 1706 } } } }, function()
-            local gray = item { quality = 0, price = 5 }
-            local own = ns.Classify(gray, ctx { class = 'MAGE' })
-            eq(own.mark, 'useful'); ok(not hasReason(own, 'gray'), 'sin moneda gris')
+            local reagent = item { quality = 1, price = 5 }
+            local own = ns.Classify(reagent, ctx { class = 'MAGE' })
+            eq(own.mark, 'useful'); ok(not hasReason(own, 'gray'), 'sin motivo gris')
             local reason = hasReason(own, 'class_reagent')
             eq(reason.own, true); eq(reason.spells[1], 130); eq(reason.classes[1], 'MAGE')
-            local other = ns.Classify(gray, ctx { class = 'WARRIOR' })
+            local other = ns.Classify(reagent, ctx { class = 'WARRIOR' })
             eq(other.mark, 'useful')
             local otherReason = hasReason(other, 'class_reagent')
             eq(otherReason.own, false); eq(otherReason.spells, nil)
             eq(otherReason.classes[1], 'MAGE'); eq(otherReason.classes[2], 'PRIEST')
             local quest = ns.Classify(item { classID = 12 }, ctx { class = 'WARRIOR' })
             eq(quest.mark, 'useful', 'tampoco quest_not_active')
-            local sold = ns.Classify(gray, ctx { overrides = { [9000] = 'sell' } })
+            local sold = ns.Classify(reagent, ctx { overrides = { [9000] = 'sell' } })
             eq(sold.mark, 'coin', 'override_sell sigue valiendo')
         end)
     end)
@@ -384,14 +433,14 @@ test('Data: reactivos de clase de ejemplo generados', function()
     end
 end)
 
--- Ronda de arreglos 2 (A): efecto en tres estados. 'yes' bloquea toda moneda; 'unknown' no bloquea la
--- del gris pero si las demas (clase exige ligado Y 'no'; mision tambien queda sin moneda).
-test('effect: yes bloquea todo, unknown solo deja el gris, no deja todo', function()
+-- Efecto en tres estados: el gris siempre es basura; en no grises se conserva la proteccion.
+-- La moneda por clase exige ligado y efecto 'no'; la mision con efecto desconocido se conserva.
+test('efecto confirmado o desconocido: gris -> coin; no gris conserva proteccion', function()
     withData({}, {}, function()
         local gray = function(effect) return item { quality = 0, price = 5, effect = effect, hasUseOrEquipSpell = effect ~= 'no' } end
-        eq(ns.Classify(gray('yes'), ctx()).mark, 'useful', 'gris con efecto')
+        eq(ns.Classify(gray('yes'), ctx()).mark, 'coin', 'gris con efecto')
         local unknown = ns.Classify(gray('unknown'), ctx())
-        eq(unknown.mark, 'useful', 'gris con efecto desconocido'); ok(hasReason(unknown, 'gray'), 'gray')
+        eq(unknown.mark, 'coin', 'gris con efecto desconocido'); ok(hasReason(unknown, 'gray'), 'gray')
         eq(ns.Classify(gray('no'), ctx()).mark, 'coin')
         local plate = function(effect) return item { classID = 4, subclassID = 4, quality = 2, isBound = true,
             effect = effect, hasUseOrEquipSpell = effect ~= 'no' } end
@@ -403,7 +452,7 @@ test('effect: yes bloquea todo, unknown solo deja el gris, no deja todo', functi
         -- Gris de otra clase, ligado, efecto desconocido: moneda solo por gris.
         local grayPlate = ns.Classify(item { classID = 4, subclassID = 4, quality = 0, price = 5, isBound = true,
             effect = 'unknown', hasUseOrEquipSpell = true }, ctx { class = 'MAGE' })
-        eq(grayPlate.mark, 'useful'); ok(hasReason(grayPlate, 'gray'), 'gray')
+        eq(grayPlate.mark, 'coin'); ok(hasReason(grayPlate, 'gray'), 'gray')
         ok(not hasReason(grayPlate, 'class_cannot_use'), 'sin moneda por clase')
         -- Item de mision con efecto desconocido: sin moneda.
         eq(ns.Classify(item { classID = 12, effect = 'unknown', hasUseOrEquipSpell = true }, ctx()).mark, 'useful', 'mision')
@@ -415,7 +464,7 @@ end)
 test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_done', function()
     withData({}, {}, function()
         local uses = function() return { { questID = 60, starter = true } } end
-        local pending = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = uses })
+        local pending = ns.Classify(item { quality = 1, price = 5 }, ctx { questieUses = uses })
         eq(pending.mark, 'useful'); eq(hasReason(pending, 'quest_starter').questID, 60)
         local unknown = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return nil end })
         eq(unknown.mark, 'useful', 'no se sabe si esta hecha: util')
@@ -444,12 +493,13 @@ test('item sin quality (datos no cargados) -> nil', function()
     end)
 end)
 
-test('questLogIncomplete: ninguna moneda salvo override_sell', function()
+test('questLogIncomplete: no gris sin moneda salvo override_sell', function()
     withData({}, {}, function()
         local incomplete = ctx { questLogIncomplete = true }
-        local gray = ns.Classify(item { quality = 0, price = 5 }, incomplete)
-        eq(gray.mark, 'useful'); ok(hasReason(gray, 'quest_log_incomplete'), 'reason')
-        ok(not hasReason(gray, 'gray'), 'sin reason gray')
+        -- El item de mision blanco seria vendible si el diario estuviera completo.
+        local quest = ns.Classify(item { quality = 1, price = 5, classID = 12 }, incomplete)
+        eq(quest.mark, 'useful'); ok(hasReason(quest, 'quest_log_incomplete'), 'reason')
+        ok(not hasReason(quest, 'gray'), 'sin reason gray')
         local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false, isBound = true }
         local second = ns.Classify(armor, incomplete)
         eq(second.mark, 'useful'); ok(hasReason(second, 'quest_log_incomplete'), 'class_cannot_use tampoco da moneda')
@@ -502,7 +552,7 @@ test('iniciador repetible hecho sin moneda; repetible no tomada ya no protege', 
         eq(ns.Classify(plate, ctx { class = 'MAGE', questieUses = repeatable, isQuestDone = done }).mark, 'coin', 'clase')
         local mixed = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = true } } end
         eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = mixed, isQuestDone = done }).mark, 'coin', 'mezcla')
-        local active = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable,
+        local active = ns.Classify(item { quality = 1, price = 5 }, ctx { questieUses = repeatable,
             questInLog = function(q) return q == 99001 end })
         eq(active.mark, 'quest', 'repetible tomada: protege')
         local sold = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done,
@@ -511,9 +561,9 @@ test('iniciador repetible hecho sin moneda; repetible no tomada ya no protege', 
     end)
 end)
 
--- Item 5: efecto de uso/equipar o pieza de set => ninguna moneda automatica (gris, mision
--- terminada incluida la de Questie, clase). override_sell sigue valiendo.
-test('utilidad del item precede a toda moneda automatica', function()
+-- Efecto de uso/equipar o pieza de set: sin moneda automatica en no grises
+-- (mision terminada incluida la de Questie, clase). override_sell sigue valiendo.
+test('utilidad del item no gris precede a la moneda; gris con uso -> coin', function()
     withData({}, {}, function()
         local done = function() return true end
         local questie = function() return { { questID = 1, repeatable = false } } end
@@ -527,7 +577,7 @@ test('utilidad del item precede a toda moneda automatica', function()
         local setPiece = item { classID = 4, subclassID = 1, quality = 2, isSetPiece = true }
         eq(ns.Classify(setPiece, ctx { questieUses = questie, isQuestDone = done }).mark, 'useful', 'set')
         -- Gris con efecto de uso.
-        eq(ns.Classify(item { quality = 0, price = 5, hasUseOrEquipSpell = true }, ctx()).mark, 'useful', 'gris con uso')
+        eq(ns.Classify(item { quality = 0, price = 5, hasUseOrEquipSpell = true }, ctx()).mark, 'coin', 'gris con uso')
         -- override_sell sobre un item util sigue dando moneda.
         local sold = ns.Classify(potion, ctx { overrides = { [9000] = 'sell' } })
         eq(sold.mark, 'coin', 'override_sell')
@@ -540,10 +590,10 @@ end)
 
 test('caña de pescar: martillito de Pesca aunque no figure en spelltotems', function()
     withData({}, {}, function()
-        local cana = item { id = 6256, classID = 2, subclassID = 20, quality = 0, price = 5 }
+        local cana = item { id = 6256, classID = 2, subclassID = 20, quality = 1, price = 5 }
         local mine = ns.Classify(cana, ctx { professions = { [356] = true } })
         eq(mine.mark, 'hammer_mine'); eq(hasReason(mine, 'profession_tool').professions[1], 356)
-        eq(ns.Classify(cana, ctx()).mark, 'hammer_other', 'sin Pesca: martillo gris, nunca moneda')
+        eq(ns.Classify(cana, ctx()).mark, 'hammer_other', 'sin Pesca: martillo de otra profesion, nunca moneda')
     end)
 end)
 
@@ -585,7 +635,7 @@ test('item de mision que no es reactivo ni herramienta -> quest sin quest=true',
 end)
 
 -- Libros de biblioteca y cajones arrebatados (2026-11-17): se guardan hasta entregarlos, asi que
--- nunca llevan moneda automatica (ni gris, ni mision, ni clase); /knu junk sell si.
+-- los no grises no llevan moneda automatica (ni mision ni clase); /knu junk sell si.
 local function withSpecial(books, crates, fn)
     local savedB, savedC = ns.Data.libraryBooks, ns.Data.waylaidCrates
     ns.Data.libraryBooks, ns.Data.waylaidCrates = books, crates
@@ -597,7 +647,7 @@ end
 test('libro de biblioteca de clase Mision fuera del diario -> sin moneda, library_book', function()
     withData({}, {}, function()
         withSpecial({ [9000] = true }, {}, function()
-            local result = ns.Classify(item { classID = 12, quality = 0, price = 5 }, ctx())
+            local result = ns.Classify(item { classID = 12, quality = 1, price = 5 }, ctx())
             eq(result.mark, 'useful'); ok(hasReason(result, 'library_book'), 'reason library_book')
             eq(hasReason(result, 'quest_not_active'), nil); eq(hasReason(result, 'gray'), nil)
         end)
@@ -614,10 +664,10 @@ test('libro de biblioteca con uso de Questie fuera del diario -> sin moneda', fu
     end)
 end)
 
-test('cajon arrebatado gris o de armadura ajena -> sin moneda, waylaid_crate', function()
+test('cajon arrebatado blanco o de armadura ajena -> sin moneda, waylaid_crate', function()
     withData({}, {}, function()
         withSpecial({}, { [9000] = true }, function()
-            local result = ns.Classify(item { quality = 0, price = 5, classID = 12 }, ctx())
+            local result = ns.Classify(item { quality = 1, price = 5, classID = 12 }, ctx())
             eq(result.mark, 'useful')
             local reason = hasReason(result, 'waylaid_crate')
             ok(reason, 'reason waylaid_crate'); eq(reason.sealed, nil)

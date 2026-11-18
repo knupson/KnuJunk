@@ -1,6 +1,12 @@
 -- Tanda 2: protecciones previas a cualquier moneda automática.
 local ID = 990001
 local function item(class) return {id=ID, classID=class or 12, quality=0, price=10} end
+local function whiteItem(...)
+    local value = item(...)
+    value.quality = 1
+    return value
+end
+
 local function context(uses)
     return {class='MAGE', professions={}, questieUses=function() return uses end,
         questInLog=function() return false end, isQuestDone=function() return true end}
@@ -20,7 +26,7 @@ test('R18: misión activa conserva la marca y el motivo de llave o caja', functi
     for _,kind in ipairs({'key','lockbox'}) do
         withLocks(kind=='key' and {[ID]=true} or {},kind=='lockbox' and {[ID]=true} or {},function()
             local c=context({{questID=1}}); c.questInLog=function() return true end
-            local r=ns.Classify(item(),c)
+            local r=ns.Classify(whiteItem(),c)
             eq(r.mark,'quest'); ok(reason(r,'quest_active')); ok(reason(r,kind))
         end)
     end
@@ -39,7 +45,7 @@ test('R18: reactivo y herramienta conservan martillos, misión y motivo de prote
                             local c=context({{questID=1}})
                             c.questInLog=function() return active end
                             c.professions=mine and {[164]=true} or {}
-                            local r=ns.Classify(item(),c)
+                            local r=ns.Classify(whiteItem(),c)
                             eq(r.mark,active and 'quest' or mine and 'hammer_mine' or 'hammer_other')
                             eq(r.quest,active and true or nil); ok(reason(r,kind))
                             ok(reason(r,source=='reagents' and 'profession' or 'profession_tool'))
@@ -55,7 +61,7 @@ end)
 
 test('R18: datos reales no convierten Tela de lino en llave', function()
     ok(not ns.Data.keys[2589]); ok(ns.Data.reagents[2589])
-    local i=item(7); i.id=2589
+    local i=whiteItem(7); i.id=2589
     local c=context(); c.professions={[197]=true}
     local r=ns.Classify(i,c)
     eq(r.mark,'hammer_mine'); ok(reason(r,'profession')); eq(reason(r,'key'),nil)
@@ -81,13 +87,13 @@ end)
 
 test('R18: clase llave, abridor generado y caja cerrada nunca moneda', function()
     withLocks({[ID]=true},{},function()
-        local r=ns.Classify(item(),context()); eq(r.mark,'useful'); ok(reason(r,'key'))
+        local r=ns.Classify(whiteItem(),context()); eq(r.mark,'useful'); ok(reason(r,'key'))
     end)
     withLocks({},{[ID]=true},function()
-        local r=ns.Classify(item(),context()); eq(r.mark,'useful'); ok(reason(r,'lockbox'))
+        local r=ns.Classify(whiteItem(),context()); eq(r.mark,'useful'); ok(reason(r,'lockbox'))
     end)
     withLocks({},{},function()
-        local r=ns.Classify(item(13),context()); eq(r.mark,'useful'); ok(reason(r,'key'))
+        local r=ns.Classify(whiteItem(13),context()); eq(r.mark,'useful'); ok(reason(r,'key'))
     end)
 end)
 
@@ -105,10 +111,10 @@ test('R20: objetivo repetible con reputación fuera del diario se conserva', fun
     local uses=ns.Questie.Uses(ID)
     ok(uses and uses[1].reputationFactions, 'metadatos de reputación')
     eq(uses[1].reputationFactions[1],529)
-    local r=ns.Classify(item(),context(uses))
+    local r=ns.Classify(whiteItem(),context(uses))
     eq(r.mark,'useful'); eq(reason(r,'reputation_token').factionIDs[1],529)
     local c=context(uses); c.overrides={[ID]='sell'}
-    eq(ns.Classify(item(),c).mark,'coin')
+    eq(ns.Classify(whiteItem(),c).mark,'coin')
 end)
 
 test('R20: fuente, iniciador, hechizo y reputación negativa no son entregas', function()
@@ -130,12 +136,12 @@ end)
 test('R20: misión activa y profesión conservan sus marcas', function()
     local uses={{questID=1,repeatable=true,reputationFactions={529}}}
     local c=context(uses); c.questInLog=function() return true end
-    eq(ns.Classify(item(),c).mark,'quest')
+    eq(ns.Classify(whiteItem(),c).mark,'quest')
     local saved=ns.Data.reagents; ns.Data.reagents={[ID]={164}}
     local good,err=pcall(function()
-        local r=ns.Classify(item(),c); eq(r.mark,'quest'); eq(r.quest,true)
+        local r=ns.Classify(whiteItem(),c); eq(r.mark,'quest'); eq(r.quest,true)
         c.questInLog=function() return false end
-        eq(ns.Classify(item(),c).mark,'hammer_other')
+        eq(ns.Classify(whiteItem(),c).mark,'hammer_other')
     end)
     ns.Data.reagents=saved; if not good then error(err,0) end
 end)
@@ -162,12 +168,12 @@ end)
 test('R18: llaves y cajas reales cargadas desde el toc',function()
     for _,id in ipairs({12382,7146,5396}) do
         ok(ns.Data.keys[id], 'llave generada '..id)
-        local i=item(); i.id=id
+        local i=whiteItem(); i.id=id
         eq(ns.Classify(i,context()).mark,'useful')
     end
     for _,id in ipairs({4632,4633,6354}) do
         ok(ns.Data.lockboxes[id], 'caja generada '..id)
-        local i=item(); i.id=id
+        local i=whiteItem(); i.id=id
         eq(ns.Classify(i,context()).mark,'useful')
     end
 end)

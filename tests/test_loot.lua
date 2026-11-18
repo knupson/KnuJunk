@@ -88,7 +88,7 @@ end)
 test('Loot clasico: objetivo de mision activa -> quest', function()
     installLoot()
     local buttons = classicWindow(4)
-    addItem(500, { name = 'Garra de lobo', quality = 0, price = 5 }); FAKE.loot[1] = 500
+    addItem(500, { name = 'Garra de lobo', quality = 1, price = 5 }); FAKE.loot[1] = 500
     FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
     open()
     ok(visible(buttons[1]))
@@ -98,7 +98,7 @@ end)
 test('Loot clasico: item de una mision del diario segun Questie -> quest', function()
     installLoot()
     local buttons = classicWindow(4)
-    addItem(501, { name = 'Pieza rara', quality = 0, price = 5 }); FAKE.loot[501 - 500] = 501
+    addItem(501, { name = 'Pieza rara', quality = 1, price = 5 }); FAKE.loot[501 - 500] = 501
     FAKE.InstallQuestie({ [77] = { objectives = { nil, nil, { { 501, 'Pieza rara' } } } } })
     FAKE.questLog = { { title = 'Piezas', questID = 77 } }
     ns.Questie.Uses(0)
@@ -124,7 +124,7 @@ end)
 test('Loot clasico: fila reciclada a otro slot cambia la marca (LootFrame_Update)', function()
     installLoot()
     local buttons = classicWindow(4)
-    addItem(100, { quality = 0 }); addItem(500, { name = 'Garra de lobo', quality = 0 })
+    addItem(100, { quality = 0 }); addItem(500, { name = 'Garra de lobo', quality = 1 })
     FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
     FAKE.loot[1] = 100; FAKE.loot[2] = 500
     ns.Bags.InstallAll()
@@ -169,7 +169,7 @@ end)
 test('Loot: LOOT_SLOT_CHANGED repinta el slot', function()
     installLoot()
     local buttons = classicWindow(4)
-    addItem(100); addItem(500, { name = 'Garra de lobo' })
+    addItem(100); addItem(500, { name = 'Garra de lobo', quality = 1 })
     FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
     FAKE.loot[1] = 100
     open()
@@ -241,7 +241,7 @@ test('Loot moderno: ScrollBox con filas recicladas; marca en row.Item', function
     installLoot()
     withScrollUtil(function(callbacks)
         local rows = modernWindow({ 1, 2 })
-        addItem(100); addItem(500, { name = 'Garra de lobo' })
+        addItem(100); addItem(500, { name = 'Garra de lobo', quality = 1 })
         FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
         FAKE.loot[1] = 100; FAKE.loot[2] = 500
         ns.Bags.InstallAll()
