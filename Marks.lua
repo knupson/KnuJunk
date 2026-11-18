@@ -15,7 +15,7 @@ local _, ns = ...
 local Marks = {}
 ns.Marks = Marks
 
-local SIZE = 14
+local SIZE = 20
 local TEXTURES = {
     coin = 'Interface\\MoneyFrame\\UI-GoldIcon',
     hammer = 'Interface\\AddOns\\KnuJunk\\media\\martillo',

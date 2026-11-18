@@ -18,7 +18,7 @@ local _, ns = ...
 local Adapter = {}
 ns.BaganatorAdapter = Adapter
 
-local SIZE = 14
+local SIZE = 20
 local RESCAN_SECONDS = 2
 -- Vistas de mochila: "<prefijo><skin>" (ViewManagement/Initialize.lua l.150-151, frameGroup = clave
 -- de skin, Skins/Initialize.lua l.43). Claves de las skins que trae Baganator (Skins/*.lua,
