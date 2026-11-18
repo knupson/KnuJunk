@@ -16,6 +16,10 @@ end
 local function gearQuest(text)
     GQ = { Data = {} }
     GQ.Data.GetEntriesByItemId = function() return { { pipelineScore = 1 } } end
+    GQ.Data.EntryForItemLink = function() return nil end
+    GQ.IsPreviewEnabled = function() return false end
+    GQ.GetEffectiveLevel = function() return 20 end
+    GQ.GetEffectiveClass = function() return 'WARRIOR' end
     GQ.Data.GearScoreMissText = function(self, link)
         eq(self, GQ.Data); eq(link, 'item:' .. ID)
         return text
@@ -152,10 +156,18 @@ test('GearQuest: ReadLink conserva el enlace y el tooltip muestra el motivo', fu
     eq(ns.Player.ReadLink(ID).link,link)
     eq(ns.Player.ReadLink('item:' .. ID .. ':0:0:0:0:0:123').link,'item:' .. ID .. ':0:0:0:0:0:123')
     GQ.Data.GearScoreMissText=function(self,value) eq(value,link); return MISS end
+    -- El tooltip usa el contexto real del jugador simulado: GearQuest lo refleja sin simulación.
+    local previousLevel = UnitLevel
+    UnitLevel = function() return 20 end
+    if ns.Player.Invalidate then ns.Player.Invalidate() end
+    GQ.GetEffectiveLevel=function() return 20 end
+    GQ.GetEffectiveClass=function() return select(2, UnitClass('player')) end
     local found=false
     for _, line in ipairs(ns.Tooltip.Lines(link,true)) do
         if line.text == ns.L['Not useful to you: %s']:format(MISS) then found=true end
     end
+    UnitLevel = previousLevel
+    if ns.Player.Invalidate then ns.Player.Invalidate() end
     ok(found,'falta motivo en tooltip')
 end)
 
@@ -189,5 +201,33 @@ test('GearQuest: sin filas para el ítem (base sin cargar o ítem desconocido) e
     eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
     GQ.Data.GetEntriesByItemId = function() error('sin base') end
     eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ = nil
+end)
+
+test('GearQuest: fila puntuada para el enlace = te sirve, aunque haya texto de diagnóstico (revisión de release, crítico)', function()
+    gearQuest(MISS)
+    GQ.Data.EntryForItemLink = function() return { pipelineScore = 100 } end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.Data.EntryForItemLink = function() error('sin datos') end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.Data.EntryForItemLink = nil
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ = nil
+end)
+
+test('GearQuest: simulación activa o perfil distinto al personaje real no decide nada', function()
+    gearQuest(MISS)
+    GQ.IsPreviewEnabled = function() return true end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.IsPreviewEnabled = function() return false end
+    GQ.GetEffectiveClass = function() return 'MAGE' end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.GetEffectiveClass = function() return 'WARRIOR' end
+    GQ.GetEffectiveLevel = function() return 35 end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.GetEffectiveLevel = nil
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    GQ.GetEffectiveLevel = function() return 20 end
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'coin')
     GQ = nil
 end)
