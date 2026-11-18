@@ -1,10 +1,16 @@
 local _, ns = ...
 
 -- Baganator por su API oficial (Baganator.API): ni hooks ni frames propios sobre sus botones.
---   * junk plugin 'KnuJunk': Baganator pinta SU moneda de basura donde devolvemos true (solo 'coin').
+--   * junk plugin 'KnuJunk': Baganator pinta SU moneda de basura donde devolvemos true y, en la vista
+--     de categorias, MUEVE esos items a su categoria de basura (CategoryViews/BagLayout.lua l.39-66,
+--     ItemsPreparation.lua l.38-46). KnuJunk nunca recategoriza: devolvemos true SOLO donde Baganator
+--     tambien diria basura con su opcion por defecto (gris con precio de venta, ItemButton.lua l.216)
+--     y nuestras protecciones no lo salvan. Las demas monedas (mision terminada, clase, a mano...)
+--     solo las dibuja la esquina 'KnuJunk: monedita'.
 --   * corner widgets 'KnuJunk: martillo' y 'KnuJunk: monedita': nuestra marca en una esquina del
---     boton (el martillo se autoinserta arriba a la derecha; la monedita queda a elegir del jugador).
---     Este adaptador nunca escribe la configuracion de Baganator: la autoinsercion es suya.
+--     boton (el martillo se autoinserta arriba a la derecha; la monedita arriba a la izquierda, donde
+--     Baganator pone su icono de basura). Este adaptador nunca escribe la configuracion de Baganator:
+--     la autoinsercion es suya.
 -- Regla de oro: si un boton no se puede PROBAR como una casilla viva de las bolsas 0-4 (o del banco
 -- VIVO, ns.Bank) del personaje actual (vistas guardadas de otros personajes, banco cerrado, hermandad),
 -- no se marca.
@@ -32,13 +38,14 @@ local BANK_PREFIXES = { 'Baganator_SingleViewBankViewFrame', 'Baganator_Category
 local SKIN_KEYS = { 'blizzard', 'blizzard_black', 'dark', 'elvui', 'ellesmereui', 'gw2_ui', 'ndui' }
 
 local JUNK_PLUGIN = { label = 'KnuJunk', id = 'knujunk' }
--- El martillo se autoinserta (una sola vez, lo gestiona Baganator) en la esquina superior derecha:
--- por defecto Baganator la deja vacia (arriba izquierda: junk + nivel; abajo: set y cantidad). La
--- monedita NO lleva posicion: la moneda nativa la da el junk plugin.
+-- Autoinsercion (una sola vez, la gestiona Baganator): el martillo arriba a la derecha (por defecto
+-- vacia; abajo: set y cantidad) y la monedita arriba a la izquierda, junto al icono de basura de
+-- Baganator: asi las monedas que no son basura para Baganator se ven sin configurar nada.
 local HAMMER_POSITION = { corner = 'top_right', priority = 1 }
+local COIN_POSITION = { corner = 'top_left', priority = 1 }
 local WIDGETS = {
     { id = 'knujunk_hammer', label = 'KnuJunk: martillo', position = HAMMER_POSITION, accepts = function(mark) return mark == 'hammer_mine' or mark == 'hammer_other' end },
-    { id = 'knujunk_coin', label = 'KnuJunk: monedita', coin = true, accepts = function(mark) return mark == 'coin' end },
+    { id = 'knujunk_coin', label = 'KnuJunk: monedita', coin = true, position = COIN_POSITION, accepts = function(mark) return mark == 'coin' end },
 }
 
 local done = {}          -- [id] = true: lo ya registrado en Baganator (no se duplica)
@@ -137,11 +144,21 @@ local function await(itemID)
     if type(itemID) == 'number' then waiting[itemID] = true end
 end
 
+-- true si Baganator, con su criterio por defecto ('poor_quality': calidad Pobre y con valor de venta),
+-- tambien lo llamaria basura. `item` es el leido por Marks.Verdict.
+local function grayJunk(mark, item)
+    return mark == 'coin' and type(item) == 'table' and item.quality == 0
+        and type(item.price) == 'number' and item.price > 0
+end
+
+-- Solo grises con precio que siguen siendo moneda para nosotros (override_keep, items utiles,
+-- reactivos y misiones los salvan): KnuJunk nunca saca de su categoria un item que Baganator no
+-- moveria por su cuenta.
 local function junkCallback(bagID, slotID, itemID)
     if type(itemID) ~= 'number' or not liveViewFor(bagID) then return nil end
-    local mark, pending = ns.Marks.Verdict(bagID, slotID, itemID)
+    local mark, pending, _, item = ns.Marks.Verdict(bagID, slotID, itemID)
     if pending then await(itemID) end
-    return mark == 'coin'
+    return grayJunk(mark, item)
 end
 
 -- true si el junk plugin de KnuJunk esta activo en Baganator (ante un error, se supone que si).
@@ -155,16 +172,16 @@ end
 local function widgetCallback(accepts, isCoin)
     return function(texture, details)
         if type(details) ~= 'table' or type(details.itemID) ~= 'number' then return false end
-        -- La moneda nativa del junk plugin ya cubre el item: el widget no dibuja otra.
-        if isCoin and junkPluginActive() then return false end
         local location = details.itemLocation
         if type(location) ~= 'table' or type(location.bagID) ~= 'number' or type(location.slotIndex) ~= 'number' then
             return false
         end
         -- Banco: ademas de itemLocation (solo en botones vivos), la vista del banco tiene que ser la viva.
         if ns.Bank.IsBankBag(location.bagID) and not liveBank() then return false end
-        local mark, pending = ns.Marks.Verdict(location.bagID, location.slotIndex, details.itemID)
+        local mark, pending, _, item = ns.Marks.Verdict(location.bagID, location.slotIndex, details.itemID)
         if pending then await(details.itemID) end
+        -- Gris con el junk plugin de KnuJunk activo: la moneda nativa ya lo cubre (sin doble moneda).
+        if isCoin and grayJunk(mark, item) and junkPluginActive() then return false end
         if mark and accepts(mark) and ns.Marks.Style(texture, mark) then return true end
         return false
     end
