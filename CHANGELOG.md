@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Asesor de botín con bolsa llena: Shift muestra si conviene lootear, contempla pilas, misiones y bolsas especiales; tooltip con candidato y valores, sin tirar nada automáticamente.
+
 - Venta automática de moneditas al abrir un vendedor: una ranura cada 0,2 s, hasta 12 por visita, revalidación de GUID, marca y bloqueos, espera fuera de combate, opciones en General, resumen y detección de otros vendedores sin modificar sus ajustes; pendiente probar en Forever.
 
 - Regla «Equipo que no te sirve (según GearQuest)», activada por defecto: monedita, subasta o tacho según ligadura y precios, con protecciones, conjuntos guardados, estado en Reglas y motivo en el tooltip.

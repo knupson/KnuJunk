@@ -453,6 +453,14 @@ local function hookTooltip(tooltip, withSetItem)
     if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
         pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
     end
+    if type(tooltip.SetLootItem) == 'function' then
+        pcall(hooksecurefunc, tooltip, 'SetLootItem', function(self, slot)
+            local result = ns.LootAdvisor.Advice(slot)
+            if result then
+                self:AddLine(result.text, result.good and 0.3 or 1, result.good and 1 or 0.3, 0.3, true)
+            end
+        end)
+    end
     if withSetItem then
         pcall(tooltip.HookScript, tooltip, 'OnTooltipSetItem', function(self) Tooltip.Decorate(self) end)
     end

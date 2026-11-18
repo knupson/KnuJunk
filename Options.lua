@@ -40,6 +40,9 @@ Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.
 Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.graysOnly', label = 'Grays only',
     help = 'Automatically sell only poor-quality items with a coin icon.' }
 
+Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'lootAdvisor.enabled', label = 'Loot advisor when bags are full',
+    help = 'When bags are full, hold Shift in the loot window to see what to drop or whether looting is worth it.' }
+
 -- Valor de una ruta de ns.DB ('show.coin'); nil si falta algun tramo.
 local function lookup(path)
     local value = ns.DB

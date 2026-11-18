@@ -44,6 +44,7 @@ Bags\ElvUI.lua
 Bags\BaudBag.lua
 Bags\Frames.lua
 Bags\Generic.lua
+LootAdvisor.lua
 Loot.lua
 Overrides.lua
 Merchant.lua
