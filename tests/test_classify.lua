@@ -15,7 +15,8 @@ end
 
 local function ctx(fields)
     local base = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
-        isQuestDone = function() return false end, questieUses = function() return nil end }
+        isQuestDone = function() return false end, questieUses = function() return nil end,
+        questInLog = function() return false end }
     for key, value in pairs(fields or {}) do base[key] = value end
     return base
 end
@@ -204,34 +205,103 @@ test('override sell sobre reactivo -> coin', function()
     end)
 end)
 
-test('questie con una mision pendiente -> quest', function()
+-- Regla del 2026-11-17: solo protege una mision que esta AHORA en el diario. Futuras, no tomadas,
+-- hechas o repetibles no tomadas no protegen nada (los iniciadores tienen su propia regla).
+test('questie: mision futura que no esta en el diario -> coin quest_not_active', function()
     withData({}, {}, function()
+        local uses = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = false } } end
         local result = ns.Classify(item { quality = 0, price = 5 }, ctx {
-            questieUses = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = false } } end,
-            isQuestDone = function(q) return q == 1 end })
-        eq(result.mark, 'quest')
+            questieUses = uses, isQuestDone = function(q) return q == 1 end })
+        eq(result.mark, 'coin'); ok(hasReason(result, 'quest_not_active'), 'reason quest_not_active')
+        local active = ns.Classify(item { quality = 0, price = 5 }, ctx {
+            questieUses = uses, questInLog = function(q) return q == 2 end })
+        eq(active.mark, 'quest'); eq(hasReason(active, 'quest_active').questID, 2)
     end)
 end)
 
-test('questie todas hechas -> coin', function()
+test('questie todas hechas -> coin quest_not_active', function()
     withData({}, {}, function()
         local result = ns.Classify(item(), ctx {
             questieUses = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = false } } end,
             isQuestDone = function() return true end })
-        eq(result.mark, 'coin'); ok(hasReason(result, 'quest_done'), 'reason quest_done')
+        eq(result.mark, 'coin'); ok(hasReason(result, 'quest_not_active'), 'reason quest_not_active')
     end)
 end)
 
-test('questie con mision repetible o desconocida -> sin moneda', function()
+test('questie: repetible no tomada -> coin; diario que no sabe (nil) -> sin moneda', function()
     withData({}, {}, function()
         local repeatable = ns.Classify(item(), ctx {
             questieUses = function() return { { questID = 1, repeatable = true } } end,
             isQuestDone = function() return true end })
-        eq(repeatable.mark, nil)
+        eq(repeatable.mark, 'coin'); ok(hasReason(repeatable, 'quest_not_active'), 'quest_not_active')
         local unknown = ns.Classify(item(), ctx {
             questieUses = function() return { { questID = 1, repeatable = false } } end,
-            isQuestDone = function() return nil end })
-        eq(unknown.mark, 'quest') -- no se sabe: cuenta como pendiente, nunca moneda
+            questInLog = function() return nil end })
+        eq(unknown.mark, nil, 'no se sabe si esta en el diario: nunca moneda')
+        ok(hasReason(unknown, 'quest_log_incomplete'), 'quest_log_incomplete')
+        local noFn = ctx { questieUses = function() return { { questID = 1 } } end }
+        noFn.questInLog = nil
+        eq(ns.Classify(item(), noFn).mark, nil, 'sin questInLog: nunca moneda')
+    end)
+end)
+
+test('item de mision (clase 12) que ninguna mision activa pide -> coin quest_not_active', function()
+    withData({}, {}, function()
+        local quest = item { classID = 12, quality = 1, price = 0 }
+        -- Sin QuestieDB: decide solo el diario.
+        local alone = ns.Classify(quest, ctx { questieUses = nil })
+        eq(alone.mark, 'coin'); ok(hasReason(alone, 'quest_not_active'), 'sin QuestieDB')
+        -- QuestieDB dice que una mision futura lo usa: igual es basura.
+        local future = ns.Classify(quest, ctx { questieUses = function() return { { questID = 50 } } end })
+        eq(future.mark, 'coin'); ok(hasReason(future, 'quest_not_active'), 'mision futura')
+        -- En el diario: marca de mision con el titulo que da el diario.
+        local inLog = ns.Classify(quest, ctx { questItemsInLog = { [9000] = true },
+            questItemTitle = function(id) return id == 9000 and 'Los lobos' or nil end })
+        eq(inLog.mark, 'quest'); eq(hasReason(inLog, 'quest_active').title, 'Los lobos')
+        ok(not hasReason(inLog, 'quest_not_active'), 'sin quest_not_active')
+    end)
+end)
+
+test('item de mision: diario incompleto, reactivo o con efecto de uso -> sin moneda', function()
+    withData({}, {}, function()
+        local quest = item { classID = 12, quality = 1 }
+        local incomplete = ns.Classify(quest, ctx { questLogIncomplete = true,
+            questieUses = function() return { { questID = 50 } } end })
+        eq(incomplete.mark, nil); ok(hasReason(incomplete, 'quest_log_incomplete'), 'diario incompleto')
+        local useful = ns.Classify(item { classID = 12, quality = 1, hasUseOrEquipSpell = true }, ctx {
+            questieUses = function() return { { questID = 50 } } end })
+        eq(useful.mark, nil, 'con efecto de uso')
+    end)
+    withData({ [9000] = { 171 } }, {}, function()
+        local reagent = ns.Classify(item { classID = 12, quality = 1 }, ctx {
+            questieUses = function() return { { questID = 50 } } end })
+        eq(reagent.mark, 'hammer_other'); eq(reagent.quest, nil)
+        local active = ns.Classify(item { classID = 12, quality = 1 }, ctx {
+            questieUses = function() return { { questID = 50 } } end, questInLog = function(q) return q == 50 end })
+        eq(active.mark, 'hammer_other'); eq(active.quest, true)
+    end)
+end)
+
+-- Correccion del user (2026-11-17): un iniciador cuya mision no hiciste es util aunque no este en
+-- el diario; con la mision hecha (y no repetible) es basura.
+test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_done', function()
+    withData({}, {}, function()
+        local uses = function() return { { questID = 60, starter = true } } end
+        local pending = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = uses })
+        eq(pending.mark, nil); eq(hasReason(pending, 'quest_starter').questID, 60)
+        local unknown = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return nil end })
+        eq(unknown.mark, nil, 'no se sabe si esta hecha: util')
+        local done = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return true end })
+        eq(done.mark, 'coin'); eq(hasReason(done, 'quest_done').questID, 60)
+        ok(not hasReason(done, 'quest_not_active'), 'el iniciador no usa la regla del diario')
+        local repeatable = ns.Classify(item(), ctx { questieUses = function() return { { questID = 60, starter = true, repeatable = true } } end,
+            isQuestDone = function() return true end })
+        eq(repeatable.mark, nil); ok(hasReason(repeatable, 'quest_repeatable'), 'repetible')
+    end)
+    withData({}, { [9000] = 61 }, function()
+        local notTaken = ns.Classify(item { classID = 12 }, ctx())
+        eq(notTaken.mark, nil, 'iniciador de mision no tomada ni hecha: util')
+        eq(hasReason(notTaken, 'quest_starter').questID, 61)
     end)
 end)
 
@@ -283,7 +353,7 @@ test('ClassGear: generado desde datos con build', function()
 end)
 
 -- Item 2 de la ola final: un uso repetible conocido por Questie bloquea TODA moneda automatica.
-test('mision repetible hecha bloquea gris, iniciador hecho y clase', function()
+test('iniciador repetible hecho sin moneda; repetible no tomada ya no protege', function()
     withData({}, { [9000] = 99001 }, function()
         local repeatable = function() return { { questID = 99001, repeatable = true } } end
         local done = function() return true end
@@ -291,14 +361,18 @@ test('mision repetible hecha bloquea gris, iniciador hecho y clase', function()
         eq(starter.mark, nil, 'iniciador de repetible')
         ok(not hasReason(starter, 'quest_done'), 'sin quest_done')
     end)
+    -- Desde el 2026-11-17 una repetible que no esta en el diario ya no protege nada (no iniciador).
     withData({}, {}, function()
         local repeatable = function() return { { questID = 99001, repeatable = true } } end
         local done = function() return true end
-        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done }).mark, nil, 'gris')
+        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done }).mark, 'coin', 'gris')
         local plate = item { classID = 4, subclassID = 4, quality = 2, hasUseOrEquipSpell = false, isSetPiece = false }
-        eq(ns.Classify(plate, ctx { class = 'MAGE', questieUses = repeatable, isQuestDone = done }).mark, nil, 'clase')
+        eq(ns.Classify(plate, ctx { class = 'MAGE', questieUses = repeatable, isQuestDone = done }).mark, 'coin', 'clase')
         local mixed = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = true } } end
-        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = mixed, isQuestDone = done }).mark, nil, 'mezcla')
+        eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = mixed, isQuestDone = done }).mark, 'coin', 'mezcla')
+        local active = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable,
+            questInLog = function(q) return q == 99001 end })
+        eq(active.mark, 'quest', 'repetible tomada: protege')
         local sold = ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done,
             overrides = { [9000] = 'sell' } })
         eq(sold.mark, 'coin', 'override_sell sigue valiendo')
@@ -343,10 +417,11 @@ end)
 
 -- Util para una mision pendiente Y reactivo/herramienta: martillo (las bolsas lo dibujan), con
 -- quest = true y los motivos de mision; el botin dibuja el signo de mision.
-test('reactivo con mision pendiente de questie -> hammer_other con quest', function()
+test('reactivo con mision activa de questie -> hammer_other con quest', function()
     withData({ [9000] = { 164, 171 } }, {}, function()
         local result = ns.Classify(item(), ctx {
             questieUses = function() return { { questID = 77, repeatable = false } } end,
+            questInLog = function(q) return q == 77 end,
         })
         eq(result.mark, 'hammer_other'); eq(result.quest, true)
         eq(hasReason(result, 'quest_active').questID, 77)

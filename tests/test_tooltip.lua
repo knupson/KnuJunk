@@ -94,13 +94,45 @@ test('Tooltip: item sin marca no agrega nada', function()
     eq(#tooltip.lines, 0)
 end)
 
-test('Tooltip: misiones (activa, iniciadora, diario incompleto) sin linea', function()
+-- Regla del 2026-11-17: el tooltip dice por que un item de mision no lleva moneda (mision activa
+-- o iniciador de una mision no hecha) y por que si la lleva (ninguna mision activa lo pide).
+test('Tooltip: lineas de mision activa, iniciador y quest_not_active', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local cases = {
+        { { mark = 'quest', reasons = { { kind = 'quest_active' } } }, 'Lo pide una misión activa', { 1, 1, 1 } },
+        { { mark = 'quest', reasons = { { kind = 'quest_active', title = 'Los lobos' } } }, 'Misión activa: Los lobos', { 1, 1, 1 } },
+        { { mark = 'quest', reasons = { { kind = 'quest_active', questID = 5 } } }, 'Misión activa: #5', { 1, 1, 1 } },
+        { { mark = nil, reasons = { { kind = 'quest_starter', questID = 5 } } }, 'Inicia una misión que no hiciste: #5', { 1, 1, 1 } },
+        { { mark = 'coin', reasons = { { kind = 'quest_not_active' } } }, 'Ninguna misión activa lo pide', { 1, 0.82, 0 } },
+    }
+    for _, case in ipairs(cases) do
+        withClassify(function() return case[1] end, function()
+            local tooltip = newTooltip(100)
+            run(processor, tooltip, {})
+            eq(#tooltip.lines, 1)
+            line(tooltip, 1, case[2], case[3])
+        end)
+    end
+    -- La linea de quest_not_active lleva el icono de la moneda; la de mision activa, el signo de mision.
+    withClassify(function() return cases[5][1] end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        ok(tooltip.lines[1].text:find('UI-GoldIcon', 1, true) or tooltip.lines[1].text:find('|A:', 1, true), 'icono de moneda')
+    end)
+    withClassify(function() return cases[1][1] end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        ok(tooltip.lines[1].text:find('AvailableQuestIcon', 1, true), 'signo de mision')
+    end)
+end)
+
+test('Tooltip: diario incompleto sin linea', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
     for _, case in ipairs({
-        { mark = 'quest', reasons = { { kind = 'quest_active' } } },
-        { mark = nil, reasons = { { kind = 'quest_starter', questID = 5 } } },
         { mark = nil, reasons = { { kind = 'quest_log_incomplete' } } },
     }) do
         withClassify(function() return case end, function()
@@ -520,26 +552,27 @@ test('Tooltip: aislamiento - Reset deja GameTooltip limpio, sin hooks ni lineas'
     eq(ItemRefTooltip, nil)
 end)
 
--- Reactivo util para una mision pendiente: martillo + linea neutra de la mision (con su icono).
-test('Tooltip: reactivo con mision pendiente de Questie -> linea de mision y martillo', function()
+-- Reactivo util para una mision del diario: martillo + linea neutra de la mision (con su icono).
+test('Tooltip: reactivo con mision activa de Questie -> linea de mision y martillo', function()
     addItem(100, { quality = 1 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
     withReagents({ [100] = { 164 } }, function()
         local saved = ns.Questie.Uses
         ns.Questie.Uses = function(id) if id == 100 then return { { questID = 77, repeatable = false } } end end
+        FAKE.questLog = { { questID = 77 } }
         local success, err = pcall(function()
             local plain = newTooltip(100)
             run(processor, plain, {})
             eq(#plain.lines, 2)
-            local entry = line(plain, 1, 'Misión pendiente: #77', { 1, 1, 1 })
+            local entry = line(plain, 1, 'Misión activa: #77', { 1, 1, 1 })
             ok(entry.text:find('GossipFrame\\AvailableQuestIcon', 1, true), 'icono de mision: ' .. entry.text)
             line(plain, 2, 'Profesión que no tenés: Herrería', { 1, 0.85, 0.2 })
             for _, l in ipairs(plain.lines) do ok(not l.text:find('UI-GoldIcon', 1, true), 'nunca moneda') end
             C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
             local named = newTooltip(100)
             run(processor, named, {})
-            line(named, 1, 'Misión pendiente: La caza 77')
+            line(named, 1, 'Misión activa: La caza 77')
         end)
         ns.Questie.Uses = saved
         C_QuestLog.GetTitleForQuestID = nil
@@ -557,7 +590,7 @@ test('Tooltip: titulo de QuestieDB si el cliente no lo da', function()
     end, function()
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
-        line(tooltip, 1, 'Misión pendiente: Garras para el herrero')
+        line(tooltip, 1, 'Misión activa: Garras para el herrero')
     end)
     LibQuestieDB = nil
 end)

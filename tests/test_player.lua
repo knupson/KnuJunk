@@ -519,3 +519,40 @@ test('habilidades plegadas en combate: no toca nada y no hay profesion', functio
     eq(FAKE.calls.expand, 0)
     eq(FAKE.skillLines[3].isExpanded, false)
 end)
+
+-- Regla del 2026-11-17: questInLog dice si una mision esta AHORA en el diario (true/false), o nil si
+-- no se puede saber; questItemTitle da el titulo de la mision del diario que pide el item.
+test('questInLog y questItemTitle desde el escaneo del diario', function()
+    collapsedLog()
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questInLog(2), true, 'mision bajo encabezado plegado')
+    eq(ctx.questInLog(3), true)
+    eq(ctx.questInLog(99), false, 'no esta en el diario')
+    eq(ctx.questInLog(nil), nil)
+    eq(ctx.questItemTitle(500), 'Lobos')
+    eq(ctx.questItemTitle(12345), nil)
+end)
+
+test('questInLog con la API clasica (questID en el 8.o retorno)', function()
+    collapsedLog()
+    FAKE.Remove('C_QuestLog.GetInfo')
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questInLog(2), true); eq(ctx.questInLog(99), false)
+    eq(ctx.questItemTitle(500), 'Lobos')
+end)
+
+test('questInLog sin questID en el diario: IsOnQuest o nil', function()
+    FAKE.questLog = { { title = 'Sin id', objectives = {} } }
+    FAKE.Remove('C_QuestLog.GetInfo')
+    local ctx = ns.Player.GetContext()
+    eq(ctx.questInLog(7), nil, 'no se puede saber')
+    C_QuestLog.IsOnQuest = function(questID) return questID == 7 end
+    ns.Player.Invalidate()
+    ctx = ns.Player.GetContext()
+    eq(ctx.questInLog(7), true); eq(ctx.questInLog(8), false)
+end)
+
+test('diario vacio con C_QuestLog: ninguna mision esta en el diario', function()
+    FAKE.questLog = {}
+    eq(ns.Player.GetContext().questInLog(5), false)
+end)

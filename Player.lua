@@ -8,7 +8,7 @@ ns.Player = Player
 
 local cache    -- contexto vigente (nil = sucio, se reconstruye en el proximo GetContext)
 local previous -- ultimo contexto antes de ensuciarse: para avisar a OnChanged si cambio de contenido
-local lastQuestNames -- {[nombre normalizado] = nombre} del ultimo escaneo COMPLETO del diario
+local lastQuestFound -- {names=, titles=, ids=, idsKnown=} del ultimo escaneo COMPLETO del diario
 local questMemo, skillMemo = {}, {} -- {fp=, data=}: resultado del ultimo escaneo con expansion
 local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos sincronicos se ignoran
 local pending = false -- hay una reconstruccion diferida programada
@@ -32,7 +32,7 @@ function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Player.ResetState()
-    cache, previous, lastQuestNames, scanning, pending = nil, nil, nil, false, false
+    cache, previous, lastQuestFound, scanning, pending = nil, nil, nil, false, false
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
 end
 
@@ -180,14 +180,25 @@ local function objectiveItemName(text, kind)
     return text:match('^(.-):%s*%d+%s*/%s*%d+%s*$')
 end
 
--- Lee el diario completo. Devuelve names ({[normalizado]=nombre} de items pedidos) y complete.
+-- Lee el diario completo. Devuelve found y complete:
+--   found = { names = {[normalizado]=nombre} de items pedidos, titles = {[normalizado]=titulo de la
+--   mision que lo pide}, ids = {[questID]=true} de las misiones del diario, idsKnown = true si todas
+--   las misiones leidas trajeron su questID (si no, ids no alcanza para decir "no esta") }.
 -- complete=false si quedaron misiones sin leer (encabezado plegado en combate, sin API para
 -- expandir, o sin API de diario).
 local function scanQuestLog()
-    local names = {}
-    local function add(text, kind)
+    local found = { names = {}, titles = {}, ids = {}, idsKnown = true }
+    local names = found.names
+    local function add(text, kind, title)
         local name = objectiveItemName(text, kind)
-        if name and name ~= '' then names[ns.NormalizeName(name)] = name end
+        if name and name ~= '' then
+            local key = ns.NormalizeName(name)
+            names[key] = name
+            if type(title) == 'string' and title ~= '' then found.titles[key] = title end
+        end
+    end
+    local function quest(questID)
+        if type(questID) == 'number' and questID > 0 then found.ids[questID] = true else found.idsKnown = false end
     end
     if C_QuestLog and type(C_QuestLog.GetNumQuestLogEntries) == 'function'
         and type(C_QuestLog.GetInfo) == 'function' and type(C_QuestLog.GetQuestObjectives) == 'function' then
@@ -219,16 +230,19 @@ local function scanQuestLog()
         local complete, how = scanExpanded(count, entry, expand, collapse, function()
             for index = 1, count() do
                 local info = C_QuestLog.GetInfo(index)
-                if info and not info.isHeader and info.questID then
-                    for _, objective in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do
-                        add(objective.text, objective.type)
+                if info and not info.isHeader then
+                    quest(info.questID)
+                    if info.questID then
+                        for _, objective in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do
+                            add(objective.text, objective.type, info.title)
+                        end
                     end
                 end
             end
         end, save, restore, fingerprint, questMemo)
         if how == 'cached' then return questMemo.data, true end
-        if how == 'expanded' then questMemo.data = names end
-        return names, complete
+        if how == 'expanded' then questMemo.data = found end
+        return found, complete
     elseif type(GetNumQuestLogEntries) == 'function' and type(GetQuestLogTitle) == 'function'
         and type(GetNumQuestLeaderBoards) == 'function' and type(GetQuestLogLeaderBoard) == 'function' then
         local function count() return (GetNumQuestLogEntries()) or 0 end
@@ -256,20 +270,23 @@ local function scanQuestLog()
             type(CollapseQuestHeader) == 'function' and CollapseQuestHeader or nil,
             function()
                 for index = 1, count() do
-                    local _, _, _, isHeader = GetQuestLogTitle(index)
+                    -- 8.o retorno: questID (si el cliente no lo da, idsKnown queda en false).
+                    local title, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(index)
                     if not isHeader then
+                        quest(questID)
                         for objective = 1, GetNumQuestLeaderBoards(index) or 0 do
                             local text, kind = GetQuestLogLeaderBoard(objective, index)
-                            add(text, kind)
+                            add(text, kind, title)
                         end
                     end
                 end
             end, save, restore, fingerprint, questMemo)
         if how == 'cached' then return questMemo.data, true end
-        if how == 'expanded' then questMemo.data = names end
-        return names, complete
+        if how == 'expanded' then questMemo.data = found end
+        return found, complete
     end
-    return names, false
+    found.idsKnown = false
+    return found, false
 end
 
 -- Devuelve questItemsInLog = {[itemID]=true} y si el diario quedo incompleto. Un escaneo
@@ -280,13 +297,21 @@ end
 -- que no se pudo resolver, __index compara por el nombre del item consultado (un item de
 -- mision gris no debe quedar con monedita por no haberse resuelto a tiempo).
 local function buildQuestItems()
-    local names, complete = scanQuestLog()
+    local found, complete = scanQuestLog()
     local incomplete = not complete
     if complete then
-        lastQuestNames = names
-    elseif lastQuestNames then
-        for key, name in pairs(lastQuestNames) do names[key] = names[key] or name end
+        lastQuestFound = found
+    elseif lastQuestFound then
+        -- Copia: no se toca la tabla del memo ni la del ultimo escaneo completo.
+        local merged = { names = {}, titles = {}, ids = {}, idsKnown = false }
+        for _, source in ipairs({ lastQuestFound, found }) do
+            for field in pairs({ names = true, titles = true, ids = true }) do
+                for key, value in pairs(source[field]) do merged[field][key] = value end
+            end
+        end
+        found = merged
     end
+    local names = found.names
     local ids = {}
     for _, name in pairs(names) do
         if type(GetItemInfo) == 'function' then
@@ -300,7 +325,31 @@ local function buildQuestItems()
         local name = GetItemInfo(id)
         if type(name) == 'string' and names[ns.NormalizeName(name)] then return true end
         return nil
-    end }), incomplete, names
+    end }), incomplete, found
+end
+
+-- questInLog(questID): true si la mision esta en el diario; false si no (lo dicen los questID del
+-- escaneo o C_QuestLog.IsOnQuest); nil si no se puede saber.
+local function questInLogFor(found)
+    return function(questID)
+        if type(questID) ~= 'number' then return nil end
+        if found.ids[questID] then return true end
+        if found.idsKnown then return false end
+        if C_QuestLog and type(C_QuestLog.IsOnQuest) == 'function' then
+            local success, answer = pcall(C_QuestLog.IsOnQuest, questID)
+            if success and (answer == true or answer == false) then return answer end
+        end
+        return nil
+    end
+end
+
+-- questItemTitle(itemID): titulo de la mision del diario que pide el item, o nil.
+local function questItemTitleFor(found)
+    return function(itemID)
+        if type(GetItemInfo) ~= 'function' or next(found.titles) == nil then return nil end
+        local name = GetItemInfo(itemID)
+        return type(name) == 'string' and found.titles[ns.NormalizeName(name)] or nil
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -318,7 +367,7 @@ local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
     local professions = readProfessions()
-    local questItems, incomplete, names = buildQuestItems()
+    local questItems, incomplete, found = buildQuestItems()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
     -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
     if ns.Questie and type(ns.Questie.Pending) == 'function' and ns.Questie.Pending() then incomplete = true end
@@ -326,14 +375,16 @@ local function buildContext()
         class = class,
         professions = professions,
         isQuestDone = isQuestDone,
+        questInLog = questInLogFor(found),
         questItemsInLog = questItems,
+        questItemTitle = questItemTitleFor(found),
         questLogIncomplete = incomplete or nil,
         questieUses = ns.Questie and ns.Questie.Uses or nil,
         overrides = ns.DB and ns.DB.overrides or {},
     }
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), tostring(questRevision), sortedKeys(professions),
-        sortedKeys(questItems), sortedKeys(names) }, '|')
+        sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids) }, '|')
     return ctx
 end
 

@@ -95,16 +95,30 @@ test('Loot clasico: objetivo de mision activa -> quest', function()
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
 end)
 
-test('Loot clasico: item de mision segun Questie -> quest', function()
+test('Loot clasico: item de una mision del diario segun Questie -> quest', function()
     installLoot()
     local buttons = classicWindow(4)
     addItem(501, { name = 'Pieza rara', quality = 0, price = 5 }); FAKE.loot[501 - 500] = 501
     FAKE.InstallQuestie({ [77] = { objectives = { nil, nil, { { 501, 'Pieza rara' } } } } })
+    FAKE.questLog = { { title = 'Piezas', questID = 77 } }
     ns.Questie.Uses(0)
     FAKE.Advance(5)
     open()
     ok(visible(buttons[1]))
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+end)
+
+-- Regla del 2026-11-17: una mision que no esta en el diario no protege; en el botin va la moneda.
+test('Loot clasico: item de una mision que no esta en el diario -> moneda', function()
+    installLoot()
+    local buttons = classicWindow(4)
+    addItem(501, { name = 'Pieza rara', quality = 1, price = 5, classID = 12 }); FAKE.loot[501 - 500] = 501
+    FAKE.InstallQuestie({ [77] = { objectives = { nil, nil, { { 501, 'Pieza rara' } } } } })
+    ns.Questie.Uses(0)
+    FAKE.Advance(5)
+    open()
+    ok(visible(buttons[1]))
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
 end)
 
 test('Loot clasico: fila reciclada a otro slot cambia la marca (LootFrame_Update)', function()

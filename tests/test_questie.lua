@@ -272,11 +272,21 @@ test('el contexto del personaje usa Questie.Uses y el clasificador lo respeta', 
         [30] = { objectives = { nil, nil, { { 500 } } }, requiredRaces = HORDE },
     })
     local item = ns.Player.ReadLink(FAKE.linkOf(500))
-    FAKE.completed[10] = true
-    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'falta la 20')
-    FAKE.completed[20] = true
+    FAKE.questLog = { { title = 'Veinte', questID = 20 } }
     ns.Player.Invalidate()
-    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'hechas las aplicables (la 30 es de la Horda)')
+    local active = ns.Classify(item, ns.Player.GetContext())
+    eq(active.mark, 'quest', 'la 20 esta en el diario')
+    eq(active.reasons[1].questID, 20)
+    -- Regla del 2026-11-17: fuera del diario (futura o hecha) ya no protege.
+    FAKE.questLog = {}
+    ns.Player.Invalidate()
+    local idle = ns.Classify(item, ns.Player.GetContext())
+    eq(idle.mark, 'coin', 'ninguna mision del diario la pide')
+    eq(idle.reasons[1].kind, 'quest_not_active')
+    -- La 30 es de la Horda: aunque figure en el diario de un aliado (imposible), no cuenta.
+    FAKE.questLog = { { title = 'Treinta', questID = 30 } }
+    ns.Player.Invalidate()
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'la 30 no aplica')
 end)
 
 test('Pending: solo mientras QuestieDB esta disponible y el indice no termino', function()
@@ -312,8 +322,9 @@ test('indice sin terminar: item gris de una mision sin hacer no da moneda; con e
     FAKE.Advance(5)
     eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'indice listo y mision hecha')
     FAKE.completed[10] = nil
+    FAKE.questLog = { { title = 'Diez', questID = 10 } }
     ns.Player.Invalidate()
-    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'indice listo y mision pendiente')
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'quest', 'indice listo y mision en el diario')
 end)
 
 test('item de clase que no puede usar tampoco da moneda mientras el indice esta pendiente', function()
@@ -371,10 +382,13 @@ test('extraObjectives: un item referenciado cuenta como uso de la mision', funct
     })
     eq(questIDs(ns.Questie.Uses(500)), '10,20')
     eq(ns.Questie.Uses(77), nil, 'las referencias a criaturas no son items')
-    -- Mision 10 hecha, 20 (extra) sin hacer: sin moneda, marca de mision.
+    -- Mision 20 (extra) en el diario: sin moneda, marca de mision. Fuera del diario: moneda.
     local ctx = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
-        isQuestDone = function(q) return q == 10 end, questieUses = ns.Questie.Uses }
+        isQuestDone = function(q) return q == 10 end, questieUses = ns.Questie.Uses,
+        questInLog = function(q) return q == 20 end }
     eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'quest')
+    ctx.questInLog = function() return false end
+    eq(ns.Classify({ id = 500, quality = 0, price = 5 }, ctx).mark, 'coin')
 end)
 
 -- Re-revision: una referencia ilegible en extraObjectives se saltea SOLA; el indice queda listo y
@@ -394,6 +408,7 @@ test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo
         })
         eq(ns.Questie.Pending(), false)
         eq(questIDs(ns.Questie.Uses(99012)), '10', 'el indice sigue listo')
+        FAKE.questLog = { { title = 'Diez', questID = 10 } }
         FAKE.Fire('QUEST_LOG_UPDATE')
         local ctx = ns.Player.GetContext()
         local gray = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(99012)), ctx)
@@ -406,4 +421,25 @@ test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo
     end)
     ns.Data.starters = savedStarters
     if not success then error(err, 0) end
+end)
+
+-- Correccion del user (2026-11-17): los iniciadores se distinguen (starter = true) porque siguen su
+-- propia regla: mision no hecha -> util aunque no este en el diario; hecha -> moneda.
+test('startedBy: el uso del iniciador lleva starter = true y protege mientras la mision no este hecha', function()
+    FAKE.items[600] = { name = 'Carta vieja', quality = 1, price = 5, classID = 12, subclassID = 0 }
+    install({
+        [40] = { startedBy = { nil, nil, { 600 } } },
+        [41] = { objectives = { nil, nil, { { 600 } } } },
+    })
+    local uses = ns.Questie.Uses(600)
+    eq(questIDs(uses), '40,41')
+    for _, use in ipairs(uses) do eq(use.starter, use.questID == 40 or nil, 'starter de ' .. use.questID) end
+    local item = ns.Player.ReadLink(FAKE.linkOf(600))
+    ns.Player.Invalidate()
+    local pending = ns.Classify(item, ns.Player.GetContext())
+    eq(pending.mark, nil); eq(pending.reasons[1].kind, 'quest_starter'); eq(pending.reasons[1].questID, 40)
+    FAKE.completed[40] = true
+    ns.Player.Invalidate()
+    local done = ns.Classify(item, ns.Player.GetContext())
+    eq(done.mark, 'coin'); eq(done.reasons[1].kind, 'quest_done')
 end)

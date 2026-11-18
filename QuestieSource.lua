@@ -199,8 +199,10 @@ local function indexQuest(source, items, questID)
     end
     if type(required) == 'table' then for _, itemID in ipairs(required) do ids[#ids + 1] = itemID end end
     ids[#ids + 1] = sourceItem
+    -- Los iniciadores van aparte (record con starter = true): su regla es otra (mision hecha o no).
+    local starterIds = {}
     if type(startedBy) == 'table' and type(startedBy[3]) == 'table' then
-        for _, itemID in ipairs(startedBy[3]) do ids[#ids + 1] = itemID end
+        for _, itemID in ipairs(startedBy[3]) do starterIds[#starterIds + 1] = itemID end
     end
     -- Objetivos ocultos: { spawns?, icono, texto?, indice, { {'item'|'monster'|'object', id}, ... }? }.
     -- Cada entrada se lee aparte: una ilegible se saltea SOLA (sus ids no se agregan) y el resto de
@@ -228,16 +230,27 @@ local function indexQuest(source, items, questID)
         end
     end
 
-    local record
+    local base
+    local function newRecord(starter)
+        base = base or {
+            races = get(questID, 'requiredRaces'),
+            classes = get(questID, 'requiredClasses'),
+            repeatable = isRepeatable(get(questID, 'specialFlags'), get(questID, 'questFlags')),
+        }
+        return { questID = questID, races = base.races, classes = base.classes, repeatable = base.repeatable,
+            starter = starter or nil }
+    end
+    local record, starterRecord
     for _, itemID in ipairs(ids) do
         if validID(itemID) then
-            record = record or {
-                questID = questID,
-                races = get(questID, 'requiredRaces'),
-                classes = get(questID, 'requiredClasses'),
-                repeatable = isRepeatable(get(questID, 'specialFlags'), get(questID, 'questFlags')),
-            }
+            record = record or newRecord(false)
             addItem(items, itemID, record)
+        end
+    end
+    for _, itemID in ipairs(starterIds) do
+        if validID(itemID) then
+            starterRecord = starterRecord or newRecord(true)
+            addItem(items, itemID, starterRecord)
         end
     end
 end
@@ -330,13 +343,13 @@ local function usesFor(itemID)
     for _, record in ipairs(records) do
         if canDo(record, info) then
             uses = uses or {}
-            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable }
+            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable, starter = record.starter }
         end
     end
     return uses
 end
 
--- { {questID=, repeatable=bool}, ... } con las misiones que podria hacer este personaje y que usan
+-- { {questID=, repeatable=bool, starter=true|nil}, ... } con las misiones (starter: el item la inicia) que podria hacer este personaje y que usan
 -- el item, o nil (sin QuestieDB, indice aun sin terminar, item sin misiones o cualquier error).
 -- Nunca lanza.
 function Questie.Uses(itemID)

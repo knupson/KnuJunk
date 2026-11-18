@@ -210,7 +210,7 @@ local function installClient()
     GetQuestLogTitle = function(index)
         local q = visible(FAKE.questLog, questCollapsed)[index]
         if not q then return nil end
-        return q.title, 1, '', q.isHeader, q.isCollapsed
+        return q.title, 1, '', q.isHeader, q.isCollapsed, nil, nil, q.questID
     end
     GetNumQuestLeaderBoards = function(index)
         local q = visible(FAKE.questLog, questCollapsed)[index]
