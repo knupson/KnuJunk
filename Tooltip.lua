@@ -446,10 +446,10 @@ local function hookTooltip(tooltip, withSetItem)
         if self == rawget(_G, 'GameTooltip') then ns.Overrides.hovered = nil end
     end
     pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', clear)
-    pcall(tooltip.HookScript, tooltip, 'OnHide', function(self)
-        clear(self)
-        if self == rawget(_G, 'GameTooltip') and ns.Merchant then ns.Merchant.HideHoveredShield() end
-    end)
+    -- El escudo del vendedor NO se oculta con el tooltip: al aparecer, el botón recibe OnLeave
+    -- (el mouse quedó sobre el escudo), la bolsa oculta el tooltip y ocultar el escudo ahí armaba
+    -- un ciclo de parpadeo (visto en el juego con Baganator). El escudo se va con su propio OnLeave.
+    pcall(tooltip.HookScript, tooltip, 'OnHide', clear)
     if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
         pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
     end

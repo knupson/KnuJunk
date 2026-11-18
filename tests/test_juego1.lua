@@ -171,12 +171,19 @@ test('juego1: OnLeave reenvia al boton y despues oculta escudo', function()
     ok(forwarded); eq(shield:IsShown(), false)
 end)
 
-for _, action in ipairs({ 'tooltip', 'merchant', 'combat', 'protectKeep', 'enabled' }) do
+test('juego1: ocultar el tooltip NO oculta el escudo (evita el ciclo de parpadeo visto en el juego)', function()
+    local _, shield, tip = protected()
+    tip:Hide()
+    eq(shield:IsShown(), true)
+    shield:GetScript('OnLeave')(shield)
+    eq(shield:IsShown(), false)
+end)
+
+for _, action in ipairs({ 'merchant', 'combat', 'protectKeep', 'enabled' }) do
     local current = action
     test('juego1: escudo se oculta al cambiar ' .. current, function()
         local _, shield, tip = protected()
-        if current == 'tooltip' then tip:Hide()
-        elseif current == 'merchant' then FAKE.Fire('MERCHANT_CLOSED')
+        if current == 'merchant' then FAKE.Fire('MERCHANT_CLOSED')
         elseif current == 'combat' then FAKE.inCombat = true; FAKE.Fire('PLAYER_REGEN_DISABLED')
         else ns.Options.Set(current, false) end
         eq(shield:IsShown(), false)
