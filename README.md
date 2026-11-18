@@ -8,6 +8,8 @@ Iconos en las bolsas y en el botín para ver qué se puede vender o tirar y qué
 
 - **Protección en el vendedor:** «Protegido» bloquea el ítem mientras está abierto; clic derecho pide confirmación para vender ese ejemplar una vez, sin borrar la marca. Activada por defecto y configurable. Sin API de escudos, queda el bloqueo. Requiere reiniciar el cliente por `Merchant.lua` en el `.toc`; pendiente validar en Forever.
 
+- **Asesor de botín:** con la bolsa llena, mantené Shift para ver si conviene lootear; el tooltip indica qué basura tirar y sus valores. Activado por defecto, configurable en General, sin eliminar ítems.
+
 ## Qué hace
 
 Cada ítem legible recibe un solo ícono, por prioridad: candado azul (Protegido), pergamino crema (misión activa), martillo verde/naranja (profesión propia/ajena), balanza violeta (Subastar), moneda dorada (Vender), tacho rojo (Tirar, sin precio de venta) o tilde gris (Útil). Con datos pendientes no se dibuja. Subastar requiere Auctionator, ítem sin ligadura confirmada y precio al menos igual al mayor entre el doble del vendedor y 1 plata; factor y mínimo son configurables.

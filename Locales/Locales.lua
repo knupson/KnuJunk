@@ -1,5 +1,17 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Loot advisor when bags are full'] = 'Asesor de botín con la bolsa llena',
+    ['When bags are full, hold Shift in the loot window to see what to drop or whether looting is worth it.'] = 'Con la bolsa llena, mantené Shift en la ventana de botín para ver qué tirar o si no conviene lootear.',
+    ['Fits in a stack'] = 'Entra en una pila',
+    ['An active quest needs it: loot it'] = 'Lo pide una misión: lootealo',
+    ['Quest: loot it'] = 'Misión: lootealo',
+    ['Drop %s (worth %s)'] = 'Tirá %s (vale %s)',
+    ['You have no junk to drop'] = 'No tenés basura para tirar',
+    ['No junk to drop'] = 'Sin basura para tirar',
+    ['Drop %s (worth %s) and loot it (worth %s)'] = 'Tirá %s (vale %s) y lootealo (vale %s)',
+    ['Loot it: drop junk'] = 'Lootealo: tirá basura',
+    ['Not worth it: the cheapest item you can drop is worth %s and this is worth %s'] = 'No conviene: lo más barato que podés tirar vale %s y esto vale %s',
+    ['Not worth looting'] = 'No conviene lootear',
     ['Gear not useful to you (GearQuest)'] = 'Equipo que no te sirve (según GearQuest)',
     ['Coin on weapons and armor GearQuest does not rank for your class, specialization or level. Does nothing without GearQuest.'] = 'Monedita en armas y armaduras que GearQuest no clasifica para tu clase, especialización o nivel. Sin GearQuest no hace nada.',
     ['GearQuest detected: %s'] = 'GearQuest detectado: %s',

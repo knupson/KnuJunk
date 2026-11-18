@@ -66,12 +66,15 @@ local function lootShown()
     return type(frame.IsShown) ~= 'function' or (frame:IsShown() and true or false)
 end
 
+Loot.IsShown = lootShown
+
 local function rowVisible(row)
     return type(row.IsShown) ~= 'function' or (row:IsShown() and true or false)
 end
 
 local function clearRow(row)
     ns.Marks.Clear(markButtonOf(row))
+    ns.LootAdvisor.Hide(markButtonOf(row))
 end
 
 -- Limpia y vuelve a marcar una fila desde su slot actual. Nunca lanza.
@@ -81,10 +84,12 @@ local function updateRow(row)
         local button = markButtonOf(row)
         rowOfMark[button] = row
         seen[row] = true
+        ns.LootAdvisor.Hide(button)
         if not lootShown() or not rowVisible(row) then return ns.Marks.Clear(button) end
         local link = currentLink(slotOf(row))
         if not link then return ns.Marks.Clear(button) end
         ns.Marks.UpdateLink(button, link, OWNER)
+        ns.LootAdvisor.Update(button, slotOf(row))
     end)
     if not success then pcall(clearRow, row) end
 end
@@ -187,7 +192,7 @@ local function refreshSoon()
 end
 
 local frame = CreateFrame('Frame')
-for _, event in ipairs({ 'LOOT_OPENED', 'LOOT_SLOT_CHANGED', 'LOOT_SLOT_CLEARED', 'LOOT_CLOSED' }) do
+for _, event in ipairs({ 'LOOT_OPENED', 'LOOT_SLOT_CHANGED', 'LOOT_SLOT_CLEARED', 'LOOT_CLOSED', 'MODIFIER_STATE_CHANGED', 'BAG_UPDATE_DELAYED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 frame:SetScript('OnEvent', function(_, event)
@@ -196,6 +201,7 @@ frame:SetScript('OnEvent', function(_, event)
         return pcall(Loot.ClearAll)
     end
     if event == 'LOOT_OPENED' then closed = false end
+    if not lootShown() then return end
     pcall(Loot.Refresh)
     pcall(refreshSoon)
 end)
