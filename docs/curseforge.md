@@ -12,9 +12,11 @@ Summary (max one line):
 
 **KnuJunk** puts a small icon on the items in your bags and in the loot window so you can see at a glance what you can sell, what you can toss and which materials a profession uses. It is written for **World of Warcraft: Forever** (1.60.1). English and Spanish.
 
-It only shows icons. KnuJunk never sells, destroys or moves anything.
+KnuJunk sells only when you accept its merchant confirmation; it never destroys or moves items.
 
 ### Features
+
+- **Merchant protection:** always-keep items are locked while the merchant is open; right-click asks before selling that copy once, preserving the mark. Enabled by default and configurable. Without shield support, the lock remains. Restart the client to load `Merchant.lua` from the `.toc`; in-game validation pending.
 
 - **Manual mark key:** assign a key in options, then hover a bag or loot item to cycle automatic → always keep → always sell → automatic. No default key; assignment is out of combat and reports replaced actions.
 
@@ -108,11 +110,13 @@ If you see a coin on something you needed, please tell us the item and the bag a
 
 ## Descripción (castellano)
 
+- **Protección en el vendedor:** «siempre guardar» bloquea el ítem mientras está abierto; clic derecho pide confirmación para vender ese ejemplar una vez, sin borrar la marca. Activada por defecto y configurable. Sin API de escudos, queda el bloqueo. Requiere reiniciar el cliente por `Merchant.lua` en el `.toc`; pendiente validar en Forever.
+
 **Tecla para marcas manuales:** asignala en el panel de opciones y apretala sobre un ítem de bolsas o botín: automático → siempre guardar → siempre vender → automático. Sin tecla predeterminada; se asigna fuera de combate y avisa si reemplaza otra acción.
 
 - **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
 - **Entregas repetibles de reputación:** excepción aprobada por el dueño a la regla del diario. Objetivo de ítem de una misión repetible con recompensa positiva según QuestieDB: sin moneda aunque la misión no esté tomada; «Se entrega por reputación: {facción}». Profesión y misión activa mantienen su marca. Sin QuestieDB no hay protección R20 ni lista generada de entregas. La venta manual prevalece.
-**KnuJunk** pone un ícono chico en los items de tus bolsas y en la ventana de botín para que veas de un vistazo qué podés vender o tirar y qué materiales usa una profesión. Está hecho para **World of Warcraft: Forever** (1.60.1). Sólo muestra íconos: nunca vende, rompe ni mueve nada.
+**KnuJunk** pone un ícono chico en los items de tus bolsas y en la ventana de botín para que veas de un vistazo qué podés vender o tirar y qué materiales usa una profesión. Está hecho para **World of Warcraft: Forever** (1.60.1). Sólo vende al aceptar su confirmación en el vendedor; nunca rompe ni mueve ítems.
 
 - **Monedita** en lo que se puede vender o tirar: items grises con precio de venta, items de misión que ninguna misión de tu diario pide, items que inician una misión que ya hiciste si QuestieDB confirma que no es repetible, y armaduras o armas que tu clase nunca puede equipar, sólo si ese ejemplar ya está ligado (según los datos de Forever). Sin ligar, o sin poder saberlo (botín, enlaces), no hay monedita y el tooltip dice «Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje». Los items con efecto de uso o de equipar y las piezas de set nunca llevan monedita automática. Las ranuras sin tipo de arma o armadura (anillos, abalorios, capas, camisas, tabardos) nunca la llevan por «tu clase no puede usarlo»; si son grises con precio, sí por gris. Los efectos se detectan con `GetItemSpell` y, si no informa nada, con las líneas «Equipar:», «Uso:» o «Probabilidad al acertar:» del tooltip del item; si el tooltip no se puede leer todavía, el efecto queda «no se sabe»: el gris lleva igual su monedita, pero no la llevan el equipo de otra clase ni los items de misión.
 - **Martillito** en los materiales de profesión: verde si una profesión tuya lo usa, amarillo si es de una profesión que no tenés (vendible). También las **herramientas** de profesión (martillo de herrero, pico de minero, cuchillo de desuello, piedra filosofal, llaves de Ingeniería, varas de encantador, pedernal): se necesitan pero no se gastan, y el tooltip dice «Herramienta de tu profesión: …». Nunca llevan monedita automática, ni siendo grises. La caña de pescar no figura como herramienta en los datos de Forever: KnuJunk la marca como herramienta de Pesca por su tipo de item. Cuentan las principales y Cocina, Primeros auxilios y Pesca.

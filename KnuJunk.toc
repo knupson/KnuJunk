@@ -46,6 +46,7 @@ Bags\Frames.lua
 Bags\Generic.lua
 Loot.lua
 Overrides.lua
+Merchant.lua
 Tooltip.lua
 Options.lua
 Commands.lua

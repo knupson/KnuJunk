@@ -1,7 +1,7 @@
 local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
-ns.Defaults = { enabled = true, show = { coin = true, hammer = true, loot = true }, overrides = {} }
+ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, hammer = true, loot = true }, overrides = {} }
 ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false }
 ns.Print = KL:NewPrinter('Junk')
 ns.Data = ns.Data or {}
@@ -37,6 +37,7 @@ end
 -- ensucia el contexto del jugador, pide repintar las bolsas (Loot esta registrado en Bags, asi que la
 -- ventana de botin abierta tambien se repinta) y, si el panel de opciones esta abierto, lo actualiza.
 function ns.Changed()
+    if ns.Merchant then pcall(ns.Merchant.Sync) end
     if ns.Player and ns.Player.Invalidate then ns.Player.Invalidate() end
     if ns.Bags and ns.Bags.RefreshAll then ns.Bags.RefreshAll() end
     if ns.Options and ns.Options.RefreshIfShown then ns.Options.RefreshIfShown() end
