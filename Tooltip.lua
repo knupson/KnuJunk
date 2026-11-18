@@ -158,6 +158,11 @@ function Tooltip.Lines(link, bound, bag, slot)
         lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
 
+    if ns.Merchant then
+        local key = ns.Merchant.ProtectionText(bag, slot)
+        if key then add(L[key], WHITE) end
+    end
+
     for _, reason in ipairs(reasons) do
         local kind = reason.kind
         if kind == 'recipe_known_tradeable' and mark == nil then

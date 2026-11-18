@@ -34,7 +34,7 @@ local function openPanel()
     return panel
 end
 
-local PATHS = { 'enabled', 'show.coin', 'show.hammer', 'show.loot', 'rules.food', 'rules.ammo', 'rules.knownRecipe' }
+local PATHS = { 'enabled', 'protectKeep', 'show.coin', 'show.hammer', 'show.loot', 'rules.food', 'rules.ammo', 'rules.knownRecipe' }
 
 local function lookup(path)
     local value = ns.DB
@@ -48,7 +48,7 @@ local function visibleRows(panel)
     return shown
 end
 
-test('los interruptores son los siete de la DB, en orden y con ayuda', function()
+test('los interruptores incluyen protección del vendedor, en orden y con ayuda', function()
     eq(#ns.Options.TOGGLES, #PATHS)
     for index, path in ipairs(PATHS) do
         local toggle = ns.Options.TOGGLES[index]

@@ -14,7 +14,9 @@ local function L(key) return ns.L[key] end
 -- Cada interruptor: ruta en ns.DB, texto y ayuda de una linea (claves en ingles, ver Locales.lua).
 Options.TOGGLES = {
     { section = 'Marks', path = 'enabled', label = 'Enable KnuJunk',
-        help = 'Master switch: turns every icon off. KnuJunk never sells or deletes anything.' },
+        help = 'Master switch: turns icons and merchant protection off. KnuJunk never sells anything on its own.' },
+    { section = 'Marks', path = 'protectKeep', label = 'Protect «always keep» items at the merchant',
+        help = 'Locks them while the merchant is open; right-click asks before selling.' },
     { section = 'Marks', path = 'show.coin', label = 'Coin',
         help = 'What you can sell: greys, quest leftovers and gear your class never uses.' },
     { section = 'Marks', path = 'show.hammer', label = 'Hammer',

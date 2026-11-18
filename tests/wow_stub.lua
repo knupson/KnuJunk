@@ -28,6 +28,8 @@ function methods:SetChecked(value) self.checked = value end
 function methods:GetChecked() return self.checked end
 function methods:GetID() return self.id end
 function methods:GetParent() return self.parent end
+function methods:GetFrameLevel() return self.level or 1 end
+function methods:SetPassThroughButtons(...) self.passThrough = {...} end
 function methods:CreateFontString() return CreateFrame('FontString') end
 function methods:GetName() return self.name end
 function methods:GetFontString() return self.Text end
@@ -276,12 +278,40 @@ local function installClient()
         end,
     }
     C_Container = {
+        GetContainerNumSlots = function(bag) return FAKE.bagSizes[bag] or 8 end,
+        GetContainerItemID = function(bag, slot) return FAKE.bags[bag .. ':' .. slot] end,
+        GetContainerItemLink = function(bag, slot)
+            local id = FAKE.bags[bag .. ':' .. slot]
+            return id and linkOf(id)
+        end,
+        UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot} end,
         GetContainerItemInfo = function(bag, slot)
             local id = FAKE.bags[bag .. ':' .. slot]
             if not id then return nil end
             return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil, isBound = FAKE.bound[bag .. ':' .. slot] }
         end,
     }
+    FAKE.guids, FAKE.bagSizes, FAKE.locks, FAKE.unlocks, FAKE.used, FAKE.itemLocks = {}, {}, {}, {}, {}, {}
+    ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+    C_Item = {
+        GetItemGUID = function(loc)
+            local key = loc.bag .. ':' .. loc.slot
+            return FAKE.bags[key] and (FAKE.guids[key] or ('guid:' .. key .. ':' .. FAKE.bags[key]))
+        end,
+        LockItemByGUID = function(guid)
+            FAKE.locks[#FAKE.locks + 1] = guid; FAKE.itemLocks[guid] = true
+        end,
+        UnlockItemByGUID = function(guid)
+            FAKE.unlocks[#FAKE.unlocks + 1] = guid; FAKE.itemLocks[guid] = nil
+        end,
+        IsLocked = function(loc) return FAKE.itemLocks[C_Item.GetItemGUID(loc)] == true end,
+    }
+    StaticPopupDialogs = {}
+    FAKE.popup = nil
+    StaticPopup_Show = function(key, text, _, data)
+        FAKE.popup = { key = key, text = text, data = data, dialog = StaticPopupDialogs[key] }
+        return FAKE.popup
+    end
 end
 -- Cliente clasico: sin Settings, con InterfaceOptions_AddCategory e InterfaceOptionsFrame_OpenToCategory.
 function FAKE.InstallClassicOptions()
@@ -390,6 +420,7 @@ function FAKE.Reset()
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
     if ns and ns.Marks then ns.Marks.ResetState() end
+    if ns and ns.Merchant then ns.Merchant.ResetState() end
     if ns and ns.Bags then ns.Bags.ResetState() end
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.Loot then ns.Loot.ResetState() end
