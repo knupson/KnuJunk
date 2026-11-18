@@ -1,13 +1,14 @@
 local _, ns = ...
 
 -- /knu junk (alias /knu kj): activar/desactivar las marcas y fijar a mano que guardar o vender.
--- Subcomandos: (vacio) ayuda | on | off | coin|hammer|loot on|off | keep|sell|clear <enlace o itemID> | status.
--- Todo cambio ensucia el contexto del jugador y pide un repintado de las bolsas (Loot esta registrado
--- en Bags, asi que la ventana de botin abierta tambien se repinta).
+-- Subcomandos: (vacio) | options abre el panel de opciones | help ayuda | on | off | coin|hammer|loot on|off |
+-- keep|sell|clear <enlace o itemID> | rules [food|ammo|knownrecipe] [on|off] | status.
+-- Todo cambio pasa por ns.Changed (Core.lua): ensucia el contexto del jugador y pide el repintado.
 local Commands = {}
 ns.Commands = Commands
 
 local KINDS = { coin = true, hammer = true, loot = true }
+local RULES = { food = 'food', ammo = 'ammo', knownrecipe = 'knownRecipe' }
 
 local function L(key) return ns.L[key] end
 local function say(key, ...) ns.Print(string.format(L(key), ...)) end
@@ -15,17 +16,15 @@ local function say(key, ...) ns.Print(string.format(L(key), ...)) end
 local function onOff(value) return value and L('on') or L('off') end
 local function yesNo(value) return value and L('yes') or L('no') end
 
--- Cada cambio de enabled/show/overrides pasa por aca.
-local function changed()
-    if ns.Player and ns.Player.Invalidate then ns.Player.Invalidate() end
-    if ns.Bags and ns.Bags.RefreshAll then ns.Bags.RefreshAll() end
-end
+local function changed() ns.Changed() end
 
 function Commands.Help()
     for _, line in ipairs({
+        'Options panel: /knu junk',
         'Marks on/off: /knu junk on | off',
         'One kind: /knu junk coin|hammer|loot on|off',
         'By hand: /knu junk keep|sell|clear <item link or ID>',
+        'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
 end
@@ -39,19 +38,19 @@ function Commands.ParseItem(text)
 end
 
 function Commands.Status()
-    local questie, ready = ns.Questie, false
-    local available = questie and questie.Available and questie.Available() or false
-    if available then ready = questie.IsReady and questie.IsReady() or false end
-    local adapters = ns.Bags and ns.Bags.Installed and ns.Bags.Installed() or {}
-    local db = ns.DB
-    local count = 0
-    for _ in pairs(db.overrides) do count = count + 1 end
-    say('Data build: %s', tostring(ns.Data and ns.Data.build or '?'))
-    say('QuestieDB: %s, index ready: %s', yesNo(available), yesNo(ready))
-    say('Bag adapters: %s', #adapters > 0 and table.concat(adapters, ', ') or L('none'))
+    local info, db = ns.Options.StatusInfo(), ns.DB
+    say('Data build: %s', info.build)
+    say('QuestieDB: %s, index ready: %s', yesNo(info.questie), yesNo(info.ready))
+    say('Bag adapters: %s', #info.adapters > 0 and table.concat(info.adapters, ', ') or L('none'))
     say('Marks: %s | coin: %s | hammer: %s | loot: %s', onOff(db.enabled), onOff(db.show.coin),
         onOff(db.show.hammer), onOff(db.show.loot))
-    say('Manual marks: %d', count)
+    say('Manual marks: %d', info.overrides)
+    Commands.RulesStatus()
+end
+
+function Commands.RulesStatus()
+    local rules = ns.DB.rules or {}
+    say('Rules: food: %s | ammo: %s | knownrecipe: %s', onOff(rules.food), onOff(rules.ammo), onOff(rules.knownRecipe))
 end
 
 local function setFlag(setter, value, label, kind)
@@ -67,22 +66,24 @@ local function manual(action, rest)
     local overrides = ns.DB.overrides
     if action == 'clear' then
         if overrides[id] == nil then say('No manual mark on item %d', id) return end
-        overrides[id] = nil
-        changed()
+        ns.Overrides.Set(id, nil)
         say('Manual mark removed from item %d', id)
         return
     end
-    overrides[id] = action
-    changed()
+    ns.Overrides.Set(id, action)
     say('Item %d: %s', id, L(action == 'keep' and 'Marked by hand: keep' or 'Marked by hand: sell'))
 end
 
 function Commands.Handle(args)
     local sub, rest = strtrim(args or ''):match('^(%S+)%s*(.*)$')
-    if not sub then Commands.Help() return end
+    if not sub then ns.Options.Open() return end
     sub = sub:lower()
     local db = ns.DB
-    if sub == 'on' or sub == 'off' then
+    if sub == 'options' or sub == 'opciones' then
+        ns.Options.Open()
+    elseif sub == 'help' or sub == 'ayuda' then
+        Commands.Help()
+    elseif sub == 'on' or sub == 'off' then
         setFlag(function(value) db.enabled = value end, sub == 'on', 'Marks: %s')
     elseif KINDS[sub] then
         local state = rest:lower()
@@ -92,6 +93,15 @@ function Commands.Handle(args)
         manual(sub, rest)
     elseif sub == 'status' then
         Commands.Status()
+    elseif sub == 'rules' then
+        if rest == '' then Commands.RulesStatus() return end
+        local name, state = rest:lower():match('^(%S+)%s+(%S+)$')
+        local key = name and RULES[name]
+        if not key or (state ~= 'on' and state ~= 'off') then
+            say('Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]')
+            return
+        end
+        setFlag(function(value) db.rules[key] = value end, state == 'on', 'Rule %s: %s', name)
     else
         say('Unknown option: %s', sub)
         Commands.Help()
@@ -103,7 +113,7 @@ function Commands.Register()
     local KL = LibStub('KnuLib-1.0')
     if KL.RegisterCommand then
         KL:RegisterCommand('junk', function(args) Commands.Handle(args) end,
-            L('Junk marks: on/off, coin/hammer/loot, keep/sell/clear, status'), { 'kj' })
+            L('Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status'), { 'kj' })
     end
 end
 

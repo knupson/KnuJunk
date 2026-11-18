@@ -3,8 +3,8 @@ local _, ns = ...
 -- Piezas compartidas por los adaptadores de bolsas con API propia (BetterBags, AdiBags, ArkInventory,
 -- EllesmereUIBags, LiteBag, tdBag2, Baggins). Nada aqui toca el addon de bolsas: solo traduce
 -- "este boton muestra la bolsa X, slot Y" a ns.Marks.Update y recuerda el boton para repintarlo.
--- Regla de oro: si no se puede PROBAR que el boton es una casilla viva de las bolsas 0-4 del
--- personaje actual, sin marca.
+-- Regla de oro: si no se puede PROBAR que el boton es una casilla viva de las bolsas 0-4 (o del banco
+-- vivo, solo en los adaptadores que lo soportan) del personaje actual, sin marca.
 local Common = {}
 ns.Bags.Common = Common
 
@@ -60,11 +60,17 @@ local NON_CARRIED_NAMES = { 'bank', 'guild', 'vault', 'voidstorage' }
 local NON_CARRIED_FLAGS = { 'isguild', 'isGuild', 'isGuildBank', 'isVault', 'isBank', 'isCached', 'cached' }
 local MAX_DEPTH = 16
 
+local BANK_WORD, BANK_FLAG = 'bank', 'isBank'
+
 -- true si el boton (o alguno de sus ancestros) es POSITIVAMENTE una vista no portada: banco,
 -- hermandad, vault, vista cacheada. Si la ascendencia no se puede recorrer completa (GetParent
 -- ausente o que falla, IsCached/GetName que fallan, ciclo, mas de 16 niveles) tambien devuelve
 -- true: ante la duda, sin marca. Solo llegar al final de la cadena (padre nil) prueba lo contrario.
-function Common.NonCarried(button)
+-- allowBank: el adaptador acepta el banco del personaje; solo con el banco VIVO (ns.Bank) se
+-- ignoran el nombre 'bank' y la bandera isBank. Hermandad ('guild', isGuildBank), vault y cualquier
+-- IsCached() == true siguen rechazados siempre.
+function Common.NonCarried(button, allowBank)
+    allowBank = allowBank and ns.Bank ~= nil and ns.Bank.IsLive() == true
     local object = button
     local seen = {}
     for _ = 1, MAX_DEPTH do
@@ -76,12 +82,12 @@ function Common.NonCarried(button)
         if type(name) == 'string' then
             name = name:lower()
             for _, word in ipairs(NON_CARRIED_NAMES) do
-                if name:find(word, 1, true) then return true end
+                if not (allowBank and word == BANK_WORD) and name:find(word, 1, true) then return true end
             end
         end
         for _, flag in ipairs(NON_CARRIED_FLAGS) do
             local value = object[flag]
-            if value ~= nil and value ~= false and type(value) ~= 'function' then return true end
+            if not (allowBank and flag == BANK_FLAG) and value ~= nil and value ~= false and type(value) ~= 'function' then return true end
         end
         local checked, cached = Common.TryCall(object, 'IsCached')
         if not checked or cached == true then return true end

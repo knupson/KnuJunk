@@ -11,7 +11,9 @@ function methods:HookScript(event, fn)
 end
 function methods:RegisterEvent(event) self.events[event] = true end
 function methods:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
-function methods:Hide() self.shown = false end
+function methods:Hide() self.shown = false; if self.scripts.OnHide then self.scripts.OnHide(self) end end
+function methods:EnableKeyboard(value) self.keyboard = value end
+function methods:SetPropagateKeyboardInput(value) self.propagate = value end
 function methods:IsShown() return self.shown end
 function methods:IsVisible()
     if not self.shown then return false end
@@ -34,8 +36,10 @@ function methods:SetBackdrop(value) self.backdrop = value end
 function methods:SetBackdropColor(...) self.bg = {...} end
 function methods:SetBackdropBorderColor(...) self.border = {...} end
 function methods:SetVertexColor(...) self.vertex = {...} end
+function methods:SetTexCoord(...) self.texCoord = {...} end
 function methods:SetTextColor(...) self.textColor = {...} end
 function methods:SetTexture(value) self.texture = value end
+function methods:SetAtlas(value) self.atlas = value; self.texture = nil end
 function methods:SetDesaturated(value) self.desaturated = value end
 function methods:SetFont(...) self.font = {...} end
 function methods:GetFont() return unpack(self.font or {STANDARD_TEXT_FONT, 12, ''}) end
@@ -48,7 +52,21 @@ function methods:GetCheckedTexture() return self.checkedTexture end
 for _, part in ipairs({'Normal','Pushed','Highlight','Disabled'}) do
     methods['Get' .. part .. 'Texture'] = function(self) return self[part] end
 end
-for _, method in ipairs({'SetPoint','SetSize','SetWidth','SetHeight','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetTexCoord','SetDrawLayer'}) do methods[method] = function() end end
+for _, method in ipairs({'SetPoint','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetDrawLayer'}) do methods[method] = function() end end
+-- Tamanos guardados (el panel de opciones calcula filas segun el alto) y widgets de opciones.
+function methods:SetWidth(value) self.w = value end
+function methods:SetHeight(value) self.h = value end
+function methods:SetSize(w, h) self.w = w; self.h = h end
+function methods:GetWidth() return self.w or 0 end
+function methods:GetHeight() return self.h or 0 end
+function methods:SetMinMaxValues(min, max) self.min = min; self.max = max end
+function methods:SetValue(value) self.value = value; if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, value) end end
+function methods:GetValue() return self.value or 0 end
+function methods:SetColorTexture(...) self.colorTexture = {...} end
+function methods:SetThumbTexture(value) self.thumbPath = value end
+function methods:GetThumbTexture() self.thumb = self.thumb or CreateFrame('Texture'); return self.thumb end
+for _, method in ipairs({'SetHitRectInsets','SetValueStep','SetObeyStepOnDrag','SetOrientation','EnableMouseWheel','SetJustifyH',
+    'SetJustifyV','SetWordWrap','SetMaxLines','SetFrameLevel','SetAllPoints','SetClipsChildren','SetFontObject'}) do methods[method] = function() end end
 function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
         name = name, enabled = true, alpha = 1 }, {__index = methods})
@@ -108,10 +126,23 @@ local function installClient()
     FAKE.skillLines = {}    -- GetSkillLineInfo: { {name=, isHeader=}, ... }
     FAKE.completed = {}     -- [questID] = true
     FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
-    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell= }
+    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell=, tooltip={textos} (sin tooltip: nombre + "Tipo") }
     FAKE.bags = {}          -- ['bag:slot'] = itemID
+    FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
     C_AddOns = { IsAddOnLoaded = function(name) return FAKE.addons[name] == true end }
+    -- API de opciones: Settings (cliente moderno). FAKE.InstallClassicOptions() la cambia por InterfaceOptions.
+    FAKE.settings = { registered = {}, added = {}, opened = {} }
+    Settings = {
+        RegisterCanvasLayoutCategory = function(panel, name)
+            local category = { panel = panel, name = name, id = #FAKE.settings.registered + 1 }
+            function category:GetID() return self.id end
+            FAKE.settings.registered[#FAKE.settings.registered + 1] = category
+            return category
+        end,
+        RegisterAddOnCategory = function(category) FAKE.settings.added[#FAKE.settings.added + 1] = category end,
+        OpenToCategory = function(id) FAKE.settings.opened[#FAKE.settings.opened + 1] = id end,
+    }
     local function itemOf(key)
         if type(key) == 'number' then return key, FAKE.items[key] end
         if type(key) == 'string' then
@@ -208,7 +239,7 @@ local function installClient()
     GetQuestLogTitle = function(index)
         local q = visible(FAKE.questLog, questCollapsed)[index]
         if not q then return nil end
-        return q.title, 1, '', q.isHeader, q.isCollapsed
+        return q.title, 1, '', q.isHeader, q.isCollapsed, nil, nil, q.questID
     end
     GetNumQuestLeaderBoards = function(index)
         local q = visible(FAKE.questLog, questCollapsed)[index]
@@ -225,20 +256,39 @@ local function installClient()
     GetItemInfo = function(key)
         local id, d = itemOf(key)
         if not d then return nil end
-        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', 'Subtipo', 1, d.equipLoc or '', 'icon',
+        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
     end
     GetItemSpell = function(key)
         local _, d = itemOf(key)
         if d and d.spell then return 'Hechizo', 1234 end
     end
+    -- Tooltip de un enlace: la primera linea es el nombre; despues FAKE.items[id].tooltip (textos).
+    FAKE.tooltipCalls = 0
+    C_TooltipInfo = {
+        GetHyperlink = function(link)
+            FAKE.tooltipCalls = FAKE.tooltipCalls + 1
+            local _, d = itemOf(link)
+            if not d then return nil end
+            local lines = { { leftText = d.name } }
+            for _, text in ipairs(d.tooltip or { d.typeLine or "Tipo" }) do lines[#lines + 1] = { leftText = text } end
+            return { lines = lines }
+        end,
+    }
     C_Container = {
         GetContainerItemInfo = function(bag, slot)
             local id = FAKE.bags[bag .. ':' .. slot]
             if not id then return nil end
-            return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil }
+            return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil, isBound = FAKE.bound[bag .. ':' .. slot] }
         end,
     }
+end
+-- Cliente clasico: sin Settings, con InterfaceOptions_AddCategory e InterfaceOptionsFrame_OpenToCategory.
+function FAKE.InstallClassicOptions()
+    Settings = nil
+    FAKE.interfaceOptions = { added = {}, opened = {} }
+    InterfaceOptions_AddCategory = function(panel) FAKE.interfaceOptions.added[#FAKE.interfaceOptions.added + 1] = panel end
+    InterfaceOptionsFrame_OpenToCategory = function(panel) FAKE.interfaceOptions.opened[#FAKE.interfaceOptions.opened + 1] = panel end
 end
 function FAKE.Remove(path)
     local owner, key = path:match('^(.-)%.(.+)$')
@@ -306,6 +356,19 @@ function FAKE.InstallBaganator()
 end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
+    FAKE.bindings = {}; FAKE.savedBindings = {}; FAKE.inCombat = false
+    FAKE.shift, FAKE.ctrl, FAKE.alt = false, false, false
+    IsShiftKeyDown = function() return FAKE.shift end
+    IsControlKeyDown = function() return FAKE.ctrl end
+    IsAltKeyDown = function() return FAKE.alt end
+    GetBindingAction = function(key) return FAKE.bindings[key] or '' end
+    GetBindingKey = function(action)
+        for key, value in pairs(FAKE.bindings) do if value == action then return key end end
+    end
+    GetBindingText = function(key) return key end
+    SetBinding = function(key, action) FAKE.bindings[key] = action; return true end
+    SaveBindings = function(set) FAKE.savedBindings[#FAKE.savedBindings + 1] = set; return true end
+    GetCurrentBindingSet = function() return 2 end
     for name in pairs(_G) do
         if type(name) == 'string' and name:sub(1, 9) == 'Baganator' then _G[name] = nil end
     end
@@ -314,11 +377,16 @@ function FAKE.Reset()
         'ElvUI', 'BaudBag', 'SetItemButtonQuality', 'ItemButtonMixin', 'ContainerFrameItemButtonMixin',
         'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS',
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
-        'TooltipUtil', 'C_Item' }) do _G[name] = nil end
+        'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
+        'BankPanel', 'BankFrame', 'ItemLocation', 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE',
+        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND', 'GetSpellInfo', 'C_Spell', 'LOCALIZED_CLASS_NAMES_MALE',
+        'Settings', 'InterfaceOptions_AddCategory', 'InterfaceOptionsFrame_OpenToCategory', 'ForeverSettings',
+        'ITEM_QUALITY_COLORS' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
     GameTooltip = CreateFrame('Tooltip') -- limpio: sin hooks, scripts ni lineas de la prueba anterior
+    if ns and ns.Bank then ns.Bank.ResetState() end -- antes que Marks y Bags: ellos se vuelven a suscribir
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
     if ns and ns.Marks then ns.Marks.ResetState() end
@@ -326,6 +394,7 @@ function FAKE.Reset()
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.Loot then ns.Loot.ResetState() end
     if ns and ns.Tooltip then ns.Tooltip.ResetState() end
+    if ns and ns.Options then ns.Options.ResetState() end
     if ns and ns.BaganatorAdapter then ns.BaganatorAdapter.ResetState() end
     if ns and ns.Bags and ns.Bags.Common then ns.Bags.Common.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')

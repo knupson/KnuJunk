@@ -40,7 +40,6 @@ test('registra junk plugin y dos widgets', function()
     local position = state.widgets.knujunk_hammer.defaultPosition
     ok(position ~= nil, 'el martillo se autoinserta en una esquina')
     eq(position.corner, 'top_right'); eq(position.priority, 1)
-    ok(state.widgets.knujunk_coin.defaultPosition == nil, 'la monedita no: la moneda nativa es del junk plugin')
     local names = {}
     for _, name in ipairs(ns.Bags.Installed()) do names[name] = true end
     ok(names.Baganator, 'el registro de bolsas lo da por instalado')
@@ -159,13 +158,15 @@ test('widget de martillo devuelve true y textura verde para hammer_mine', functi
     withMark('hammer_mine', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
     end)
-    eq(texture.texture, 'Interface\\Icons\\Trade_BlackSmithing')
+    eq(texture.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
     eq(texture.vertex[1], 0.25); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.35)
     ok(not texture.desaturated)
     withMark('hammer_other', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
     end)
-    eq(texture.desaturated, true); eq(texture.alpha, 0.7)
+    ok(not texture.desaturated); eq(texture.alpha, 1)
+    eq(texture.vertex[1], 1); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.2)
+    eq(table.concat(texture.texCoord, ','), '0,1,0,1')
     withMark('coin', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), false, 'el martillo no muestra monedas')
     end)
@@ -322,4 +323,72 @@ test('widget de monedita: false si el junk plugin de KnuJunk esta activo', funct
     eq(update({ itemID = 100, itemLocation = location(0, 1) }), false, 'la moneda nativa ya la dibuja Baganator')
     state.activeJunk = 'otro'
     eq(update({ itemID = 100, itemLocation = location(0, 1) }), true, 'otro junk plugin: el widget si')
+end)
+
+-- KnuJunk nunca recategoriza en Baganator: su junk plugin solo dice basura donde Baganator tambien lo
+-- diria (gris con precio de venta); el resto de las monedas las dibuja nuestra esquina.
+local function withResult(result, fn)
+    local saved = ns.Classify
+    ns.Classify = function() return result end
+    local success, err = pcall(fn)
+    ns.Classify = saved
+    if not success then error(err, 0) end
+end
+
+test('la monedita se autoinserta arriba a la izquierda', function()
+    local state = installed()
+    local position = state.widgets.knujunk_coin.defaultPosition
+    ok(position ~= nil, 'la monedita tiene posicion por defecto')
+    eq(position.corner, 'top_left'); eq(position.priority, 1)
+end)
+
+test('mision terminada: el junk plugin no la manda a Chatarra; la esquina si la marca', function()
+    local state = installed()
+    addItem(100, { quality = 1, classID = 0 }); FAKE.bags['0:1'] = 100
+    backpackView(true)
+    local _, update = widget(state, 'knujunk_coin')
+    state.activeJunk = 'knujunk'
+    withResult({ mark = 'coin', reasons = { { kind = 'quest_done', questID = 5 } } }, function()
+        eq(junk(state)(0, 1, 100), false, 'no es basura para Baganator')
+        eq(update({ itemID = 100, itemLocation = location(0, 1) }), true, 'esquina con moneda')
+    end)
+end)
+
+test('gris: el junk plugin si; la esquina no (sin doble moneda)', function()
+    local state = installed()
+    addItem(100, { quality = 0, price = 5 }); FAKE.bags['0:1'] = 100
+    backpackView(true)
+    local _, update = widget(state, 'knujunk_coin')
+    state.activeJunk = 'knujunk'
+    eq(junk(state)(0, 1, 100), true, 'gris con precio = basura de Baganator')
+    eq(update({ itemID = 100, itemLocation = location(0, 1) }), false, 'la moneda la pone Baganator')
+end)
+
+test('gris sin precio o protegido: ni basura ni moneda', function()
+    local state = installed()
+    addItem(100, { quality = 0, price = 0 }); FAKE.bags['0:1'] = 100
+    backpackView(true)
+    state.activeJunk = 'knujunk'
+    withResult({ mark = 'coin', reasons = { { kind = 'override_sell' } } }, function()
+        eq(junk(state)(0, 1, 100), false, 'sin precio: Baganator no lo llama basura')
+    end)
+    addItem(101, { quality = 0, price = 5 }); FAKE.bags['0:2'] = 101
+    ns.DB.overrides[101] = 'keep'
+    eq(junk(state)(0, 2, 101), false, 'override_keep')
+    ns.DB.overrides[101] = nil
+    withResult({ mark = nil, reasons = { { kind = 'useful' } } }, function()
+        eq(junk(state)(0, 2, 101), false, 'item util')
+    end)
+end)
+
+test('clase que no lo usa: el junk plugin no; la esquina si', function()
+    local state = installed()
+    addItem(100, { quality = 2, classID = 4, subclassID = 4 }); FAKE.bags['0:1'] = 100
+    backpackView(true)
+    local _, update = widget(state, 'knujunk_coin')
+    state.activeJunk = 'knujunk'
+    withResult({ mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 4, subclassID = 4 } } }, function()
+        eq(junk(state)(0, 1, 100), false)
+        eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
+    end)
 end)

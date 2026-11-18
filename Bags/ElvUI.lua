@@ -11,9 +11,12 @@ local _, ns = ...
 --     B.BankFrame = ... ('ElvUI_BankContainerFrame', true); frame.isBank, frame.Bags.
 --   * l.2798-2800: cada slot guarda slot.bagFrame, slot.BagID y slot.SlotID (su GetBagID se evita
 --     a proposito por taint).
--- ElvUI no tiene vista de otros personajes; el banco es B.BankFrame (isBank) y se descarta ademas de
--- la regla 0-4 de Marks. Solo cuenta la ventana B.BagFrame. Sin marca si el item que dice el slot
--- no es el vivo. Referencia leida (competencia/): magic-eraser Tint-Junk.lua l.434-448.
+-- ElvUI no tiene vista de otros personajes. Cuentan la ventana B.BagFrame y, solo con el banco VIVO
+-- (ns.Bank), B.BankFrame (isBank) con bolsas del banco (ns.Bank.IsBankBag): l.3404-3466 la abre en
+-- BANKFRAME_OPENED (B:OpenBank) y la cierra en BANKFRAME_CLOSED (B:CloseBank), registrados en
+-- l.3934-3935; l.183-207: en Forever las bolsas del banco son Enum.BagIndex.CharacterBankTab_1..9.
+-- Sin marca si el item que dice el slot no es el vivo. Referencia leida (competencia/): magic-eraser
+-- Tint-Junk.lua l.434-448.
 local OWNER = 'ElvUI'
 local Adapter = {}
 ns.ElvUIAdapter = Adapter
@@ -30,12 +33,19 @@ local function bagsModule()
     if type(bags) == 'table' then return bags end
 end
 
+-- 'bag' para B.BagFrame, 'bank' para B.BankFrame con el banco vivo; nil para cualquier otro frame.
+local function windowKind(bags, frame)
+    if not bags or type(frame) ~= 'table' then return nil end
+    if frame == bags.BagFrame and not frame.isBank then return 'bag' end
+    if frame == bags.BankFrame and frame.isBank and ns.Bank.IsLive() then return 'bank' end
+end
+
 local function locate(button)
     if type(button) ~= 'table' then return nil end
-    local bags = bagsModule()
-    local frame = button.bagFrame
-    if not bags or type(frame) ~= 'table' or frame ~= bags.BagFrame or frame.isBank then return nil end
-    if Common.NonCarried(button) then return nil end
+    local kind = windowKind(bagsModule(), button.bagFrame)
+    if not kind then return nil end
+    if Common.NonCarried(button, kind == 'bank') then return nil end
+    if kind == 'bank' and not ns.Bank.IsBankBag(button.BagID) then return nil end
     return button.BagID, button.SlotID
 end
 
@@ -46,8 +56,7 @@ local function revalidate(button) return tracker:Read(button) end
 -- Firma real al llamar B:UpdateSlot(frame, bagID, slotID): el hook recibe (B, frame, bagID, slotID).
 local function onSlot(_, frame, bagID, slotID)
     pcall(function()
-        local bags = bagsModule()
-        if not bags or type(frame) ~= 'table' or frame ~= bags.BagFrame or frame.isBank then return end
+        if not windowKind(bagsModule(), frame) then return end
         local bag = type(frame.Bags) == 'table' and frame.Bags[bagID]
         local button = type(bag) == 'table' and bag[slotID]
         if type(button) ~= 'table' then return end
@@ -83,4 +92,4 @@ frame:SetScript('OnEvent', function()
 end)
 
 ns.Bags.Register('ElvUI', { addon = 'ElvUI', install = Adapter.Install, refresh = Adapter.Refresh,
-    revalidate = revalidate })
+    revalidate = revalidate, bank = true })

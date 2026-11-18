@@ -109,18 +109,22 @@ test('enabled = false limpia y no marca', function()
     ok(not visible(button))
 end)
 
-test('martillo propio: verde; ajeno: gris desaturado con alpha 0.7', function()
+test('martillo propio: verde; ajeno: gris claro; textura propia sin recorte ni desaturado', function()
     addItem(100); FAKE.bags['0:1'] = 100
     local button = newButton()
     withMark('hammer_mine', function() ns.Marks.Update(button, 0, 1) end)
     ok(visible(button))
-    eq(button.KnuJunkMark.texture, 'Interface\\Icons\\Trade_BlackSmithing')
+    eq(button.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
     eq(button.KnuJunkMark.vertex[1], 0.25); eq(button.KnuJunkMark.vertex[2], 0.85); eq(button.KnuJunkMark.vertex[3], 0.35)
     ok(not button.KnuJunkMark.desaturated)
+    eq(button.KnuJunkMark.alpha, 1)
+    eq(table.concat(button.KnuJunkMark.texCoord, ','), '0,1,0,1')
     withMark('hammer_other', function() ns.Marks.Update(button, 0, 1) end)
     ok(visible(button))
-    eq(button.KnuJunkMark.desaturated, true)
-    eq(button.KnuJunkMark.alpha, 0.7)
+    ok(not button.KnuJunkMark.desaturated, 'el martillo ajeno ya no se desatura')
+    eq(button.KnuJunkMark.alpha, 1)
+    eq(button.KnuJunkMark.vertex[1], 1); eq(button.KnuJunkMark.vertex[2], 0.85); eq(button.KnuJunkMark.vertex[3], 0.2)
+    eq(table.concat(button.KnuJunkMark.texCoord, ','), '0,1,0,1')
     withMark('coin', function() ns.Marks.Update(button, 0, 1) end)
     ok(not button.KnuJunkMark.desaturated, 'la moneda no hereda la desaturacion')
     eq(button.KnuJunkMark.alpha, 1)
@@ -489,4 +493,37 @@ test('combate: Clear olvida lo diferido', function()
     FAKE.inCombat = false
     FAKE.Fire('PLAYER_REGEN_ENABLED')
     ok(not visible(button))
+end)
+
+-- Reactivo/herramienta util para una mision (quest = true): bolsas -> martillo, botin -> mision.
+test('martillo con quest = true: martillo en bolsas, signo de mision en el botin', function()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local saved = ns.Classify
+    ns.Classify = function() return { mark = 'hammer_other', quest = true, reasons = {} } end
+    local success, err = pcall(function()
+        local bag = newButton()
+        ns.Marks.Update(bag, 0, 1)
+        ok(visible(bag), 'martillo en bolsas')
+        eq(bag.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
+        eq(ns.Marks.Verdict(0, 1, 100), 'hammer_other')
+        local loot = newButton()
+        ns.Marks.UpdateLink(loot, FAKE.linkOf(100), 'loot')
+        ok(visible(loot), 'mision en botin')
+        eq(loot.KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    end)
+    ns.Classify = saved
+    if not success then error(err, 0) end
+end)
+
+test('moneda: atlas de basura de Blizzard (bags-junkcoin) si el cliente lo tiene', function()
+    local saved = C_Texture
+    C_Texture = { GetAtlasInfo = function(name) if name == 'bags-junkcoin' then return { width = 16 } end end }
+    local ok2, err = pcall(function()
+        local button = CreateFrame('Button', nil, UIParent)
+        local texture = button:CreateTexture()
+        ns.Marks.Style(texture, 'coin')
+        eq(texture.atlas, 'bags-junkcoin')
+    end)
+    C_Texture = saved
+    if not ok2 then error(err, 0) end
 end)

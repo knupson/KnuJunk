@@ -13,7 +13,9 @@ local _, ns = ...
 --     l.7, frames/vault/item.lua l.7) heredan el mismo Update.
 --   * core/classes/parented.lua l.9-12: button.frame es la ventana; core/api/frames.lua l.8-13: sus
 --     ids son 'inventory', 'bank', 'guild' y 'vault'. La hermandad contesta GetBag() con el numero de
---     pestana, que pasaria por una bolsa portada: por eso solo se acepta la ventana 'inventory'.
+--     pestana, que pasaria por una bolsa portada: por eso solo se aceptan 'inventory' y, con el banco
+--     VIVO (ns.Bank), 'bank' con bolsas del banco (ns.Bank.IsBankBag) y Item:IsCached() == false
+--     (frames/bank/bank.lua l.93-102: cacheado si no se esta en el banco o el dueno es otro personaje).
 --   * containerItem.lua l.132-134 y frameBase.lua l.222-224: IsCached() = owner.offline (otro
 --     personaje); Common.NonCarried lo consulta en el boton y en sus ancestros.
 -- Identidad: la EXPUESTA, button.info (itemID/hyperlink): nunca el slot vivo. Sin info o con info
@@ -24,7 +26,7 @@ local Common = ns.Bags.Common
 local Adapters = {}
 ns.BagnonAdapters = Adapters
 
-local WINDOW = 'inventory'
+local WINDOW, BANK_WINDOW = 'inventory', 'bank'
 
 local function newAdapter(folder)
     local adapter = {}
@@ -34,7 +36,17 @@ local function newAdapter(folder)
     local function locate(button)
         if type(button) ~= 'table' then return nil end
         local window = button.frame
-        if type(window) ~= 'table' or window.id ~= WINDOW then return nil end
+        if type(window) ~= 'table' then return nil end
+        if window.id == BANK_WINDOW then
+            -- Banco: solo vivo (ns.Bank) y si el propio boton dice que NO es cache (bank.lua
+            -- l.93-102: IsCached(bag) = no estar en el banco, dueno offline o banco no visible).
+            if not ns.Bank.IsLive() or Common.Call(button, 'IsCached') ~= false then return nil end
+            if Common.NonCarried(button, true) then return nil end
+            local bag = Common.Call(button, 'GetBag')
+            if not ns.Bank.IsBankBag(bag) then return nil end
+            return bag, Common.Call(button, 'GetID')
+        end
+        if window.id ~= WINDOW then return nil end
         if Common.NonCarried(button) then return nil end
         return Common.Call(button, 'GetBag'), Common.Call(button, 'GetID')
     end
@@ -68,7 +80,7 @@ local function newAdapter(folder)
     Common.OnReset(adapter.ResetState)
 
     ns.Bags.Register(folder, { addon = folder, install = adapter.Install, refresh = adapter.Refresh,
-        revalidate = revalidate })
+        revalidate = revalidate, bank = true })
     Adapters[folder] = adapter
 end
 

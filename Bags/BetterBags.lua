@@ -10,7 +10,8 @@ local _, ns = ...
 --   * sin marca: hueco libre/virtual/soltado/estatico (item.isFreeSlot, isVirtual, released, blank,
 --     staticData), data.isItemEmpty, sin itemInfo.itemID (identidad del item mostrado), o si el slot
 --     de bolsa 0-4 ya no tiene el item mostrado (tambien al retomar una marca pendiente: revalidate).
---     BetterBags no tiene vista de otros personajes; el banco usa bolsas fuera de 0-4.
+--     BetterBags no tiene vista de otros personajes; el banco usa bolsas fuera de 0-4, que Marks acepta
+--     solo con el banco VIVO (ns.Bank) y si son del banco del personaje (bank = true en el registro).
 -- Referencias leidas (competencia/): magic-eraser Tint-Junk.lua l.358-384, keep-or-toss-forever
 -- BagMarks.lua l.225-238, questjunksweeper Bags.lua l.1051-1118.
 local OWNER = 'BetterBags'
@@ -118,4 +119,4 @@ function Adapter.ResetState() registered, items = {}, setmetatable({}, { __mode 
 Common.OnReset(Adapter.ResetState)
 
 ns.Bags.Register('BetterBags', { addon = 'BetterBags', install = Adapter.Install, refresh = Adapter.Refresh,
-    revalidate = revalidate })
+    revalidate = revalidate, bank = true })

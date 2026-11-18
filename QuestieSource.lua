@@ -24,6 +24,8 @@ local _, ns = ...
 --   requiredClasses     mascara de clases (nil o 0 = sin restriccion). Bits de `Enum.classKeys[TOKEN]`.
 --   specialFlags        bit 1 = REPEATABLE.
 --   questFlags          DAILY 4096, WEEKLY 32768, MONTHLY 65536 (se tratan como repetibles).
+--   reputationReward    {{factionID, valor}, ...}; sólo valor > 0 y objetivos de item [3]
+--                       de una misión repetible generan reputationFactions (R20).
 -- Otros campos de LibQuestieDB: `Quest.GetAllIds()` (lista ascendente, compartida, solo lectura),
 -- `Enum.factionRaceMasks.Alliance/Horde`. Con Questie presente se espera a `Questie.API.isReady`
 -- (API publica estable, Public/RegisterOnReady.lua): hasta entonces Questie aun aplica sus
@@ -163,12 +165,23 @@ end
 -- Indice item -> misiones
 -- ---------------------------------------------------------------------------
 
+-- Mascara de bits valida: numero entero, finito y no negativo.
+local function validMask(value)
+    return type(value) == 'number' and value == value and value >= 0 and value < math.huge and value % 1 == 0
+end
+
+-- true si algun flag valido confirma que es repetible (REPEATABLE, diaria, semanal o mensual);
+-- false SOLO con specialFlags y questFlags presentes, validos y sin esos bits; nil = no se sabe
+-- (faltan o son invalidos: no confirman nada, y el clasificador no da moneda).
 local function isRepeatable(special, flags)
-    if hasBit(special, FLAG_REPEATABLE) then return true end
-    for _, flag in ipairs(FLAGS_RECURRING) do
-        if hasBit(flags, flag) then return true end
+    if validMask(special) and hasBit(special, FLAG_REPEATABLE) then return true end
+    if validMask(flags) then
+        for _, flag in ipairs(FLAGS_RECURRING) do
+            if hasBit(flags, flag) then return true end
+        end
     end
-    return false
+    if validMask(special) and validMask(flags) then return false end
+    return nil
 end
 
 local function validID(value) return type(value) == 'number' and value > 0 end
@@ -188,10 +201,14 @@ local function indexQuest(source, items, questID)
     local sourceItem = get(questID, 'sourceItemId')
     local startedBy = get(questID, 'startedBy')
 
-    local ids = {}
+    local ids, turnIns = {}, {}
     if type(objectives) == 'table' then
         if type(objectives[3]) == 'table' then
-            for _, entry in ipairs(objectives[3]) do ids[#ids + 1] = type(entry) == 'table' and entry[1] or entry end
+            for _, entry in ipairs(objectives[3]) do
+                local itemID = type(entry) == 'table' and entry[1] or entry
+                ids[#ids + 1] = itemID
+                if validID(itemID) then turnIns[itemID] = true end
+            end
         end
         if type(objectives[6]) == 'table' then
             for _, entry in ipairs(objectives[6]) do if type(entry) == 'table' then ids[#ids + 1] = entry[3] end end
@@ -199,8 +216,10 @@ local function indexQuest(source, items, questID)
     end
     if type(required) == 'table' then for _, itemID in ipairs(required) do ids[#ids + 1] = itemID end end
     ids[#ids + 1] = sourceItem
+    -- Los iniciadores van aparte (record con starter = true): su regla es otra (mision hecha o no).
+    local starterIds = {}
     if type(startedBy) == 'table' and type(startedBy[3]) == 'table' then
-        for _, itemID in ipairs(startedBy[3]) do ids[#ids + 1] = itemID end
+        for _, itemID in ipairs(startedBy[3]) do starterIds[#starterIds + 1] = itemID end
     end
     -- Objetivos ocultos: { spawns?, icono, texto?, indice, { {'item'|'monster'|'object', id}, ... }? }.
     -- Cada entrada se lee aparte: una ilegible se saltea SOLA (sus ids no se agregan) y el resto de
@@ -228,16 +247,48 @@ local function indexQuest(source, items, questID)
         end
     end
 
-    local record
+    local base
+    local function newRecord(starter)
+        base = base or {
+            races = get(questID, 'requiredRaces'),
+            classes = get(questID, 'requiredClasses'),
+            repeatable = isRepeatable(get(questID, 'specialFlags'), get(questID, 'questFlags')),
+        }
+        return { questID = questID, races = base.races, classes = base.classes, repeatable = base.repeatable,
+            starter = starter or nil }
+    end
+    -- Contrato 4: reputationReward = {{factionID, valor}, ...}. Un campo opcional
+    -- ilegible no invalida el índice de misiones; no se inventa una recompensa.
+    local factions = {}
+    if next(turnIns) and newRecord(false).repeatable == true then
+        local good, rewards = pcall(get, questID, 'reputationReward')
+        if good and type(rewards) == 'table' then
+            local seen = {}
+            for _, reward in ipairs(rewards) do
+                if type(reward) == 'table' and validID(reward[1]) and type(reward[2]) == 'number'
+                    and reward[2] > 0 and not seen[reward[1]] then
+                    factions[#factions + 1], seen[reward[1]] = reward[1], true
+                end
+            end
+        end
+    end
+    local record, turnInRecord, starterRecord
     for _, itemID in ipairs(ids) do
         if validID(itemID) then
-            record = record or {
-                questID = questID,
-                races = get(questID, 'requiredRaces'),
-                classes = get(questID, 'requiredClasses'),
-                repeatable = isRepeatable(get(questID, 'specialFlags'), get(questID, 'questFlags')),
-            }
-            addItem(items, itemID, record)
+            if turnIns[itemID] and #factions > 0 then
+                turnInRecord = turnInRecord or newRecord(false)
+                turnInRecord.reputationFactions = factions
+                addItem(items, itemID, turnInRecord)
+            else
+                record = record or newRecord(false)
+                addItem(items, itemID, record)
+            end
+        end
+    end
+    for _, itemID in ipairs(starterIds) do
+        if validID(itemID) then
+            starterRecord = starterRecord or newRecord(true)
+            addItem(items, itemID, starterRecord)
         end
     end
 end
@@ -330,17 +381,35 @@ local function usesFor(itemID)
     for _, record in ipairs(records) do
         if canDo(record, info) then
             uses = uses or {}
-            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable }
+            local factions
+            if record.reputationFactions then
+                factions = {}
+                for i, id in ipairs(record.reputationFactions) do factions[i] = id end
+            end
+            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable, starter = record.starter,
+                reputationFactions = factions }
         end
     end
     return uses
 end
 
--- { {questID=, repeatable=bool}, ... } con las misiones que podria hacer este personaje y que usan
+-- { {questID=, repeatable=bool, starter=true|nil, reputationFactions={id,...}|nil}, ... }
+-- con las misiones (starter: el item la inicia) que podria hacer este personaje y que usan
 -- el item, o nil (sin QuestieDB, indice aun sin terminar, item sin misiones o cualquier error).
 -- Nunca lanza.
 function Questie.Uses(itemID)
     local good, result = pcall(usesFor, itemID)
     if good then return result end
+    return nil
+end
+
+-- Titulo de la mision segun QuestieDB (campo 'name' de Quest.Get), o nil. Nunca lanza.
+function Questie.QuestName(questID)
+    if type(questID) ~= 'number' then return nil end
+    local good, name = pcall(function()
+        local source = getLib()
+        return source and source.Quest.Get(questID, 'name') or nil
+    end)
+    if good and type(name) == 'string' and name ~= '' then return name end
     return nil
 end

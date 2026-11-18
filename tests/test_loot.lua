@@ -95,16 +95,30 @@ test('Loot clasico: objetivo de mision activa -> quest', function()
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
 end)
 
-test('Loot clasico: item de mision segun Questie -> quest', function()
+test('Loot clasico: item de una mision del diario segun Questie -> quest', function()
     installLoot()
     local buttons = classicWindow(4)
     addItem(501, { name = 'Pieza rara', quality = 0, price = 5 }); FAKE.loot[501 - 500] = 501
     FAKE.InstallQuestie({ [77] = { objectives = { nil, nil, { { 501, 'Pieza rara' } } } } })
+    FAKE.questLog = { { title = 'Piezas', questID = 77 } }
     ns.Questie.Uses(0)
     FAKE.Advance(5)
     open()
     ok(visible(buttons[1]))
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+end)
+
+-- Regla del 2026-11-17: una mision que no esta en el diario no protege; en el botin va la moneda.
+test('Loot clasico: item de una mision que no esta en el diario -> moneda', function()
+    installLoot()
+    local buttons = classicWindow(4)
+    addItem(501, { name = 'Pieza rara', quality = 1, price = 5, classID = 12 }); FAKE.loot[501 - 500] = 501
+    FAKE.InstallQuestie({ [77] = { objectives = { nil, nil, { { 501, 'Pieza rara' } } } } })
+    ns.Questie.Uses(0)
+    FAKE.Advance(5)
+    open()
+    ok(visible(buttons[1]))
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
 end)
 
 test('Loot clasico: fila reciclada a otro slot cambia la marca (LootFrame_Update)', function()
@@ -361,11 +375,11 @@ test('Loot: martillo verde y gris en el botin; el tinte no se hereda al reciclar
     end
     with('hammer_mine', open)
     local texture = buttons[1].KnuJunkMark
-    ok(visible(buttons[1])); eq(texture.texture, 'Interface\\Icons\\Trade_BlackSmithing')
+    ok(visible(buttons[1])); eq(texture.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
     eq(texture.vertex[1], 0.25); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.35)
     ok(not texture.desaturated)
     with('hammer_other', function() LootFrame_Update() end)
-    eq(texture.desaturated, true); eq(texture.alpha, 0.7)
+    ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 1); eq(texture.vertex[3], 0.2)
     with('hammer_mine', function() LootFrame_Update() end)
     ok(not texture.desaturated, 'verde no hereda el desaturado del gris')
     eq(texture.alpha, 1)
@@ -453,4 +467,20 @@ test('Loot: rafaga de LOOT_SLOT_CHANGED -> un solo repintado diferido', function
     -- La rafaga siguiente vuelve a agendar.
     FAKE.Fire('LOOT_SLOT_CHANGED', 1)
     eq(#FAKE.timers, 1)
+end)
+
+test('Loot clasico: reactivo que pide una mision activa -> quest (no martillo)', function()
+    installLoot()
+    local buttons = classicWindow(4)
+    local saved = ns.Data.reagents
+    ns.Data.reagents = { [500] = { 164 } }
+    addItem(500, { name = 'Garra de lobo', quality = 1, price = 5 }); FAKE.loot[1] = 500
+    FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
+    local success, err = pcall(function()
+        open()
+        ok(visible(buttons[1]))
+        eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    end)
+    ns.Data.reagents = saved
+    if not success then error(err, 0) end
 end)

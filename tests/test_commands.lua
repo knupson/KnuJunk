@@ -126,9 +126,9 @@ test('on y off cambian enabled y refrescan', function()
     end)
 end)
 
-test('sin argumentos imprime la ayuda y no cambia nada', function()
+test('help imprime la ayuda y no cambia nada', function()
     withSpy(function(state)
-        run('')
+        run('help')
         ok(#FAKE.messages >= 4, 'varias lineas de ayuda')
         ok(hasText(ns.L['Show state: /knu junk status']))
         eq(state.refresh, 0)
@@ -229,7 +229,7 @@ test('Commands.lua registra su comando por ns.OnLogin y no al cargar el archivo'
         captured[1]()
         ok(KL.commands.junk, 'junk registrado tras el login')
         eq(KL.commandAliases.kj, 'junk')
-        eq(KL.commands.junk.help, ns.L['Junk marks: on/off, coin/hammer/loot, keep/sell/clear, status'])
+        eq(KL.commands.junk.help, ns.L['Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status'])
         -- A traves del despachador real, con mayusculas y espacios de mas.
         KL:Dispatch('junk coin off')
         eq(ns.DB.show.coin, false)
@@ -334,11 +334,13 @@ local PREFIX = '|cffecd9bdKNU|r|cffffa82eJunk|r: '
 test('ayuda en castellano (esES y esMX)', function()
     for _, locale in ipairs({ 'esES', 'esMX' }) do
         withLocale(locale, function()
-            run('')
+            run('help')
             eq(printed(), table.concat({
+                PREFIX .. 'Panel de opciones: /knu junk',
                 PREFIX .. 'Activar o desactivar las marcas: /knu junk on | off',
                 PREFIX .. 'Un solo tipo de marca: /knu junk coin|hammer|loot on|off',
                 PREFIX .. 'A mano: /knu junk keep|sell|clear <enlace o ID de ítem>',
+                PREFIX .. 'Reglas opcionales: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Ver el estado: /knu junk status',
             }, '\n'), locale)
         end)
@@ -348,11 +350,13 @@ end)
 test('ayuda en ingles (enUS y cualquier otro idioma)', function()
     for _, locale in ipairs({ 'enUS', 'enGB', 'deDE' }) do
         withLocale(locale, function()
-            run('')
+            run('help')
             eq(printed(), table.concat({
+                PREFIX .. 'Options panel: /knu junk',
                 PREFIX .. 'Marks on/off: /knu junk on | off',
                 PREFIX .. 'One kind: /knu junk coin|hammer|loot on|off',
                 PREFIX .. 'By hand: /knu junk keep|sell|clear <item link or ID>',
+                PREFIX .. 'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Show state: /knu junk status',
             }, '\n'), locale)
         end)
@@ -363,11 +367,11 @@ test('la ayuda de /knu usa el texto del idioma que tenia el cliente al cargar', 
     withCleanDispatcher(function(KL)
         withLocale('esES', function()
             ns.Commands.Register()
-            eq(KL.commands.junk.help, 'Marcas de basura: on/off, coin/hammer/loot, keep/sell/clear, status')
+            eq(KL.commands.junk.help, 'Marcas de basura: panel de opciones, on/off, coin/hammer/loot, keep/sell/clear, rules, status')
         end)
         withLocale('enUS', function()
             ns.Commands.Register()
-            eq(KL.commands.junk.help, 'Junk marks: on/off, coin/hammer/loot, keep/sell/clear, status')
+            eq(KL.commands.junk.help, 'Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status')
         end)
     end)
 end)
@@ -404,15 +408,21 @@ test('Locales.lua no repite claves dentro de la tabla de textos', function()
     ok(total > 25, 'se leyeron las claves: ' .. total)
 end)
 
-test('argumentos nil, vacios o en blanco muestran la ayuda y no cambian nada', function()
+test('argumentos nil, vacios o en blanco abren el panel y no cambian nada', function()
     withSpy(function(state)
-        for _, args in ipairs({ '', ' ', '   ', '\t', ' \t ' }) do
-            run(args)
-            eq(#FAKE.messages, 4, 'ayuda para ' .. string.format('%q', args))
-        end
-        FAKE.messages = {}
-        ns.Commands.Handle(nil)
-        eq(#FAKE.messages, 4, 'ayuda para nil')
+        local opened = 0
+        local realOpen = ns.Options.Open
+        ns.Options.Open = function() opened = opened + 1 end
+        local success, err = pcall(function()
+            for _, args in ipairs({ '', ' ', '   ', '	', ' 	 ' }) do
+                run(args)
+                eq(#FAKE.messages, 0, 'sin ayuda para ' .. string.format('%q', args))
+            end
+            ns.Commands.Handle(nil)
+        end)
+        ns.Options.Open = realOpen
+        if not success then error(err, 0) end
+        eq(opened, 6, 'abre el panel')
         eq(state.invalidate, 0); eq(state.refresh, 0)
         eq(ns.DB.enabled, true); eq(next(ns.DB.overrides), nil)
     end)
@@ -441,14 +451,16 @@ test('ParseItem devuelve nil con nil, vacio, numeros no enteros u otros tipos', 
     eq(ns.Commands.ParseItem(' 4306 '), 4306)
 end)
 
-test('por el despachador real, junk sin argumentos y con blancos imprime la ayuda', function()
+test('por el despachador real, junk sin argumentos y con blancos abre el panel y help imprime la ayuda', function()
     withCleanDispatcher(function(KL)
         ns.Commands.Register()
         FAKE.messages = {}
         KL:Dispatch('junk')
-        eq(#FAKE.messages, 4)
-        FAKE.messages = {}
+        eq(#FAKE.messages, 0)
+        eq(#FAKE.settings.opened, 1)
         KL:Dispatch('kj    ')
-        eq(#FAKE.messages, 4)
+        eq(#FAKE.settings.opened, 2)
+        KL:Dispatch('junk help')
+        eq(#FAKE.messages, 6)
     end)
 end)

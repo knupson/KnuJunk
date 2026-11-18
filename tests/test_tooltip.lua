@@ -6,7 +6,7 @@ local function addItem(id, fields)
     return base
 end
 
--- Tooltip falso con nombre (como los de Blizzard): AddLine crea <nombre>TextLeft<n>, GetNumLines
+-- Tooltip falso con nombre (como los de Blizzard): AddLine crea <nombre>TextLeft<n>, NumLines
 -- cuenta las lineas, GetItem devuelve el enlace puesto en .link y Clear dispara OnTooltipCleared.
 local tooltipCount = 0
 local function newTooltip(id)
@@ -18,7 +18,7 @@ local function newTooltip(id)
         self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
         CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(text)
     end
-    function tooltip:GetNumLines() return #self.lines end
+    function tooltip:NumLines() return #self.lines end
     function tooltip:GetItem() if self.link then return 'Item', self.link end end
     function tooltip:Clear()
         self.lines = {}
@@ -94,13 +94,59 @@ test('Tooltip: item sin marca no agrega nada', function()
     eq(#tooltip.lines, 0)
 end)
 
-test('Tooltip: misiones (activa, iniciadora, diario incompleto) sin linea', function()
+-- Regla del 2026-11-17: el tooltip dice por que un item de mision no lleva moneda (mision activa
+-- o iniciador de una mision no hecha) y por que si la lleva (ninguna mision activa lo pide).
+test('Tooltip: lineas de mision activa, iniciador y quest_not_active', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local cases = {
+        { { mark = 'quest', reasons = { { kind = 'quest_active' } } }, 'Lo pide una misión activa', { 1, 1, 1 } },
+        { { mark = 'quest', reasons = { { kind = 'quest_active', title = 'Los lobos' } } }, 'Misión activa: Los lobos', { 1, 1, 1 } },
+        { { mark = 'quest', reasons = { { kind = 'quest_active', questID = 5 } } }, 'Misión activa: #5', { 1, 1, 1 } },
+        { { mark = nil, reasons = { { kind = 'quest_starter', questID = 5 } } }, 'Inicia una misión que no hiciste: #5', { 1, 1, 1 } },
+        { { mark = 'coin', reasons = { { kind = 'quest_not_active' } } }, 'Ninguna misión activa lo pide', { 1, 0.82, 0 } },
+    }
+    for _, case in ipairs(cases) do
+        withClassify(function() return case[1] end, function()
+            local tooltip = newTooltip(100)
+            run(processor, tooltip, {})
+            eq(#tooltip.lines, 1)
+            line(tooltip, 1, case[2], case[3])
+        end)
+    end
+    -- La linea de quest_not_active lleva el icono de la moneda; la de mision activa, el signo de mision.
+    withClassify(function() return cases[5][1] end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        ok(tooltip.lines[1].text:find('UI-GoldIcon', 1, true) or tooltip.lines[1].text:find('|A:', 1, true), 'icono de moneda')
+    end)
+    withClassify(function() return cases[1][1] end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        ok(tooltip.lines[1].text:find('AvailableQuestIcon', 1, true), 'signo de mision')
+    end)
+end)
+
+-- Tanda 1, regla 4: iniciador con la mision hecha sin saber si es repetible: linea neutra, sin icono.
+test('Tooltip: iniciador hecho con repetibilidad desconocida', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withClassify(function() return { mark = nil, reasons = { { kind = 'quest_starter_done_unknown_repeat', questID = 5 } } } end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Misión entregada; no se sabe si es repetible', { 1, 1, 1 })
+        ok(not hasIcon(entry), 'sin icono')
+    end)
+end)
+
+test('Tooltip: diario incompleto sin linea', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
     for _, case in ipairs({
-        { mark = 'quest', reasons = { { kind = 'quest_active' } } },
-        { mark = nil, reasons = { { kind = 'quest_starter', questID = 5 } } },
         { mark = nil, reasons = { { kind = 'quest_log_incomplete' } } },
     }) do
         withClassify(function() return case end, function()
@@ -119,8 +165,8 @@ test('Tooltip: hammer_other lista dos profesiones en el orden del clasificador, 
         local tooltip = newTooltip(100)
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
-        local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', { 0.6, 0.6, 0.6 })
-        ok(hasIcon(entry), 'icono'); ok(entry.text:find('Trade_BlackSmithing', 1, true), 'martillo')
+        local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', { 1, 0.85, 0.2 })
+        ok(hasIcon(entry), 'icono'); ok(entry.text:find('media\\martillo:14:14:0:0:64:64:0:64:0:64:255:217:51|t ', 1, true), 'martillo ajeno gris: ' .. entry.text)
     end)
 end)
 
@@ -135,6 +181,43 @@ test('Tooltip: hammer_mine muestra tu profesion en verde', function()
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
         line(tooltip, 1, 'Tu profesión: Herrería', { 0.25, 0.85, 0.35 })
+    end)
+end)
+
+local function withTools(map, fn)
+    local saved = ns.Data.tools
+    ns.Data.tools = map
+    local success, err = pcall(fn)
+    ns.Data.tools = saved
+    if not success then error(err, 0) end
+end
+
+test('Tooltip: herramienta de tu profesion en verde con martillo', function()
+    addItem(100, { quality = 1 })
+    FAKE.professions = { { name = 'Herrería', skillLine = 164 } }
+    ns.Player.Invalidate()
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withTools({ [100] = { 164, 202 } }, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Herramienta de tu profesión: Herrería', { 0.25, 0.85, 0.35 })
+        ok(hasIcon(entry), 'icono')
+    end)
+end)
+
+test('Tooltip: herramienta de una profesion que no tenes en gris con martillo', function()
+    addItem(100, { quality = 1 })
+    ns.Player.Invalidate()
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withTools({ [100] = { 186 } }, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Herramienta de profesión que no tenés: Minería', { 1, 0.85, 0.2 })
+        ok(hasIcon(entry), 'icono')
     end)
 end)
 
@@ -205,9 +288,126 @@ test('Tooltip: class_cannot_use usa el nombre de la subclase o el numero', funct
     end)
 end)
 
-test('Tooltip: las siete claves en ingles tienen traduccion al castellano', function()
+test('Tooltip: class_cannot_use usa el subtipo que trae el motivo o el item, antes que GetItemSubClassInfo', function()
+    addItem(100, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local saved = GetItemSubClassInfo
+    GetItemSubClassInfo = nil
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19, subclassName = 'Varita' } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19 } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    GetItemSubClassInfo = function() return 'Placas' end
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19, subclassName = 'Varita' } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    GetItemSubClassInfo = saved
+end)
+
+-- Tanda 1, regla 8: equipo de otra clase sin ligar (o sin saberlo): linea neutra, sin icono, solo si
+-- no hay moneda por otro motivo.
+test('Tooltip: class_cannot_use_tradeable da una linea neutra sin icono', function()
+    addItem(100, { quality = 1, classID = 4, subclassID = 4, subType = 'Placas' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local reason = { kind = 'class_cannot_use_tradeable', classID = 4, subclassID = 4, subclassName = 'Placas' }
+    withClassify(function() return { mark = nil, reasons = { reason } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        eq(#tip.lines, 1)
+        local entry = line(tip, 1, 'Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje', { 1, 1, 1 })
+        ok(not hasIcon(entry), 'sin icono')
+    end)
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'gray' }, reason } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        eq(#tip.lines, 1, 'con moneda gris no se sugiere subastarlo')
+        line(tip, 1, 'Basura: se vende')
+    end)
+end)
+
+-- El tooltip de un item de la bolsa dice "Ligado" (ITEM_SOULBOUND): con eso el clasificador sabe que el
+-- ejemplar esta ligado y da la misma moneda que la bolsa. Sin esa linea: no se sabe, linea neutra.
+test('Tooltip: la linea Ligado del propio tooltip confirma el ejemplar ligado', function()
+    addItem(100, { quality = 2, classID = 4, subclassID = 4, subType = 'Placas' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local bound = newTooltip(100)
+    bound:AddLine('Ligado')
+    run(processor, bound, {})
+    line(bound, 2, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+    local fromData = newTooltip(100)
+    run(processor, fromData, { lines = { { leftText = 'Peto' }, { leftText = 'Ligado' } } })
+    line(fromData, 1, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+    ITEM_SOULBOUND = 'Soulbound'
+    local english = newTooltip(100)
+    english:AddLine('Soulbound')
+    run(processor, english, {})
+    line(english, 2, 'Tu clase no usa Placas')
+    ITEM_SOULBOUND = nil
+    local pickup = newTooltip(100)
+    pickup:AddLine('Se liga al recogerlo')
+    run(processor, pickup, {})
+    line(pickup, 2, 'Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje', { 1, 1, 1 })
+end)
+
+-- Tanda 1, regla 15: reactivo de hechizo de clase. Linea neutra sin icono: con la clase propia nombra
+-- el hechizo (o 'hechizos de tu clase' si no hay nombre); con otra clase, solo la clase.
+test('Tooltip: reactivo de hechizos de clase', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local function shown(reason)
+        local text
+        withClassify(function() return { mark = nil, reasons = { reason } } end, function()
+            local tip = newTooltip(100)
+            run(processor, tip, {})
+            eq(#tip.lines, 1)
+            ok(not hasIcon(tip.lines[1]), 'sin icono')
+            eq(tip.lines[1].r, 1); eq(tip.lines[1].g, 1); eq(tip.lines[1].b, 1)
+            text = tip.lines[1].text
+        end)
+        return text
+    end
+    GetSpellInfo = function(id) if id == 130 then return 'Caída lenta' end end
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE', 'PRIEST' }, spells = { 130 } }), 'Reactivo de Mago: Caída lenta')
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE' }, spells = { 9, 130, 131 } }), 'Reactivo de Mago: Caída lenta y 2 más')
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE' }, spells = { 9 } }), 'Reactivo de hechizos de tu clase')
+    eq(shown({ kind = 'class_reagent', own = false, classes = { 'MAGE', 'PRIEST' } }), 'Reactivo de Mago, Sacerdote')
+    LOCALIZED_CLASS_NAMES_MALE = { WARLOCK = 'Brujo del cliente' }
+    eq(shown({ kind = 'class_reagent', own = false, classes = { 'WARLOCK' } }), 'Reactivo de Brujo del cliente')
+    LOCALIZED_CLASS_NAMES_MALE = nil
+    GetSpellInfo = nil
+    C_Spell = { GetSpellName = function(id) if id == 693 then return 'Crear piedra de alma' end end }
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'WARLOCK' }, spells = { 693 } }), 'Reactivo de Brujo: Crear piedra de alma')
+    C_Spell = nil
+end)
+
+-- Ronda de arreglos 1: camino clasico (OnTooltipSetItem, sin TooltipDataProcessor ni data.lines). El
+-- "Ligado" se lee de las regiones TextLeftN contando con NumLines, como los tooltips de Blizzard.
+test('Tooltip: camino clasico sin data.lines lee Ligado con NumLines', function()
+    addItem(100, { quality = 2, classID = 4, subclassID = 4, subType = 'Placas' })
+    local tip = newTooltip(100)
+    GameTooltip = tip
+    ok(ns.Tooltip.Hook(), 'engancha por OnTooltipSetItem')
+    tip:AddLine('Ligado')
+    tip.scripts.OnTooltipSetItem(tip)
+    line(tip, 2, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+end)
+
+test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
-        "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell' }
+        "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',
+        'Tool for your profession: %s', "Tool for a profession you don't have: %s" }
     for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'traduccion de ' .. key) end
 end)
 
@@ -260,7 +460,7 @@ test('Tooltip: sin poder leer las lineas, el respaldo por enlace evita repetir y
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     local tooltip = newTooltip(100)
-    tooltip.GetNumLines = nil
+    tooltip.NumLines = nil
     GameTooltip = tooltip
     ns.Tooltip.Hook()
     run(processor, tooltip, {})
@@ -389,7 +589,7 @@ test('Tooltip: parcial tambien con el tooltip ilegible (respaldo por registro)',
     addItem(100, { quality = 1 })
     local processor = withProcessor()
     local tooltip = newTooltip(100)
-    tooltip.GetNumLines = nil
+    tooltip.NumLines = nil
     GameTooltip = tooltip
     ns.Tooltip.Hook()
     local original, calls = tooltip.AddLine, 0
@@ -457,7 +657,116 @@ test('Tooltip: aislamiento - Reset deja GameTooltip limpio, sin hooks ni lineas'
     eq(ItemRefTooltip, nil)
 end)
 
+-- Reactivo util para una mision del diario: martillo + linea neutra de la mision (con su icono).
+test('Tooltip: reactivo con mision activa de Questie -> linea de mision y martillo', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withReagents({ [100] = { 164 } }, function()
+        local saved = ns.Questie.Uses
+        ns.Questie.Uses = function(id) if id == 100 then return { { questID = 77, repeatable = false } } end end
+        FAKE.questLog = { { questID = 77 } }
+        local success, err = pcall(function()
+            local plain = newTooltip(100)
+            run(processor, plain, {})
+            eq(#plain.lines, 2)
+            local entry = line(plain, 1, 'Misión activa: #77', { 1, 1, 1 })
+            ok(entry.text:find('GossipFrame\\AvailableQuestIcon', 1, true), 'icono de mision: ' .. entry.text)
+            line(plain, 2, 'Profesión que no tenés: Herrería', { 1, 0.85, 0.2 })
+            for _, l in ipairs(plain.lines) do ok(not l.text:find('UI-GoldIcon', 1, true), 'nunca moneda') end
+            C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
+            local named = newTooltip(100)
+            run(processor, named, {})
+            line(named, 1, 'Misión activa: La caza 77')
+        end)
+        ns.Questie.Uses = saved
+        C_QuestLog.GetTitleForQuestID = nil
+        if not success then error(err, 0) end
+    end)
+end)
+
+test('Tooltip: titulo de QuestieDB si el cliente no lo da', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    FAKE.InstallQuestie({ [78] = { name = 'Garras para el herrero' } })
+    withClassify(function()
+        return { mark = 'hammer_other', quest = true, reasons = { { kind = 'quest_active', questID = 78 }, { kind = 'profession', professions = { 164 } } } }
+    end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        line(tooltip, 1, 'Misión activa: Garras para el herrero')
+    end)
+    LibQuestieDB = nil
+end)
+
+test('Tooltip: reactivo del diario de misiones -> "Lo pide una misión activa"', function()
+    addItem(500, { name = 'Garra afilada', quality = 1 })
+    FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra afilada: 2/8', type = 'item' } } } }
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withReagents({ [500] = { 164, 171 } }, function()
+        local tooltip = newTooltip(500)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 2)
+        line(tooltip, 1, 'Lo pide una misión activa', { 1, 1, 1 })
+        line(tooltip, 2, 'Profesión que no tenés: Herrería, Alquimia')
+    end)
+end)
+
 test('Tooltip: aislamiento - el caso siguiente ve el GameTooltip limpio', function()
     ok(next(GameTooltip.scripts) == nil, 'sin scripts enganchados')
     eq(GameTooltip.lines, nil)
+end)
+
+-- Libros de biblioteca y cajones arrebatados: linea neutra (blanca, sin icono) con a quien
+-- entregarlos; solo el PNJ de la faccion del jugador, los dos si no se sabe.
+test('Tooltip: libro de biblioteca y cajon arrebatado segun la faccion', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local book = { mark = nil, reasons = { { kind = 'library_book' } } }
+    local crate = { mark = nil, reasons = { { kind = 'waylaid_crate' } } }
+    local sealed = { mark = nil, reasons = { { kind = 'waylaid_crate', sealed = true } } }
+    local cases = {
+        { 'Horde', book, 'Libro de biblioteca: entregalo al bibliotecario (Owen Thadd en Entrañas)' },
+        { 'Alliance', book, 'Libro de biblioteca: entregalo al bibliotecario (Garion Wendell en Ventormenta)' },
+        { nil, book, 'Libro de biblioteca: entregalo al bibliotecario (Owen Thadd en Entrañas / Garion Wendell en Ventormenta)' },
+        { 'Horde', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Dokimi (Encrucijada)' },
+        { 'Alliance', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Marcy Baker (Crestagrana)' },
+        { 'Neutral', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Dokimi (Encrucijada) / Marcy Baker (Crestagrana)' },
+        { 'Alliance', sealed, 'Cajón arrebatado lleno: entregalo a Marcy Baker (Crestagrana)' },
+    }
+    for _, case in ipairs(cases) do
+        FAKE.faction = case[1]
+        withClassify(function() return case[2] end, function()
+            local tooltip = newTooltip(100)
+            run(processor, tooltip, {})
+            eq(#tooltip.lines, 1)
+            local entry = line(tooltip, 1, case[3], { 1, 1, 1 })
+            eq(entry.text, case[3], 'sin icono')
+        end)
+    end
+end)
+
+test('Tooltip: libro sin UnitFactionGroup muestra los dos bibliotecarios', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    UnitFactionGroup = nil
+    withClassify(function() return { reasons = { { kind = 'library_book' } } } end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        line(tooltip, 1, '(Owen Thadd en Entrañas / Garion Wendell en Ventormenta)')
+    end)
+end)
+
+test('Tooltip: textos en ingles del libro y el cajon', function()
+    local L = ns.L
+    ok(rawget(L, 'Library book: turn it in to the librarian (%s)'), 'clave del libro')
+    ok(rawget(L, 'Waylaid crate: fill it with one option from the list and turn it in to %s'), 'clave del cajon')
+    ok(rawget(L, 'Sealed waylaid crate: turn it in to %s'), 'clave del cajon lleno')
+    for _, key in ipairs({ 'Owen Thadd in Undercity', 'Garion Wendell in Stormwind', 'Dokimi (Crossroads)', 'Marcy Baker (Redridge)' }) do
+        ok(rawget(L, key), 'clave ' .. key)
+    end
 end)

@@ -3,30 +3,54 @@ local _, ns = ...
 -- Dibuja (o esconde) la marca de un boton de item: moneda, martillo o signo de mision.
 -- Regla de oro: ante cualquier duda, sin marca. Nada se marca fuera de las bolsas 0-4 ni con el
 -- addon apagado, y un item cuyos datos el cliente aun no tiene queda sin marca hasta que lleguen.
--- Texturas: iconos del propio juego (no hace falta media binaria). Decision documentada:
+-- Excepcion: el banco VIVO del personaje actual (ns.Bank: abierto en un banquero) se marca si el
+-- dueno del boton es un adaptador que declaro bank = true (ns.Bags.AllowsBank). Al cerrarse el banco
+-- se borran sus marcas y nada pendiente o diferido vuelve a marcarlo.
+-- Texturas: iconos del juego, salvo el martillo (media\martillo.tga, propio). Decision documentada:
 --   coin   -> Interface\MoneyFrame\UI-GoldIcon           (la moneda de oro de la interfaz)
---   hammer -> Interface\Icons\Trade_BlackSmithing        (martillo de herreria; propio: tinte verde,
---                                                          ajeno: desaturado con alpha 0.7)
+--   hammer -> Interface\AddOns\KnuJunk\media\martillo   (silueta blanca con borde negro, propia del addon;
+--                                                          propio: tinte verde, ajeno: gris claro; sin recorte)
 --   quest  -> Interface\GossipFrame\AvailableQuestIcon   (signo de mision; solo en el botin)
 -- Si el arte final cambia, basta con tocar TEXTURES.
 local Marks = {}
 ns.Marks = Marks
 
-local SIZE = 14
+local SIZE = 20
+local COIN_ATLAS = 'bags-junkcoin'
+Marks.COIN_ATLAS = COIN_ATLAS
 local TEXTURES = {
     coin = 'Interface\\MoneyFrame\\UI-GoldIcon',
-    hammer = 'Interface\\Icons\\Trade_BlackSmithing',
+    hammer = 'Interface\\AddOns\\KnuJunk\\media\\martillo',
     quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
 }
 Marks.TEXTURES = TEXTURES -- las usa el tooltip para el icono en linea de cada motivo
 local MINE_TINT = { 0.25, 0.85, 0.35 }
-local OTHER_ALPHA = 0.7
+local OTHER_TINT = { 1, 0.85, 0.2 } -- amarillo: material de una profesion que no tenes (vendible)
+-- Color de cada martillo (el tooltip lo usa para teñir su icono en linea igual que la marca).
+Marks.TINTS = { hammer_mine = MINE_TINT, hammer_other = OTHER_TINT }
 
 -- [boton] = { id = itemID, bag =, slot = | link =, owner = }: botones esperando datos del item.
 local pending = setmetatable({}, { __mode = 'k' })
 -- [boton] = { bag =, slot =, id = | link =, id =, owner = }: botones protegidos que, en combate, no
 -- tenian aun nuestra textura: no se crea ahora; se retoma (revalidando todo) al salir del combate.
 local queued = setmetatable({}, { __mode = 'k' })
+-- [boton] = true: botones a los que se les pidio una bolsa del banco (se limpian al cerrarlo).
+local bankButtons = setmetatable({}, { __mode = 'k' })
+
+local function isBankBag(bag)
+    local bank = ns.Bank
+    return bank ~= nil and bank.IsBankBag(bag) == true
+end
+
+-- true si `bag` se puede marcar: bolsa 0-4, o bolsa del banco con el banco vivo (y, si se da
+-- `owner`, un dueno que soporta banco).
+local function allowedBag(bag, owner, checkOwner)
+    if type(bag) ~= 'number' then return false end
+    if bag >= 0 and bag <= 4 then return true end
+    if not isBankBag(bag) or not ns.Bank.IsLive() then return false end
+    if not checkOwner then return true end
+    return ns.Bags ~= nil and type(ns.Bags.AllowsBank) == 'function' and ns.Bags.AllowsBank(owner) == true
+end
 
 local function itemIDOf(link)
     if type(link) == 'number' then return link end
@@ -74,20 +98,24 @@ local function kindOf(mark, allowQuest)
     if mark == 'quest' and allowQuest then return 'quest' end
 end
 
--- Deja `texture` con el aspecto de la marca (textura, tinte, desaturado). Los botones se reciclan:
+-- Deja `texture` con el aspecto de la marca (textura, tinte). Los botones se reciclan:
 -- cada dibujo parte de un estado limpio. Tambien lo usan los adaptadores que dibujan en sus propias
 -- esquinas (Baganator).
 local function style(texture, kind, mark)
-    texture:SetTexture(TEXTURES[kind])
-    if kind == 'hammer' then texture:SetTexCoord(0.08, 0.92, 0.08, 0.92) else texture:SetTexCoord(0, 1, 0, 1) end
+    -- Moneda: el mismo atlas de basura de Blizzard que usa Baganator ('bags-junkcoin'); si el cliente
+    -- no lo tiene, la moneda de oro.
+    local atlas = kind == 'coin' and texture.SetAtlas and C_Texture and C_Texture.GetAtlasInfo
+        and C_Texture.GetAtlasInfo(COIN_ATLAS) and COIN_ATLAS
+    -- con el tamaño propio del atlas, igual que el JunkIcon de Blizzard que muestra Baganator
+    if atlas then texture:SetAtlas(atlas, true) else texture:SetTexture(TEXTURES[kind]) end
+    if not atlas then texture:SetTexCoord(0, 1, 0, 1); texture:SetSize(SIZE, SIZE) end
     texture:SetVertexColor(1, 1, 1)
     texture:SetAlpha(1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end
     if mark == 'hammer_mine' then
         texture:SetVertexColor(MINE_TINT[1], MINE_TINT[2], MINE_TINT[3])
     elseif mark == 'hammer_other' then
-        if texture.SetDesaturated then texture:SetDesaturated(true) end
-        texture:SetAlpha(OTHER_ALPHA)
+        texture:SetVertexColor(OTHER_TINT[1], OTHER_TINT[2], OTHER_TINT[3])
     end
 end
 
@@ -100,9 +128,18 @@ local function paint(button, mark, allowQuest)
     texture:Show()
 end
 
-local function verdict(item)
+-- Resultado completo del clasificador (tabla) o nil si fallo.
+local function classify(item)
     local success, result = pcall(function() return ns.Classify(item, ns.Player.GetContext()) end)
-    if success and type(result) == 'table' then return result.mark end
+    if success and type(result) == 'table' then return result end
+end
+
+-- Marca a dibujar. En el botin (forLoot) un reactivo/herramienta util para una mision pendiente
+-- (quest = true) lleva el signo de mision: ahi la mision tiene prioridad; en bolsas, el martillo.
+local function markOf(result, forLoot)
+    if not result then return nil end
+    if forLoot and result.quest == true then return 'quest' end
+    return result.mark
 end
 
 function Marks.Clear(button)
@@ -114,7 +151,7 @@ end
 
 -- Cuerpo de Update: puede lanzar error (lecturas del cliente); el llamador lo aisla con pcall.
 local function updateSlot(button, bag, slot, owner)
-    if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return end
+    if not enabled() or not allowedBag(bag, owner or 'generic', true) or type(slot) ~= 'number' then return end
     local id = slotItemID(bag, slot)
     if not id then return end -- slot vacio
     local item = ns.Player.ReadItem(bag, slot)
@@ -122,7 +159,7 @@ local function updateSlot(button, bag, slot, owner)
         pending[button] = { id = id, bag = bag, slot = slot, owner = owner }
         return
     end
-    paint(button, verdict(item), false)
+    paint(button, markOf(classify(item), false), false)
 end
 
 local function updateLinkBody(button, link, owner)
@@ -133,7 +170,7 @@ local function updateLinkBody(button, link, owner)
         pending[button] = { id = id, link = link, owner = owner }
         return
     end
-    paint(button, verdict(item), true)
+    paint(button, markOf(classify(item), true), true)
 end
 
 -- Los botones se reciclan: la marca vieja se oculta ANTES de cualquier lectura, y si la lectura
@@ -171,10 +208,12 @@ local function defer(button, entry)
     if entry.id then queued[button] = entry end
 end
 
--- Marca el item de bolsa `bag`/`slot` (solo bolsas 0-4) en `button`. 'quest' no se dibuja aqui.
+-- Marca el item de bolsa `bag`/`slot` (bolsas 0-4, o el banco vivo si `owner` lo soporta) en
+-- `button`. 'quest' no se dibuja aqui.
 function Marks.Update(button, bag, slot, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
+    bankButtons[button] = isBankBag(bag) or nil
     if mustDefer(button) then return defer(button, { bag = bag, slot = slot, owner = owner }) end
     safely(button, updateSlot, bag, slot, owner)
 end
@@ -187,24 +226,31 @@ function Marks.UpdateLink(button, link, owner)
     safely(button, updateLinkBody, link, owner)
 end
 
--- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (solo 0-4, del
--- personaje actual). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
+-- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (0-4, o el
+-- banco vivo: el que llama tiene que haber probado que su vista es la viva). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
 -- nil si no; el 2.o valor es true cuando el cliente aun no tiene los datos del item (reintentar con
--- GET_ITEM_INFO_RECEIVED). Si expectedID viene, el slot tiene que contener ese item. Nunca lanza.
+-- GET_ITEM_INFO_RECEIVED). Con marca, el 3.o valor es el resultado completo del clasificador (motivos)
+-- y el 4.o el item leido (calidad, precio). Si expectedID viene, el slot tiene que contener ese item.
+-- Nunca lanza.
 function Marks.Verdict(bag, slot, expectedID)
-    local success, mark, waiting = pcall(function()
-        if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return nil end
+    local success, mark, waiting, result, info = pcall(function()
+        if not enabled() or not allowedBag(bag) or type(slot) ~= 'number' then return nil end
         local id = slotItemID(bag, slot)
         if not id or (expectedID ~= nil and id ~= expectedID) then return nil end
         local item = ns.Player.ReadItem(bag, slot)
         if not item then return nil, true end
-        local found = verdict(item)
+        local result = classify(item)
+        local found = markOf(result, false)
         local kind = kindOf(found, false)
-        if kind and shows(kind) then return found end
+        if kind and shows(kind) then return found, false, result, item end
     end)
-    if success then return mark, waiting == true end
+    if success then return mark, waiting == true, mark and result or nil, mark and info or nil end
     return nil, false
 end
+
+-- true si `bag` se puede marcar ahora: 0-4, o del banco con el banco vivo. Para revalidadores (que
+-- ademas son de un adaptador con bank = true).
+function Marks.AllowedBag(bag) return allowedBag(bag) end
 
 -- ID del item vivo en el slot `bag`/`slot`, o nil (vacio o error). Para revalidadores.
 function Marks.SlotItemID(bag, slot)
@@ -223,7 +269,24 @@ end
 function Marks.ResetState()
     pending = setmetatable({}, { __mode = 'k' })
     queued = setmetatable({}, { __mode = 'k' })
+    bankButtons = setmetatable({}, { __mode = 'k' })
+    Marks.ConnectBank()
 end
+
+-- Al cerrarse el banco: fuera toda marca, espera o diferido de un boton que mostro el banco. (Un boton
+-- reciclado a la bolsa se vuelve a marcar en el repintado que pide Registry.)
+local function onBankChanged(live)
+    if live then return end
+    local list = {}
+    for button in pairs(bankButtons) do list[#list + 1] = button end
+    bankButtons = setmetatable({}, { __mode = 'k' })
+    for _, button in ipairs(list) do pcall(Marks.Clear, button) end
+end
+
+function Marks.ConnectBank()
+    if ns.Bank and ns.Bank.OnChanged then ns.Bank.OnChanged(onBankChanged) end
+end
+Marks.ConnectBank()
 
 -- Retoma lo que quedo esperando (datos del item o fin del combate) SIN confiar en lo guardado:
 -- el slot tiene que seguir teniendo el item que se esperaba y, si el adaptador del dueno sabe

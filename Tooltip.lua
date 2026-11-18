@@ -1,8 +1,15 @@
 local _, ns = ...
 
--- Motivo de la marca en el tooltip de un item. Solo hay lineas si el item tiene marca (moneda o
--- martillo) o un override del usuario; un item sin marca no recibe nada (cero ruido). Los motivos
--- 'quest_starter', 'quest_active' y 'quest_log_incomplete' tampoco agregan lineas.
+-- Motivo de la marca en el tooltip de un item. Hay lineas si el item tiene marca (moneda, martillo o
+-- mision), un override del usuario o es iniciador de una mision no hecha; un item sin nada de eso no
+-- recibe nada (cero ruido). 'quest_log_incomplete' no agrega lineas. 'quest_active' (lo pide una
+-- mision del diario: marca 'quest', o martillo con result.quest) explica por que no hay moneda:
+-- 'Mision activa: <titulo>' o, sin titulo ni questID, 'Lo pide una mision activa'.
+-- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_starter_done_unknown_repeat'
+-- (sin marca): 'Mision entregada; no se sabe si es repetible'. 'quest_not_active' (moneda):
+-- 'Ninguna mision activa lo pide'. 'library_book' y 'waylaid_crate' (sin marca): linea neutra con el
+-- PNJ de entrega de la faccion del jugador (los dos si no se sabe). 'class_cannot_use_tradeable' (sin
+-- marca): 'Tu clase no puede usar <subtipo>: podes subastarlo o pasarlo a otro personaje', sin icono.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
 -- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
 -- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
@@ -12,7 +19,7 @@ ns.Tooltip = Tooltip
 local ICON_SIZE = 14
 local GOLD = { 1, 0.82, 0 }
 local GREEN = { 0.25, 0.85, 0.35 }
-local GRAY = { 0.6, 0.6, 0.6 }
+local GRAY = { 1, 0.85, 0.2 } -- amarillo, igual que el martillo ajeno
 local WHITE = { 1, 1, 1 }
 
 local hooked = false
@@ -28,13 +35,22 @@ local function shows(kind)
     return not (type(show) == 'table' and show[kind] == false)
 end
 
--- Icono en linea con la misma textura que dibuja Marks (el martillo con el mismo recorte).
-local function icon(kind)
+-- Icono en linea con la misma textura que dibuja Marks; el martillo lleva el mismo tinte que su
+-- marca (|T ruta:alto:ancho:x:y:tamX:tamY:izq:der:arr:abj:r:g:b|t, con r/g/b en 0-255).
+local function icon(kind, mark)
     local textures = ns.Marks and ns.Marks.TEXTURES
     local path = type(textures) == 'table' and textures[kind]
     if type(path) ~= 'string' then return '' end
     if kind == 'hammer' then
-        return '|T' .. path .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. ':0:0:64:64:5:59:5:59|t '
+        local tints = ns.Marks.TINTS
+        local tint = type(tints) == 'table' and tints[mark] or WHITE
+        return '|T' .. path .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. ':0:0:64:64:0:64:0:64:'
+            .. math.floor(tint[1] * 255 + 0.5) .. ':' .. math.floor(tint[2] * 255 + 0.5) .. ':'
+            .. math.floor(tint[3] * 255 + 0.5) .. '|t '
+    end
+    local atlas = kind == 'coin' and ns.Marks.COIN_ATLAS
+    if atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
+        return '|A:' .. atlas .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. '|a '
     end
     return '|T' .. path .. ':' .. ICON_SIZE .. '|t '
 end
@@ -49,15 +65,38 @@ local function questName(questID)
         local success, title = pcall(QuestUtils_GetQuestName, questID)
         if success and type(title) == 'string' and title ~= '' then return title end
     end
+    if ns.Questie and type(ns.Questie.QuestName) == 'function' then
+        local success, title = pcall(ns.Questie.QuestName, questID)
+        if success and type(title) == 'string' and title ~= '' then return title end
+    end
     return '#' .. questID
 end
 
-local function subclassName(classID, subclassID)
+-- El nombre ya localizado que trae el item (7mo valor de GetItemInfo) gana; despues
+-- GetItemSubClassInfo; al final el numero.
+local function subclassName(given, classID, subclassID)
+    if type(given) == 'string' and given ~= '' then return given end
     if type(GetItemSubClassInfo) == 'function' and type(classID) == 'number' and type(subclassID) == 'number' then
         local success, name = pcall(GetItemSubClassInfo, classID, subclassID)
         if success and type(name) == 'string' and name ~= '' then return name end
     end
     return tostring(subclassID)
+end
+
+-- Nombre localizado de un hechizo (C_Spell.GetSpellName o GetSpellInfo), o nil.
+local function spellName(spellID)
+    local api
+    if type(C_Spell) == 'table' and type(C_Spell.GetSpellName) == 'function' then api = C_Spell.GetSpellName
+    elseif type(GetSpellInfo) == 'function' then api = GetSpellInfo end
+    if not api then return nil end
+    local success, name = pcall(api, spellID)
+    if success and type(name) == 'string' and name ~= '' then return name end
+end
+
+local function classList(tokens)
+    local names = {}
+    for _, token in ipairs(type(tokens) == 'table' and tokens or {}) do names[#names + 1] = ns.ClassName(token) end
+    return table.concat(names, ', ')
 end
 
 local function professionList(ids)
@@ -68,40 +107,151 @@ local function professionList(ids)
     return table.concat(names, ', ')
 end
 
--- Lineas {text, r, g, b} de un enlace de item; vacio si no hay marca ni override.
-function Tooltip.Lines(link)
+-- PNJ que recibe el libro o el cajon segun la faccion del jugador; los dos si no se sabe.
+local function byFaction(horde, alliance)
+    local faction
+    if type(UnitFactionGroup) == 'function' then
+        local success, value = pcall(UnitFactionGroup, 'player')
+        if success then faction = value end
+    end
+    if faction == 'Horde' then return horde end
+    if faction == 'Alliance' then return alliance end
+    return horde .. ' / ' .. alliance
+end
+
+local function reputationNames(ids)
+    local names = {}
+    for _, id in ipairs(ids or {}) do
+        local name
+        if type(C_Reputation) == 'table' and type(C_Reputation.GetFactionDataByID) == 'function' then
+            local good, data = pcall(C_Reputation.GetFactionDataByID, id)
+            if good and type(data) == 'table' then name = data.name end
+        end
+        if (type(name) ~= 'string' or name == '') and type(GetFactionInfoByID) == 'function' then
+            local good, value = pcall(GetFactionInfoByID, id)
+            if good then name = value end
+        end
+        names[#names + 1] = type(name) == 'string' and name ~= '' and name or ns.L['Faction #%d']:format(id)
+    end
+    return #names > 0 and table.concat(names, ', ') or ns.L['unknown faction']
+end
+
+-- Líneas {text, r, g, b}, incluidos motivos de protección sin marca. bound = true si el
+-- propio tooltip confirma que el ejemplar está ligado (ver boundFromTooltip); nil = no se sabe.
+function Tooltip.Lines(link, bound, bag, slot)
     local lines = {}
     if not enabled() or not link then return lines end
-    local item = ns.Player.ReadLink(link)
+    local item
+    if bag ~= nil then item = ns.Player.ReadItem(bag, slot) else item = ns.Player.ReadLink(link) end
     if not item then return lines end
+    if bag ~= nil then
+        local id = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or link
+        if item.id ~= id then return lines end
+    end
+    if bound == true then item.isBound = true end
     local result = ns.Classify(item, ns.Player.GetContext())
     local mark = type(result) == 'table' and result.mark or nil
     local reasons = type(result) == 'table' and result.reasons or {}
     local L = ns.L
 
     local function add(text, color, kind)
-        lines[#lines + 1] = { text = (kind and icon(kind) or '') .. text, r = color[1], g = color[2], b = color[3] }
+        lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
 
     for _, reason in ipairs(reasons) do
         local kind = reason.kind
-        if kind == 'override_keep' then
+        if kind == 'recipe_known_tradeable' and mark == nil then
+            add(L['You already know it; you can pass it on or auction it'], WHITE)
+        elseif kind == 'override_keep' then
             add(L['Marked by hand: keep'], WHITE)
         elseif kind == 'override_sell' then
             add(L['Marked by hand: sell'], WHITE, 'coin')
+        elseif kind == 'key' then
+            add(L['Key: opens a lock; keep it'], WHITE)
+        elseif kind == 'lockbox' then
+            add(L['Locked box: open it before selling (lockpick or key)'], WHITE)
+        elseif kind == 'reputation_token' then
+            add(L['Turn in for reputation: %s']:format(reputationNames(reason.factionIDs)), WHITE)
+        elseif kind == 'library_book' then
+            add(L['Library book: turn it in to the librarian (%s)']:format(
+                byFaction(L['Owen Thadd in Undercity'], L['Garion Wendell in Stormwind'])), WHITE)
+        elseif kind == 'waylaid_crate' then
+            local npc = byFaction(L['Dokimi (Crossroads)'], L['Marcy Baker (Redridge)'])
+            if reason.sealed then
+                add(L['Sealed waylaid crate: turn it in to %s']:format(npc), WHITE)
+            else
+                add(L['Waylaid crate: fill it with one option from the list and turn it in to %s']:format(npc), WHITE)
+            end
         elseif mark == 'coin' and shows('coin') then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')
+            elseif kind == 'food_outgrown' then
+                add(L['You have better food/drink for your level'], GOLD, 'coin')
+            elseif kind == 'ammo_outgrown' then
+                add(L['You have compatible ammunition with higher damage'], GOLD, 'coin')
+            elseif kind == 'recipe_known' then
+                add(L['You already know this recipe'], GOLD, 'coin')
             elseif kind == 'quest_done' then
                 add(L['Quest finished: %s']:format(questName(reason.questID)), GOLD, 'coin')
+            elseif kind == 'quest_not_active' then
+                add(L['No active quest needs it'], GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
-                add(L["Your class can't use %s"]:format(subclassName(reason.classID, reason.subclassID)), GOLD, 'coin')
+                add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
             end
+        elseif kind == 'class_reagent' and mark == nil then
+            -- Reactivo de hechizo de clase: neutro y sin icono. Tu clase: el primer hechizo con nombre
+            -- (y cuantos mas lo usan); sin nombre, generico. Otra clase: solo la clase.
+            if reason.own then
+                local spells = type(reason.spells) == 'table' and reason.spells or {}
+                local name
+                for _, spellID in ipairs(spells) do
+                    name = spellName(spellID)
+                    if name then break end
+                end
+                if name then
+                    if #spells > 1 then name = L['%s and %d more']:format(name, #spells - 1) end
+                    add(L['%s reagent: %s']:format(ns.ClassName(reason.class or (reason.classes or {})[1]), name), WHITE)
+                else
+                    add(L["Reagent for your class's spells"], WHITE)
+                end
+            else
+                add(L['%s reagent']:format(classList(reason.classes)), WHITE)
+            end
+        elseif kind == 'class_cannot_use_tradeable' and mark == nil then
+            -- Sin ligar o sin saberlo: no es basura, se puede vender en subasta o pasar (sin icono).
+            add(L["Your class can't use %s: you can auction it or pass it to another character"]:format(
+                subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), WHITE)
+        elseif kind == 'quest_active' and (mark == 'quest' or (result.quest == true and shows('hammer'))) then
+            -- Lo pide una mision del diario (marca de mision, o martillo si es reactivo/herramienta):
+            -- se explica la mision en neutro, con su icono; nunca moneda.
+            if reason.questID ~= nil then
+                add(L['Active quest: %s']:format(questName(reason.questID)), WHITE, 'quest')
+            elseif type(reason.title) == 'string' and reason.title ~= '' then
+                add(L['Active quest: %s']:format(reason.title), WHITE, 'quest')
+            else
+                add(L['Needed by an active quest'], WHITE, 'quest')
+            end
+        elseif kind == 'quest_starter' and mark == nil then
+            add(L["Starts a quest you haven't done: %s"]:format(questName(reason.questID)), WHITE, 'quest')
+        elseif kind == 'quest_starter_done_unknown_repeat' and mark == nil then
+            add(L["Quest turned in; unknown if it's repeatable"], WHITE)
+        elseif kind == 'future_level' and mark == nil then
+            add(L['Usable from level %d']:format(reason.level), WHITE)
+        elseif kind == 'recipe' and shows('hammer') then
+            local text = L['Recipe for %s']:format(professionList({ reason.skillLine }))
+            if reason.rank then text = text .. L[', requires %d']:format(reason.rank) end
+            add(text, mark == 'hammer_mine' and GREEN or GRAY, 'hammer')
         elseif kind == 'profession' and shows('hammer') then
             if mark == 'hammer_mine' then
                 add(L['Your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')
             elseif mark == 'hammer_other' then
                 add(L["Profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
+            end
+        elseif kind == 'profession_tool' and shows('hammer') then
+            if mark == 'hammer_mine' then
+                add(L['Tool for your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')
+            elseif mark == 'hammer_other' then
+                add(L["Tool for a profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
             end
         end
     end
@@ -144,11 +294,11 @@ end
 -- Lineas de `lines` que el tooltip aun no tiene, linea por linea (una decoracion parcial se completa
 -- al reintentar sin repetir las ya puestas). Las regiones <nombre>TextLeft<i> leibles son la
 -- autoridad: si el tooltip las expone, se mira solo lo que dicen. Si no se pueden leer (sin
--- GetNumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
+-- NumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
 -- que OnTooltipCleared borra.
 local function missingLines(tooltip, link, lines)
-    if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
-        local success, count = pcall(tooltip.GetNumLines, tooltip)
+    if type(tooltip.NumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.NumLines, tooltip)
         local name = success and tooltip:GetName()
         if success and type(count) == 'number' and type(name) == 'string' then
             local present, readable = {}, count == 0
@@ -180,11 +330,53 @@ local function missingLines(tooltip, link, lines)
     return missing
 end
 
-local function decorate(tooltip, data)
+-- Texto de linea sin codigos de color ni espacios de los bordes.
+local function bare(text)
+    if type(text) ~= 'string' then return nil end
+    return (text:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''):gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+-- true si el tooltip muestra la linea "Ligado" (ITEM_SOULBOUND; sin la global, ingles y castellano):
+-- el cliente la pone en los items de la bolsa ya ligados ("Se liga al recogerlo" del botin o de un
+-- enlace NO cuenta). nil si no aparece o no se puede leer (= no se sabe).
+local function boundFromTooltip(tooltip, data)
+    local wanted = {}
+    local global = rawget(_G, 'ITEM_SOULBOUND')
+    if type(global) == 'string' and global ~= '' then wanted[global] = true end
+    wanted['Soulbound'], wanted['Ligado'] = true, true
+    if type(data) == 'table' and type(data.lines) == 'table' then
+        for _, entry in ipairs(data.lines) do
+            if type(entry) == 'table' and wanted[bare(entry.leftText) or ''] then return true end
+        end
+    end
+    if type(tooltip.NumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.NumLines, tooltip)
+        local named, name = pcall(tooltip.GetName, tooltip)
+        if success and type(count) == 'number' and named and type(name) == 'string' then
+            for index = 1, count do
+                local region = rawget(_G, name .. 'TextLeft' .. index)
+                if type(region) == 'table' and type(region.GetText) == 'function' then
+                    local got, text = pcall(region.GetText, region)
+                    if got and wanted[bare(text) or ''] then return true end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function decorate(tooltip, data, bag, slot)
     if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' or not supported(tooltip) then return end
     local link = tooltipLink(tooltip, data)
+    if tooltip == rawget(_G, 'GameTooltip') then
+        ns.Overrides.hovered = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or nil
+    end
     if not link then return end
-    local lines = Tooltip.Lines(link)
+    if bag == nil and type(tooltip.GetBagItem) == 'function' then
+        local good, b, s = pcall(tooltip.GetBagItem, tooltip)
+        if good and type(b) == 'number' and type(s) == 'number' then bag, slot = b, s end
+    end
+    local lines = Tooltip.Lines(link, boundFromTooltip(tooltip, data), bag, slot)
     if #lines == 0 then return end
     local missing = missingLines(tooltip, link, lines)
     if #missing == 0 then return end
@@ -200,13 +392,21 @@ local function decorate(tooltip, data)
 end
 
 -- Punto de entrada de los hooks: nunca lanza.
-function Tooltip.Decorate(tooltip, data)
-    pcall(decorate, tooltip, data)
+function Tooltip.Decorate(tooltip, data, bag, slot)
+    pcall(decorate, tooltip, data, bag, slot)
 end
 
 local function hookTooltip(tooltip, withSetItem)
     if type(tooltip) ~= 'table' or type(tooltip.HookScript) ~= 'function' then return end
-    pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', function(self) guard[self] = nil end)
+    local function clear(self)
+        guard[self] = nil
+        if self == rawget(_G, 'GameTooltip') then ns.Overrides.hovered = nil end
+    end
+    pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', clear)
+    pcall(tooltip.HookScript, tooltip, 'OnHide', clear)
+    if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
+        pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
+    end
     if withSetItem then
         pcall(tooltip.HookScript, tooltip, 'OnTooltipSetItem', function(self) Tooltip.Decorate(self) end)
     end
@@ -240,6 +440,7 @@ end
 
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Tooltip.ResetState()
+    ns.Overrides.hovered = nil
     hooked = false
     guard = setmetatable({}, { __mode = 'k' })
 end
