@@ -88,7 +88,7 @@ test('juego1: cambiar override pide widgets y busquedas a Baganator', function()
     eq(state.lastReason[1], 4); eq(state.lastReason[2], 16)
 end)
 
-test('juego1: sin APIs de foco no crea escudo ni interrumpe tooltip', function()
+test('juego1: sin APIs de foco no interrumpe tooltip', function()
     addItem(900001, 10)
     ns.DB.overrides[900001] = 'keep'
     FAKE.Fire('MERCHANT_SHOW')
@@ -103,103 +103,108 @@ local function protected()
     ns.DB.overrides[900001] = 'keep'
     FAKE.Fire('MERCHANT_SHOW')
     local button = CreateFrame('Button')
-    button:SetFrameLevel(9)
     GetMouseFoci = function() return { button } end
     local tip = tooltip(900001)
     ns.Tooltip.Decorate(tip)
-    local shield = ns.Merchant.ShowHoveredShield(0, 1)
-    ok(shield, 'escudo universal sin Marks.Update')
-    return button, shield, tip
+    eq(button.hookCalls.OnClick, 1)
+    return button, tip
 end
 
-test('juego1: escudo universal confirma y vende una sola vez', function()
-    local button, shield = protected()
+test('juego1: tooltip engancha el botón sin Marks.Update y confirma una sola venta', function()
+    local button = protected()
     eq(button.KnuJunkShield, nil)
-    eq(shield:GetParent(), button); eq(shield.allPoints, button)
-    eq(shield:GetFrameLevel(), 10); eq(shield.passThrough[1], 'LeftButton')
-    shield:GetScript('OnMouseUp')(shield, 'LeftButton'); eq(FAKE.popup, nil)
-    shield:GetScript('OnMouseUp')(shield, 'RightButton')
+    button:Click('LeftButton'); eq(FAKE.popup, nil)
+    button:Click('RightButton')
     local popup = FAKE.popup
-    ok(popup); eq(popup.data.bag, 0); eq(popup.data.slot, 1)
-    popup.dialog.OnAccept(nil, popup.data)
-    popup.dialog.OnAccept(nil, popup.data)
+    ok(popup); eq(popup.text, FAKE.linkOf(900001))
+    eq(popup.data.bag, 0); eq(popup.data.slot, 1); eq(popup.data.guid, 'juego1-900001')
+    popup.dialog.OnAccept(nil, popup.data); popup.dialog.OnAccept(nil, popup.data)
     eq(#FAKE.used, 1)
 end)
 
-test('juego1: escudo universal se reutiliza y usa GetMouseFocus clasico', function()
-    local _, shield = protected()
+test('juego1: foco clásico y fallback vacío enganchan cada botón una sola vez', function()
+    local first = protected()
     local second = CreateFrame('Button')
-    GetMouseFoci = nil
-    GetMouseFocus = function() return second end
-    eq(ns.Merchant.ShowHoveredShield(0, 1), shield)
-    eq(shield.allPoints, second)
+    GetMouseFoci = nil; GetMouseFocus = function() return second end
+    eq(ns.Merchant.ShowHoveredShield(0, 1), second)
     GetMouseFoci = function() return {} end
-    eq(ns.Merchant.ShowHoveredShield(0, 1), shield)
+    eq(ns.Merchant.ShowHoveredShield(0, 1), second)
     GetMouseFoci = function() return { second } end
     GetMouseFocus = function() error('no usar API antigua') end
-    eq(ns.Merchant.ShowHoveredShield(0, 1), shield)
+    eq(ns.Merchant.ShowHoveredShield(0, 1), second)
+    eq(first.hookCalls.OnClick, 1); eq(second.hookCalls.OnClick, 1)
+    second:Click('RightButton'); ok(FAKE.popup)
 end)
 
-test('juego1: reentrada sobre el escudo no provoca Hide ni Show adicionales', function()
-    local _, shield, tip = protected()
-    local shown, hidden = 0, 0
-    shield:HookScript('OnShow', function() shown = shown + 1 end)
-    shield:HookScript('OnHide', function() hidden = hidden + 1 end)
-    GetMouseFoci = function() return { shield } end
-    ns.Tooltip.Decorate(tip)
-    eq(shown, 0); eq(hidden, 0); ok(shield:IsShown())
+test('juego1: decorar repetidamente no crea capas ni repite hooks', function()
+    local button, tip = protected()
+    local frames = #FAKE.frames
+    for _ = 1, 20 do ns.Tooltip.Decorate(tip); ns.Merchant.ShowHoveredShield(0, 1) end
+    eq(button.hookCalls.OnClick, 1); eq(#FAKE.frames, frames)
+    eq(button.KnuJunkShield, nil)
+    for _, frame in ipairs(FAKE.frames) do ok(frame.parent ~= button) end
+    button:Click('RightButton'); ok(FAKE.popup)
 end)
 
 test('juego1: Show conserva bolsa y slot del hook SetBagItem sin GetBagItem', function()
-    local _, shield, tip = protected()
+    local button, tip = protected()
     tip.GetBagItem = nil
-    tip:GetScript('OnTooltipCleared')(tip)
-    tip.lines = {}
+    tip:GetScript('OnTooltipCleared')(tip); tip.lines = {}
     function tip:Show() self:GetScript('OnTooltipSetItem')(self) end
-    GetMouseFoci = function() return { shield } end
     ns.Tooltip.Decorate(tip, nil, 0, 1)
-    ok(shield:IsShown()); eq(#tip.lines, 3)
+    eq(#tip.lines, 3); eq(button.hookCalls.OnClick, 1)
+    button:Click('RightButton'); eq(FAKE.popup.data.slot, 1)
 end)
 
-test('juego1: OnLeave reenvia al boton y despues oculta escudo', function()
-    local button, shield = protected()
-    local forwarded = false
-    button:SetScript('OnLeave', function(self)
-        eq(self, button); ok(shield:IsShown()); forwarded = true
-    end)
-    shield:GetScript('OnLeave')(shield)
-    ok(forwarded); eq(shield:IsShown(), false)
+test('juego1: OnLeave original oculta tooltip y el clic sigue confirmando', function()
+    local button, tip = protected(); local left = 0
+    button:SetScript('OnLeave', function(self) eq(self, button); left = left + 1; tip:Hide() end)
+    button:GetScript('OnLeave')(button)
+    eq(left, 1); eq(tip:IsShown(), false)
+    button:Click('RightButton'); ok(FAKE.popup); eq(button.hookCalls.OnClick, 1)
 end)
 
-test('juego1: ocultar el tooltip NO oculta el escudo (evita el ciclo de parpadeo visto en el juego)', function()
-    local _, shield, tip = protected()
-    tip:Hide()
-    eq(shield:IsShown(), true)
-    shield:GetScript('OnLeave')(shield)
-    eq(shield:IsShown(), false)
+test('juego1: ocultar o limpiar tooltip y HideHoveredShield conservan el hook', function()
+    local button, tip = protected()
+    tip:Hide(); tip:GetScript('OnTooltipCleared')(tip); ns.Merchant.HideHoveredShield()
+    button:Click('RightButton'); ok(FAKE.popup); eq(tip:IsShown(), false)
+    eq(button.hookCalls.OnClick, 1)
 end)
 
 for _, action in ipairs({ 'merchant', 'combat', 'protectKeep', 'enabled' }) do
     local current = action
-    test('juego1: escudo se oculta al cambiar ' .. current, function()
-        local _, shield, tip = protected()
+    test('juego1: clic no confirma al cambiar ' .. current, function()
+        local button = protected()
         if current == 'merchant' then FAKE.Fire('MERCHANT_CLOSED')
         elseif current == 'combat' then FAKE.inCombat = true; FAKE.Fire('PLAYER_REGEN_DISABLED')
         else ns.Options.Set(current, false) end
-        eq(shield:IsShown(), false)
+        button:Click('RightButton'); eq(FAKE.popup, nil); eq(#FAKE.used, 0)
     end)
 end
 
-test('juego1: escudo rechaza banco slot desconocido y falta de passthrough', function()
-    local _, shield = protected()
-    eq(ns.Merchant.ShowHoveredShield(-1, 1), nil); eq(shield:IsShown(), false)
-    eq(ns.Merchant.ShowHoveredShield(0, nil), nil)
-    local methods = getmetatable(CreateFrame('Frame')).__index
-    local previous = methods.SetPassThroughButtons
-    methods.SetPassThroughButtons = nil
-    local result = ns.Merchant.ShowHoveredShield(0, 1)
-    methods.SetPassThroughButtons = previous
-    eq(result, nil)
+test('juego1: banco y slot desconocido no enganchan el foco', function()
+    protected()
+    local other = CreateFrame('Button'); GetMouseFoci = function() return { other } end
+    for _, bag in ipairs({ -1, 5 }) do eq(ns.Merchant.ShowHoveredShield(bag, 1), nil) end
+    eq(ns.Merchant.ShowHoveredShield(0, nil), nil); eq(other:GetScript('OnClick'), nil)
+end)
+
+test('juego1: GameTooltip nunca se engancha como botón', function()
+    local _, tip = protected()
+    GetMouseFoci = function() return { tip } end
+    eq(ns.Merchant.ShowHoveredShield(0, 1), nil); eq(tip:GetScript('OnClick'), nil)
+end)
+
+test('juego1: botón reciclado por el tooltip usa la última ubicación', function()
+    local button = protected()
+    FAKE.bags['3:2'] = 900001; FAKE.guids['3:2'] = 'otro-ejemplar'
+    FAKE.Fire('BAG_UPDATE_DELAYED')
+    local tip = tooltip(900001)
+    function tip:GetBagItem() return 3, 2 end
+    ns.Tooltip.Decorate(tip)
+    button:Click('RightButton')
+    eq(FAKE.popup.data.bag, 3); eq(FAKE.popup.data.slot, 2); eq(FAKE.popup.data.guid, 'otro-ejemplar')
+    eq(button.hookCalls.OnClick, 1)
 end)
 
 for _, count in ipairs({ 0, 3, 25 }) do
