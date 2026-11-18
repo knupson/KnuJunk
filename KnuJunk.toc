@@ -46,4 +46,5 @@ Bags\Frames.lua
 Bags\Generic.lua
 Loot.lua
 Tooltip.lua
+Options.lua
 Commands.lua

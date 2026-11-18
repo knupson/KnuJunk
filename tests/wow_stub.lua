@@ -50,7 +50,21 @@ function methods:GetCheckedTexture() return self.checkedTexture end
 for _, part in ipairs({'Normal','Pushed','Highlight','Disabled'}) do
     methods['Get' .. part .. 'Texture'] = function(self) return self[part] end
 end
-for _, method in ipairs({'SetPoint','SetSize','SetWidth','SetHeight','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetDrawLayer'}) do methods[method] = function() end end
+for _, method in ipairs({'SetPoint','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetDrawLayer'}) do methods[method] = function() end end
+-- Tamanos guardados (el panel de opciones calcula filas segun el alto) y widgets de opciones.
+function methods:SetWidth(value) self.w = value end
+function methods:SetHeight(value) self.h = value end
+function methods:SetSize(w, h) self.w = w; self.h = h end
+function methods:GetWidth() return self.w or 0 end
+function methods:GetHeight() return self.h or 0 end
+function methods:SetMinMaxValues(min, max) self.min = min; self.max = max end
+function methods:SetValue(value) self.value = value; if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, value) end end
+function methods:GetValue() return self.value or 0 end
+function methods:SetColorTexture(...) self.colorTexture = {...} end
+function methods:SetThumbTexture(value) self.thumbPath = value end
+function methods:GetThumbTexture() self.thumb = self.thumb or CreateFrame('Texture'); return self.thumb end
+for _, method in ipairs({'SetHitRectInsets','SetValueStep','SetObeyStepOnDrag','SetOrientation','EnableMouseWheel','SetJustifyH',
+    'SetJustifyV','SetWordWrap','SetMaxLines','SetFrameLevel','SetAllPoints','SetClipsChildren','SetFontObject'}) do methods[method] = function() end end
 function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
         name = name, enabled = true, alpha = 1 }, {__index = methods})
@@ -115,6 +129,18 @@ local function installClient()
     FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
     C_AddOns = { IsAddOnLoaded = function(name) return FAKE.addons[name] == true end }
+    -- API de opciones: Settings (cliente moderno). FAKE.InstallClassicOptions() la cambia por InterfaceOptions.
+    FAKE.settings = { registered = {}, added = {}, opened = {} }
+    Settings = {
+        RegisterCanvasLayoutCategory = function(panel, name)
+            local category = { panel = panel, name = name, id = #FAKE.settings.registered + 1 }
+            function category:GetID() return self.id end
+            FAKE.settings.registered[#FAKE.settings.registered + 1] = category
+            return category
+        end,
+        RegisterAddOnCategory = function(category) FAKE.settings.added[#FAKE.settings.added + 1] = category end,
+        OpenToCategory = function(id) FAKE.settings.opened[#FAKE.settings.opened + 1] = id end,
+    }
     local function itemOf(key)
         if type(key) == 'number' then return key, FAKE.items[key] end
         if type(key) == 'string' then
@@ -255,6 +281,13 @@ local function installClient()
         end,
     }
 end
+-- Cliente clasico: sin Settings, con InterfaceOptions_AddCategory e InterfaceOptionsFrame_OpenToCategory.
+function FAKE.InstallClassicOptions()
+    Settings = nil
+    FAKE.interfaceOptions = { added = {}, opened = {} }
+    InterfaceOptions_AddCategory = function(panel) FAKE.interfaceOptions.added[#FAKE.interfaceOptions.added + 1] = panel end
+    InterfaceOptionsFrame_OpenToCategory = function(panel) FAKE.interfaceOptions.opened[#FAKE.interfaceOptions.opened + 1] = panel end
+end
 function FAKE.Remove(path)
     local owner, key = path:match('^(.-)%.(.+)$')
     if owner then _G[owner][key] = nil else _G[path] = nil end
@@ -331,7 +364,9 @@ function FAKE.Reset()
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
         'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
         'BankPanel', 'BankFrame', 'ItemLocation', 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE',
-        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND', 'GetSpellInfo', 'C_Spell', 'LOCALIZED_CLASS_NAMES_MALE' }) do _G[name] = nil end
+        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND', 'GetSpellInfo', 'C_Spell', 'LOCALIZED_CLASS_NAMES_MALE',
+        'Settings', 'InterfaceOptions_AddCategory', 'InterfaceOptionsFrame_OpenToCategory', 'ForeverSettings',
+        'ITEM_QUALITY_COLORS' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
@@ -344,6 +379,7 @@ function FAKE.Reset()
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.Loot then ns.Loot.ResetState() end
     if ns and ns.Tooltip then ns.Tooltip.ResetState() end
+    if ns and ns.Options then ns.Options.ResetState() end
     if ns and ns.BaganatorAdapter then ns.BaganatorAdapter.ResetState() end
     if ns and ns.Bags and ns.Bags.Common then ns.Bags.Common.ResetState() end
     KnuJunkDB = nil; FAKE.Fire('ADDON_LOADED', 'KnuJunk')

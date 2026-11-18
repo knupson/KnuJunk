@@ -33,6 +33,15 @@ local function merge(target, source)
     end
 end
 
+-- Cada cambio de enabled/show/rules/overrides (por comando o por el panel de opciones) pasa por aca:
+-- ensucia el contexto del jugador, pide repintar las bolsas (Loot esta registrado en Bags, asi que la
+-- ventana de botin abierta tambien se repinta) y, si el panel de opciones esta abierto, lo actualiza.
+function ns.Changed()
+    if ns.Player and ns.Player.Invalidate then ns.Player.Invalidate() end
+    if ns.Bags and ns.Bags.RefreshAll then ns.Bags.RefreshAll() end
+    if ns.Options and ns.Options.RefreshIfShown then ns.Options.RefreshIfShown() end
+end
+
 local loginHandlers, loggedIn = {}, false
 -- Registra fn para PLAYER_LOGIN; si el login ya pasó, la corre en el acto.
 function ns.OnLogin(fn)
