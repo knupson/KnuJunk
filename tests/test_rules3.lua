@@ -5,9 +5,15 @@ end
 local function item(class, sub)
     return {id=ID, quality=0, price=10, classID=class, subclassID=sub, isBound=true, reqLevel=40}
 end
+local function whiteItem(...)
+    local value = item(...)
+    value.quality = 1
+    return value
+end
+
 local function ctx() return {class='WARRIOR', level=20, professions={}} end
 
-test('R14: receta propia o ajena nunca moneda, incluso gris y fuera del diario', function()
+test('R14: receta propia o ajena nunca moneda, blanca y fuera del diario', function()
     local saved=ns.Data.recipes
     ns.Data.recipes={[ID]={skillLine=165,rank=65}}
     local good,err=pcall(function()
@@ -15,19 +21,19 @@ test('R14: receta propia o ajena nunca moneda, incluso gris y fuera del diario',
             local c=ctx(); c.professions=own and {[165]=true} or {}
             c.questieUses=function() return {{questID=1}} end
             c.questInLog=function() return false end
-            local r=ns.Classify(item(9),c)
+            local r=ns.Classify(whiteItem(9),c)
             eq(r.mark,own and 'hammer_mine' or 'hammer_other')
             eq(reason(r,'recipe').skillLine,165); eq(reason(r,'recipe').rank,65)
             c.questInLog=function() return true end
-            r=ns.Classify(item(9),c); eq(r.mark,'quest'); eq(r.quest,true)
-            c.overrides={[ID]='sell'}; eq(ns.Classify(item(9),c).mark,'coin')
+            r=ns.Classify(whiteItem(9),c); eq(r.mark,'quest'); eq(r.quest,true)
+            c.overrides={[ID]='sell'}; eq(ns.Classify(whiteItem(9),c).mark,'coin')
         end
     end)
     ns.Data.recipes=saved; if not good then error(err,0) end
 end)
 
 test('R14: receta sin profesión identificada tampoco recibe moneda', function()
-    local r=ns.Classify(item(9),ctx()); eq(r.mark,'useful')
+    local r=ns.Classify(whiteItem(9),ctx()); eq(r.mark,'useful')
 end)
 
 test('R24: equipo futuro usable por clase (no gris) se protege sin sumar icono', function()
@@ -58,9 +64,9 @@ end)
 
 test('R24: override y misión activa conservan precedencia', function()
     local c=ctx(); c.overrides={[ID]='sell'}
-    eq(ns.Classify(item(4,4),c).mark,'coin')
+    eq(ns.Classify(whiteItem(4,4),c).mark,'coin')
     c.overrides={}; c.questItemsInLog={[ID]=true}
-    eq(ns.Classify(item(4,4),c).mark,'quest')
+    eq(ns.Classify(whiteItem(4,4),c).mark,'quest')
 end)
 
 test('R24: ReadLink y ReadItem leen el quinto retorno de GetItemInfo', function()
@@ -92,7 +98,7 @@ test('R14: ejemplos reales del archivo generado y amarillo ajeno', function()
     for _,example in ipairs({{2406,165,65},{2553,171,50}}) do
         local id,line,rank=unpack(example)
         eq(ns.Data.recipes[id].skillLine,line); eq(ns.Data.recipes[id].rank,rank)
-        local i=item(9); i.id=id
+        local i=whiteItem(9); i.id=id
         local c=ctx(); eq(ns.Classify(i,c).mark,'hammer_other')
         c.professions={[line]=true}; eq(ns.Classify(i,c).mark,'hammer_mine')
     end

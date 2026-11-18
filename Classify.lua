@@ -406,8 +406,20 @@ function ns.Classify(item, ctx)
     elseif not manual and result.mark == 'coin' and not (type(item.price) == 'number' and item.price > 0) then
         result.mark = item.price == 0 and 'trash' or 'useful'
     end
+    -- Regla del dueño: gris = basura, siempre, con el mismo criterio que Leatrix Plus (vende todo
+    -- gris con precio: Leatrix_Plus.lua:7988 `Rarity == 0 and ItemPrice ~= 0`). Si KnuJunk dijera
+    -- otra cosa de un gris, el ícono mentiría: otro addon lo vende igual. Sólo el candado lo salva
+    -- (traba el ítem en el vendedor). Con precio: monedita; sin precio: tacho.
+    local isGray = item.quality == 0 and result.mark ~= 'protected'
+    if isGray then
+        local hasGrayReason = false
+        for _, reason in ipairs(result.reasons) do if reason.kind == 'gray' then hasGrayReason = true end end
+        if not hasGrayReason then result.reasons[#result.reasons + 1] = { kind = 'gray' } end
+        if type(item.price) == 'number' and item.price > 0 then result.mark = 'coin'
+        elseif item.price == 0 then result.mark = 'trash' end
+    end
     result.mark = result.mark or 'useful'
-    local price = ns.AuctionPrice(item.id)
+    local price = (not isGray) and ns.AuctionPrice(item.id) or nil
     result.auctionPrice = price
     if not manual and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
         and (result.mark == 'coin' or result.mark == 'useful')

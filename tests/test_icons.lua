@@ -38,12 +38,12 @@ test('íconos: prioridad protegido, misión, profesión, subasta, moneda',functi
     auction(1000)
     withMaterial(function()
         local c=context{professions={[164]=true},questItemsInLog={[ID]=true},overrides={[ID]='keep'}}
-        eq(ns.Classify(item{quality=0},c).mark,'protected')
-        c.overrides={}; eq(ns.Classify(item{quality=0},c).mark,'quest')
-        c.questItemsInLog={}; eq(ns.Classify(item{quality=0},c).mark,'hammer_mine')
-        c.professions={}; eq(ns.Classify(item{quality=0},c).mark,'hammer_other')
+        eq(ns.Classify(item{quality=1},c).mark,'protected')
+        c.overrides={}; eq(ns.Classify(item{quality=1},c).mark,'quest')
+        c.questItemsInLog={}; eq(ns.Classify(item{quality=1},c).mark,'hammer_mine')
+        c.professions={}; eq(ns.Classify(item{quality=1},c).mark,'hammer_other')
     end)
-    eq(ns.Classify(item{quality=0},context()).mark,'auction')
+    eq(ns.Classify(item{quality=1},context()).mark,'auction')
     Auctionator=nil; eq(ns.Classify(item{quality=0},context()).mark,'coin')
 end)
 
@@ -84,8 +84,9 @@ test('íconos: gris o misión sin precio distingue cero de desconocido',function
 end)
 
 for _, price in ipairs({0,10}) do
-    test('íconos: regla de oro impide basura y moneda con precio '..price,function()
-        local value=item{quality=0,price=price}
+    test('íconos: regla de oro protege al no gris con precio '..price,function()
+        -- La clase Mision conserva un motivo de venta que estas protecciones deben bloquear.
+        local value=item{quality=1,price=price,classID=12}
         eq(ns.Classify(value,context{questLogIncomplete=true}).mark,'useful')
         eq(ns.Classify(value,context{questieUses=function() return {{questID=1}} end,questInLog=function() return nil end}).mark,'useful')
         value.effect='unknown'; eq(ns.Classify(value,context()).mark,'useful')
