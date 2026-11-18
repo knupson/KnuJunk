@@ -7,7 +7,7 @@ Lista de comprobación para la beta 0.1.0. Las dos primeras columnas (existencia
 1. Instalá **una sola** bolsa por vez en Forever (carpeta `_forever_\Interface\AddOns`), con KnuJunk instalado y las demás bolsas apagadas. Entrá al juego con un personaje que tenga en las bolsas 0 a 4: un item gris, un material de profesión, y si se puede un equipo que tu clase nunca usa.
 2. Abrí las bolsas. Mirá cada casilla:
    - **Monedita**: aparece en los items grises vendibles, en el equipo que tu clase nunca puede usar y en los items de misiones ya hechas (con QuestieDB cargado, también en objetivos de misiones hechas).
-   - **Martillo verde / gris**: verde si una profesión tuya usa el material, gris si es de una profesión que no tenés.
+   - **Martillo verde / amarillo**: verde si una profesión tuya usa el material, amarillo si es de una profesión que no tenés.
    - **Banco abierto** (sólo bolsas con banco: ver la columna): hablá con un banquero y mirá el banco: las mismas marcas que en las bolsas. Cerralo: las marcas del banco se van y no vuelven hasta abrirlo de nuevo.
    - **Sin marca donde no corresponde**: el banco cerrado o guardado (la vista del banco sin estar en el banquero), el banco de hermandad y, si la bolsa lo tiene, la vista de otro personaje o la caché. No debe aparecer ninguna marca ahí. Una monedita falsa es el peor fallo.
 3. Activá BugSack/BugGrabber antes de empezar. Después de abrir y cerrar bolsas, cambiar de ficha y mover items, revisá si hay errores de `KnuJunk`.

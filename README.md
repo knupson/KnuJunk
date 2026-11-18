@@ -7,7 +7,7 @@ Iconos en las bolsas y en el botín para ver qué se puede vender o tirar y qué
 ## Qué hace
 
 - Monedita: items grises con precio de venta, items que inician una misión ya hecha, y armaduras o armas que tu clase nunca puede equipar (según los datos de Forever 1.60.1.70959). Con QuestieDB cargado, también los sobrantes de misiones terminadas y no repetibles.
-- Martillito: materiales de profesión. Verde si una profesión tuya lo usa, gris si es de una que no tenés.
+- Martillito: materiales de profesión. Verde si una profesión tuya lo usa, amarillo si es de una que no tenés (vendible).
 - Ante la duda, sin marca. Lo que pide una misión del diario nunca lleva monedita. Un item con efecto de uso o de equipar, una pieza de set o un item que Questie conoce de una misión repetible nunca llevan monedita automática (sólo con `/knu junk sell`). Si el diario no se puede leer entero (por ejemplo, encabezados plegados en combate después de aceptar una misión), no hay monedita automática hasta leerlo completo.
 - Marcas sólo en las bolsas 0 a 4 del personaje y en la ventana de botín de Blizzard. Banco y vistas de otros personajes, sin marca.
 - El tooltip dice el motivo de cada ícono; un item sin ícono no suma líneas, salvo «Marcado a mano: guardar» si lo marcaste con `keep`. No vende ni borra nada.
