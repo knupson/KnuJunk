@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Regla «Equipo que no te sirve (según GearQuest)», activada por defecto: monedita, subasta o tacho según ligadura y precios, con protecciones, conjuntos guardados, estado en Reglas y motivo en el tooltip.
+
 - Un ícono por ítem: Protegido, misión activa, profesión propia/ajena, Subastar (Auctionator), Vender, Tirar o Útil, con prioridad uniforme en bolsas, banco vivo y botín.
 - Tecla Protegido / Automático; las marcas viejas de venta se limpian con la tecla o con «Quitar».
 - Íconos propios generados con Python estándar, fondo oscuro, tamaño, opacidad, esquina, colores y moneda Blizzard/KnuJunk configurables; migración de las opciones anteriores.

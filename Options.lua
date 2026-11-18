@@ -25,6 +25,8 @@ Options.TOGGLES = {
         help = 'Coin on ordinary arrows or bullets when you carry a usable stack of the same kind with more damage. Keeps the equipped one and a compatible stack.' },
     { section = 'Rules', path = 'rules.knownRecipe', label = 'Recipes already learned',
         help = 'Coin on recipes you already know, only if bound and with a sell price. Unbound: no coin; the tooltip says you can pass it on or auction it.' },
+    { section = 'Rules', path = 'rules.gearNotRanked', label = 'Gear not useful to you (GearQuest)',
+        help = 'Coin on weapons and armor GearQuest does not rank for your class, specialization or level. Does nothing without GearQuest.' },
 }
 
 local ICON_LABELS = { protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
@@ -395,6 +397,7 @@ local function choicesRow(panel, path, title, choices)
 end
 
 local function customization(panel)
+    panel.gearQuestStatus = controlLine(panel,'Rules','', 'muted')
     sliderRow(panel,'Icons','icons.size','Icon size (px)',10,32,1,1)
     sliderRow(panel,'Icons','icons.opacity','Opacity (%)',30,100,1,.01)
     choicesRow(panel,'icons.corner','Icon corner',{{'TOPLEFT','Top left'},{'TOPRIGHT','Top right'},{'BOTTOMLEFT','Bottom left'},{'BOTTOMRIGHT','Bottom right'}})
@@ -668,6 +671,10 @@ local function refresh(panel)
     local root = rawget(_G,'Auctionator')
     local detected = root and root.API and root.API.v1 and type(root.API.v1.GetAuctionPriceByItemID)=='function'
     panel.auctionStatus:SetText(L('Auctionator detected: %s'):format(L(detected and 'yes' or 'no')))
+    local gearQuest = rawget(_G, 'GQ')
+    local gearDetected = type(gearQuest) == 'table' and type(gearQuest.Data) == 'table'
+        and type(gearQuest.Data.GearScoreMissText) == 'function'
+    panel.gearQuestStatus:SetText(L('GearQuest detected: %s'):format(L(gearDetected and 'yes' or 'no')))
     refreshBinding(panel)
     refreshChecks(panel)
     refreshList(panel)

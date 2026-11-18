@@ -385,6 +385,60 @@ local function classify(item, ctx)
     return result
 end
 
+-- Conjuntos guardados por el jugador, distintos de los sets de objetos (isSetPiece).
+local function inEquipmentSet(id)
+    local modern = type(C_EquipmentSet) == 'table' and C_EquipmentSet or nil
+    local idsAPI = modern and modern.GetItemIDs or GetEquipmentSetItemIDs
+    if type(idsAPI) ~= 'function' then return false end
+    local success, sets = pcall(function()
+        if modern and type(modern.GetEquipmentSetIDs) == 'function' then
+            return modern.GetEquipmentSetIDs()
+        end
+        if type(GetNumEquipmentSets) ~= 'function' or type(GetEquipmentSetInfo) ~= 'function' then return {} end
+        local names = {}
+        for index = 1, GetNumEquipmentSets() do
+            names[#names + 1] = GetEquipmentSetInfo(index)
+        end
+        return names
+    end)
+    if not success or type(sets) ~= 'table' then return true end
+    for _, set in pairs(sets) do
+        local good, items = pcall(idsAPI, set)
+        if not good or type(items) ~= 'table' then return true end
+        for _, itemID in pairs(items) do if itemID == id then return true end end
+    end
+    return false
+end
+
+local excludedGearSlots = { INVTYPE_TRINKET = true, INVTYPE_TABARD = true,
+    INVTYPE_BODY = true, INVTYPE_BAG = true }
+
+local function gearMissText(item, ctx, result)
+    if (ctx.rules and ctx.rules.gearNotRanked == false) or result.mark ~= 'useful'
+        or result.uncertain or ctx.questLogIncomplete or item.isSetPiece
+        or (item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR)
+        or type(item.link) ~= 'string' or item.link == ''
+        or not item.equipLoc or item.equipLoc == '' or excludedGearSlots[item.equipLoc]
+        or (type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level) then return end
+    -- Las protecciones del núcleo conservan su precedencia aunque su marca sea Útil.
+    for _, reason in ipairs(result.reasons) do
+        if reason.kind ~= 'useful' and reason.kind ~= 'no_sell_price'
+            and reason.kind ~= 'class_cannot_use_tradeable' then return end
+    end
+    local root = rawget(_G, 'GQ')
+    if type(root) ~= 'table' or type(root.Data) ~= 'table'
+        or type(root.Data.GearScoreMissText) ~= 'function' then return end
+    if inEquipmentSet(item.id) then return end
+    -- GearScoreMissText también devuelve texto («not scoring this item», Data.lua:7370-7375) cuando
+    -- el ítem no está en su base o la base no cargó: eso no prueba que no te sirva. Sólo cuenta si
+    -- GearQuest tiene filas para el ítem.
+    if type(root.Data.GetEntriesByItemId) ~= 'function' then return end
+    local okEntries, entries = pcall(root.Data.GetEntriesByItemId, root.Data, item.id)
+    if not okEntries or type(entries) ~= 'table' or next(entries) == nil then return end
+    local success, text = pcall(root.Data.GearScoreMissText, root.Data, item.link)
+    if success and type(text) == 'string' and text ~= '' then return text end
+end
+
 -- La moneda automatica siempre acredita un precio de venta conocido y positivo.
 -- Se conserva el veredicto de utilidad y sus motivos; la venta manual prevalece.
 function ns.Classify(item, ctx)
@@ -419,10 +473,16 @@ function ns.Classify(item, ctx)
         elseif item.price == 0 then result.mark = 'trash' end
     end
     result.mark = result.mark or 'useful'
+    local gearMiss = not isGray and gearMissText(item, ctx, result)
+    if gearMiss then
+        result.reasons[#result.reasons + 1] = { kind = 'gear_not_ranked', text = gearMiss }
+        result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
+            or (item.price == 0 and 'trash' or 'useful')
+    end
     local price = (not isGray) and ns.AuctionPrice(item.id) or nil
     result.auctionPrice = price
     if not manual and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
-        and (result.mark == 'coin' or result.mark == 'useful')
+        and (result.mark == 'coin' or result.mark == 'useful' or (gearMiss and result.mark == 'trash'))
         and item.isBound ~= true and price then
         local settings = ns.DB and ns.DB.auction or {}
         if price >= math.max((type(item.price) == 'number' and item.price or 0) * (settings.factor or 2), settings.minCopper or 100) then

@@ -35,7 +35,7 @@ local function openPanel()
     return panel
 end
 
-local PATHS = { 'enabled','protectKeep','show.loot','show.protected','show.quest','show.hammer_mine','show.hammer_other','show.auction','show.coin','show.trash','show.useful','icons.background','rules.food','rules.ammo','rules.knownRecipe' }
+local PATHS = { 'enabled','protectKeep','show.loot','show.protected','show.quest','show.hammer_mine','show.hammer_other','show.auction','show.coin','show.trash','show.useful','icons.background','rules.food','rules.ammo','rules.knownRecipe','rules.gearNotRanked' }
 
 local function lookup(path)
     local value = ns.DB
