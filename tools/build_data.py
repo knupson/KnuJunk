@@ -136,19 +136,21 @@ def _is_special(row):
     return bool(LIBRARY_RE.search(row.get('Description_lang') or '')) or _crate_kind(row) is not None
 
 
-def compute_locks(item_rows, sparse_rows, lock_rows):
-    """Llaves por clase 13 o requisito ITEM (Type=1); cajas por LockID, incluso sin fila Lock."""
+# Abridores conocidos fuera de clase Key: Skeleton Keys y cargas de seforio.
+# Un requisito ITEM de Lock puede ser un material (p. ej. Tela de lino), no una llave.
+CURATED_OPENERS = {15869, 15870, 15871, 15872, 4367, 4398, 18594}
+
+
+def compute_locks(item_rows, sparse_rows):
+    """Llaves por clase 13 más abridores curados; cajas por LockID, incluso sin fila Lock."""
     keys = {_int(r.get('ID')) for r in item_rows if _int(r.get('ClassID')) == 13}
     boxes = {_int(r.get('ID')) for r in sparse_rows if _int(r.get('LockID')) > 0}
-    for row in lock_rows:
-        for i in range(8):
-            if _int(row.get('Type_%d' % i)) == 1:
-                keys.add(_int(row.get('_Index_%d' % i)))
+    keys.update(CURATED_OPENERS)
     return {i for i in keys if i > 0}, {i for i in boxes if i > 0}
 
 
 def render_locks_lua(keys, boxes, build):
-    lines = [_header(build), '-- Item.ClassID=13 y requisitos ITEM de Lock; ItemSparse.LockID > 0.\n']
+    lines = [_header(build), '-- Item.ClassID=13 más abridores curados; ItemSparse.LockID > 0.\n']
     for name, ids in (('keys', keys), ('lockboxes', boxes)):
         lines.append('ns.Data.%s = {\n' % name)
         for item in sorted(ids):
@@ -555,7 +557,7 @@ def main(argv=None):
     tools = compute_tools(raw('skilllineability'), raw('spelltotems'), raw('totemcategory'), raw('itemsparse'))
     gear, missing = compute_class_gear(raw('skilllineability'))
     books, crates = compute_special(raw('itemsparse'))
-    keys, boxes = compute_locks(raw('item'), raw('itemsparse'), raw('lock'))
+    keys, boxes = compute_locks(raw('item'), raw('itemsparse'))
     class_reagents = compute_class_reagents(raw('skilllineability'), raw('spellreagents'), raw('spelltotems'),
                                             raw('totemcategory'), raw('itemsparse'))
     if missing:

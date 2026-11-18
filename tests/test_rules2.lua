@@ -1,4 +1,4 @@
--- Tanda 2: protecciones previas a cualquier moneda autom?tica.
+-- Tanda 2: protecciones previas a cualquier moneda automática.
 local ID = 990001
 local function item(class) return {id=ID, classID=class or 12, quality=0, price=10} end
 local function context(uses)
@@ -15,6 +15,69 @@ local function withLocks(keys, boxes, fn)
     ns.Data.keys,ns.Data.lockboxes=k,b
     if not good then error(err,0) end
 end
+
+test('R18: misión activa conserva la marca y el motivo de llave o caja', function()
+    for _,kind in ipairs({'key','lockbox'}) do
+        withLocks(kind=='key' and {[ID]=true} or {},kind=='lockbox' and {[ID]=true} or {},function()
+            local c=context({{questID=1}}); c.questInLog=function() return true end
+            local r=ns.Classify(item(),c)
+            eq(r.mark,'quest'); ok(reason(r,'quest_active')); ok(reason(r,kind))
+        end)
+    end
+end)
+
+test('R18: reactivo y herramienta conservan martillos, misión y motivo de protección', function()
+    local reagents,tools=ns.Data.reagents,ns.Data.tools
+    local good,err=pcall(function()
+        for _,source in ipairs({'reagents','tools'}) do
+            ns.Data.reagents,ns.Data.tools={},{}
+            ns.Data[source]={[ID]={164}}
+            for _,kind in ipairs({'key','lockbox'}) do
+                withLocks(kind=='key' and {[ID]=true} or {},kind=='lockbox' and {[ID]=true} or {},function()
+                    for _,mine in ipairs({false,true}) do
+                        for _,active in ipairs({false,true}) do
+                            local c=context({{questID=1}})
+                            c.questInLog=function() return active end
+                            c.professions=mine and {[164]=true} or {}
+                            local r=ns.Classify(item(),c)
+                            eq(r.mark,mine and 'hammer_mine' or 'hammer_other')
+                            eq(r.quest,active and true or nil); ok(reason(r,kind))
+                            ok(reason(r,source=='reagents' and 'profession' or 'profession_tool'))
+                        end
+                    end
+                end)
+            end
+        end
+    end)
+    ns.Data.reagents,ns.Data.tools=reagents,tools
+    if not good then error(err,0) end
+end)
+
+test('R18: datos reales no convierten Tela de lino en llave', function()
+    ok(not ns.Data.keys[2589]); ok(ns.Data.reagents[2589])
+    local i=item(7); i.id=2589
+    local c=context(); c.professions={[197]=true}
+    local r=ns.Classify(i,c)
+    eq(r.mark,'hammer_mine'); ok(reason(r,'profession')); eq(reason(r,'key'),nil)
+end)
+
+test('R18: datos reales dejan moneda al gris común y a misión fuera del diario', function()
+    ok(type(ns.Data.keys)=='table'); ok(type(ns.Data.lockboxes)=='table')
+    for _,class in ipairs({15,12}) do
+        ok(not ns.Data.keys[ID]); ok(not ns.Data.lockboxes[ID])
+        local i=item(class)
+        if class==12 then i.quality=1 end
+        local r=ns.Classify(i,context())
+        eq(r.mark,'coin')
+        ok(reason(r,class==12 and 'quest_not_active' or 'gray'))
+    end
+end)
+
+test('R18: datos reales incluyen los siete abridores curados', function()
+    for _,id in ipairs({15869,15870,15871,15872,4367,4398,18594}) do
+        ok(ns.Data.keys[id], 'abridor curado '..id)
+    end
+end)
 
 test('R18: clase llave, abridor generado y caja cerrada nunca moneda', function()
     withLocks({[ID]=true},{},function()

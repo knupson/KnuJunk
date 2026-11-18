@@ -330,18 +330,22 @@ class ConsistencyTest(unittest.TestCase):
 
 
 class LocksTest(unittest.TestCase):
-    def test_keys_boxes_and_only_item_requirements(self):
+    def test_keys_are_class_13_plus_curated_openers_not_lock_requirements(self):
         keys, boxes = build_data.compute_locks(
             [{'ID': '1', 'ClassID': '13'}, {'ID': '2', 'ClassID': '15'}],
-            [{'ID': '3', 'LockID': '99'}, {'ID': '4', 'LockID': '0'}],
-            [{'Type_0': '1', '_Index_0': '5', 'Type_1': '2', '_Index_1': '6',
-              'Type_7': '1', '_Index_7': '7'}, {'Type_0': '1', '_Index_0': '0'}])
-        self.assertEqual(keys, {1, 5, 7})
+            [{'ID': '3', 'LockID': '99'}, {'ID': '4', 'LockID': '0'}])
+        self.assertEqual(keys, {1, 15869, 15870, 15871, 15872, 4367, 4398, 18594})
         self.assertEqual(boxes, {3})
         text = build_data.render_locks_lua(keys, boxes, 'x')
         self.assertIn('ns.Data.keys', text)
         self.assertIn('ns.Data.lockboxes', text)
-        self.assertLess(text.index('[1]'), text.index('[5]'))
+        self.assertLess(text.index('[1]'), text.index('[4367]'))
+
+    def test_linen_cloth_in_lock_3670_is_not_a_key(self):
+        # Lock 3670 pide este material; Lock ya no es una fuente de llaves.
+        keys, boxes = build_data.compute_locks([{'ID': '2589', 'ClassID': '7'}], [])
+        self.assertNotIn(2589, keys)
+        self.assertEqual(boxes, set())
 
     def test_locked_sparse_row_survives_filter(self):
         row = {c: '0' for c in build_data.COLUMNS['itemsparse']}

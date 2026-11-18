@@ -93,18 +93,19 @@ function ns.Classify(item, ctx)
         return result
     end
 
-    -- R18: evidencia de cerradura/llave prevalece sobre cualquier marca automática.
+    -- R18 sólo evita la moneda; misión activa y profesión conservan sus marcas.
+    local lockReason
     if item.classID == 13 or (ns.Data.keys and ns.Data.keys[id]) then
-        reasons[#reasons + 1] = { kind = 'key' }
-        return result
-    end
-    if ns.Data.lockboxes and ns.Data.lockboxes[id] then
-        reasons[#reasons + 1] = { kind = 'lockbox' }
-        return result
+        lockReason = { kind = 'key' }
+    elseif ns.Data.lockboxes and ns.Data.lockboxes[id] then
+        lockReason = { kind = 'lockbox' }
     end
 
     -- Datos del item sin cargar: no se decide nada.
-    if item.quality == nil then return result end
+    if item.quality == nil then
+        if lockReason then reasons[#reasons + 1] = lockReason end
+        return result
+    end
 
     -- 2. Misiones. Iniciadores (Data.starters o QuestieDB con starter = true) aparte del resto.
     local uses = type(ctx.questieUses) == 'function' and ctx.questieUses(id) or nil
@@ -147,6 +148,7 @@ function ns.Classify(item, ctx)
         questReasons[1] = { kind = 'quest_active', title = type(title) == 'string' and title or nil }
     end
     for _, reason in ipairs(questReasons) do reasons[#reasons + 1] = reason end
+    if lockReason then reasons[#reasons + 1] = lockReason end
 
     -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
     -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, gris si no; nunca
@@ -214,6 +216,7 @@ function ns.Classify(item, ctx)
         reasons[#reasons + 1] = classReason
         return result
     end
+    if lockReason then return result end
 
     -- R20: excepción del dueño a «fuera del diario = moneda». Sólo objetivos de entregas
     -- repetibles que otorgan reputación; misión activa y profesión conservan su precedencia.
