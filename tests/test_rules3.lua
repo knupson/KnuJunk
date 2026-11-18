@@ -19,7 +19,7 @@ test('R14: receta propia o ajena nunca moneda, incluso gris y fuera del diario',
             eq(r.mark,own and 'hammer_mine' or 'hammer_other')
             eq(reason(r,'recipe').skillLine,165); eq(reason(r,'recipe').rank,65)
             c.questInLog=function() return true end
-            r=ns.Classify(item(9),c); eq(r.mark,own and 'hammer_mine' or 'hammer_other'); eq(r.quest,true)
+            r=ns.Classify(item(9),c); eq(r.mark,'quest'); eq(r.quest,true)
             c.overrides={[ID]='sell'}; eq(ns.Classify(item(9),c).mark,'coin')
         end
     end)
@@ -27,14 +27,14 @@ test('R14: receta propia o ajena nunca moneda, incluso gris y fuera del diario',
 end)
 
 test('R14: receta sin profesión identificada tampoco recibe moneda', function()
-    local r=ns.Classify(item(9),ctx()); eq(r.mark,nil)
+    local r=ns.Classify(item(9),ctx()); eq(r.mark,'useful')
 end)
 
 test('R24: equipo futuro usable por clase (no gris) se protege sin sumar icono', function()
     for _,spec in ipairs({{4,4},{2,8}}) do
         local i=item(spec[1],spec[2]); i.quality=2; i.effect='no'
         local r=ns.Classify(i,ctx())
-        eq(r.mark,nil); eq(reason(r,'future_level').level,40)
+        eq(r.mark,'useful'); eq(reason(r,'future_level').level,40)
     end
 end)
 
@@ -115,9 +115,9 @@ test('R14/R24: tooltip real en inglés y español, protección con martillo ocul
         assert(loadfile('Locales/Locales.lua'))('KnuJunk',ns)
         FAKE.items[2406]={name='Pattern',quality=1,price=10,classID=9}
         local lines=ns.Tooltip.Lines(FAKE.linkOf(2406))
-        eq(#lines,1); ok(lines[1].text:find('Recipe for Leatherworking, requires 65',1,true))
+        eq(#lines,2); ok(lines[2].text:find('Recipe for Leatherworking, requires 65',1,true))
         ns.DB.show.hammer=false
-        eq(#ns.Tooltip.Lines(FAKE.linkOf(2406)),0)
+        eq(#ns.Tooltip.Lines(FAKE.linkOf(2406)),1)
         eq(ns.Classify(ns.Player.ReadLink(2406),ns.Player.GetContext()).mark,'hammer_other')
         FAKE.class='MAGE'; UnitLevel=function() return 20 end; ns.Player.Invalidate()
         FAKE.items[ID]={name='Futuro',quality=1,price=10,classID=4,subclassID=1}
@@ -126,10 +126,10 @@ test('R14/R24: tooltip real en inglés y español, protección con martillo ocul
             local v={info(key)}; v[5]=40; return unpack(v,1,17)
         end
         local good2,err2=pcall(function()
-            eq(ns.Tooltip.Lines(FAKE.linkOf(ID))[1].text,'Usable from level 40')
+            eq(ns.Tooltip.Lines(FAKE.linkOf(ID))[2].text,'Usable from level 40')
             GetLocale=function() return 'esMX' end
             assert(loadfile('Locales/Locales.lua'))('KnuJunk',ns)
-            eq(ns.Tooltip.Lines(FAKE.linkOf(ID))[1].text,'Podés usarlo desde nivel 40')
+            eq(ns.Tooltip.Lines(FAKE.linkOf(ID))[2].text,'Podés usarlo desde nivel 40')
         end)
         GetItemInfo=info; if not good2 then error(err2,0) end
     end)
@@ -144,12 +144,12 @@ test('R14/R24: tooltip localizado, requisito opcional y colores', function()
         for _,mark in ipairs({'hammer_mine','hammer_other'}) do
             ns.Classify=function() return {mark=mark,reasons={{kind='recipe',skillLine=165,rank=65}}} end
             local lines=ns.Tooltip.Lines(FAKE.linkOf(ID))
-            eq(#lines,1); ok(lines[1].text:find('Receta de ',1,true)); ok(lines[1].text:find(', requiere 65',1,true))
-            eq(lines[1].r,mark=='hammer_mine' and 0.25 or 1)
-            eq(lines[1].g,0.85)
+            eq(#lines,2); ok(lines[2].text:find('Receta de ',1,true)); ok(lines[2].text:find(', requiere 65',1,true))
+            eq(lines[2].r,mark=='hammer_mine' and (95/255) or 1)
+            eq(lines[2].g,mark=='hammer_mine' and 208/255 or 154/255)
         end
         ns.Classify=function() return {reasons={{kind='recipe',skillLine=165}},mark='hammer_other'} end
-        ok(not ns.Tooltip.Lines(FAKE.linkOf(ID))[1].text:find('requiere',1,true))
+        ok(not ns.Tooltip.Lines(FAKE.linkOf(ID))[2].text:find('requiere',1,true))
         ns.Classify=function() return {reasons={{kind='future_level',level=40}}} end
         eq(ns.Tooltip.Lines(FAKE.linkOf(ID))[1].text,'Podés usarlo desde nivel 40')
     end)

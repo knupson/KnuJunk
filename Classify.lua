@@ -1,6 +1,7 @@
 local _, ns = ...
 
--- Clasificador de marcas: funcion pura. Regla de oro: ante cualquier duda, sin marca.
+-- Clasificador: una marca por ítem legible. Ante la duda, útil; nunca moneda ni basura.
+-- El núcleo decide utilidad; la salida consulta Auctionator de forma opcional y protegida.
 -- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price, isBound, reqLevel }
 --   isBound = true solo si la bolsa confirma que el ejemplar esta ligado; false/nil = no (o no se sabe).
 --   hasUseOrEquipSpell = true tambien cuando no se puede saber (sin API de hechizos).
@@ -9,16 +10,15 @@ local _, ns = ...
 --          questItemTitle(itemID)->titulo|nil,
 --          questieUses(itemID)->{ {questID=, repeatable=, starter=, reputationFactions={factionID,...}} }|nil,
 --          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
--- result = { mark = 'coin'|'hammer_mine'|'hammer_other'|'quest'|nil, reasons = { {kind=...} } }
---   quest = true cuando el item lo pide una mision del diario Y es reactivo o herramienta: la marca
---   es el martillo (las bolsas lo dibujan) y el botin dibuja el signo de mision.
+-- result = { mark = uno de ns.IconKinds o nil pendiente, reasons = { {kind=...} }, auctionPrice = número|nil }
+-- quest conserva el dato de material de misión; reasonMark conserva la marca de profesión para los motivos.
 -- Misiones (decision del user, 2026-11-17): un item de mision solo es util si lo pide una mision que
 -- esta AHORA en el diario; si no, monedita 'quest_not_active' (futuras, no tomadas, hechas y
 -- repetibles no tomadas no protegen, salvo entregas de reputación R20). Los iniciadores siguen su propia regla: mision no hecha (o
 -- sin saberlo) -> util ('quest_starter'); hecha y no repetible CONFIRMADO por QuestieDB (repeatable =
 -- false) -> monedita 'quest_done'; hecha sin saber si es repetible -> sin moneda
 -- ('quest_starter_done_unknown_repeat').
--- Libros de biblioteca y cajones arrebatados (Data/Special.lua): sin marca y sin moneda automatica,
+-- Libros de biblioteca y cajones arrebatados (Data/Special.lua): útiles y sin moneda automática,
 -- motivo 'library_book' o 'waylaid_crate' (sealed = true si el cajon ya esta lleno).
 
 local ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR, ITEM_CLASS_QUEST = 2, 4, 12
@@ -84,15 +84,10 @@ local function classify(item, ctx)
     -- Libros de biblioteca y cajones arrebatados de Forever (Data/Special.lua): se guardan hasta
     -- entregarlos al bibliotecario o al representante de comercio. Nunca moneda automatica, aunque
     -- sean de clase Mision y ninguna mision del diario los pida; sin marca, motivo para el tooltip.
-    if ns.Data.libraryBooks and ns.Data.libraryBooks[id] then
-        reasons[#reasons + 1] = { kind = 'library_book' }
-        return result
-    end
+    local specialReason
+    if ns.Data.libraryBooks and ns.Data.libraryBooks[id] then specialReason = { kind = 'library_book' } end
     local crate = ns.Data.waylaidCrates and ns.Data.waylaidCrates[id]
-    if crate then
-        reasons[#reasons + 1] = { kind = 'waylaid_crate', sealed = crate == 'sealed' or nil }
-        return result
-    end
+    if crate and not specialReason then specialReason = { kind = 'waylaid_crate', sealed = crate == 'sealed' or nil } end
 
     -- R18 sólo evita la moneda; misión activa y profesión conservan sus marcas.
     local lockReason
@@ -104,6 +99,7 @@ local function classify(item, ctx)
 
     -- Datos del item sin cargar: no se decide nada.
     if item.quality == nil then
+        if specialReason then reasons[#reasons + 1] = specialReason end
         if lockReason then reasons[#reasons + 1] = lockReason end
         return result
     end
@@ -150,9 +146,15 @@ local function classify(item, ctx)
     end
     for _, reason in ipairs(questReasons) do reasons[#reasons + 1] = reason end
     if lockReason then reasons[#reasons + 1] = lockReason end
+    result.uncertain = ctx.questLogIncomplete or logUnknown or item.effect == 'unknown'
+    if specialReason then
+        reasons[#reasons + 1] = specialReason
+        if #questReasons > 0 then result.mark = 'quest' end
+        return result
+    end
 
     -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
-    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, amarillo si no; nunca
+    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, naranja si no; nunca
     -- monedita automatica, aunque el item sea gris. Si es las dos cosas, manda el reactivo salvo que solo la
     -- herramienta sea de una profesion tuya.
     local reagentLines = ns.Data.reagents and ns.Data.reagents[id]
@@ -191,7 +193,7 @@ local function classify(item, ctx)
     end
     -- R14 por defecto; R12/R13 sólo difieren la receta conocida para evaluar todas las P.
     local knownRecipe = rules.knownRecipe == true and item.classID == 9 and item.knownRecipe == true
-        and #questReasons == 0 and (item.isBound ~= true or (type(item.price) == 'number' and item.price > 0))
+        and #questReasons == 0
     local recipeReasonIndex
     if recipe then
         result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
@@ -285,7 +287,7 @@ local function classify(item, ctx)
         reasons[#reasons + 1] = { kind = 'useful' }
         return result
     end
-    -- Efecto desconocido (ronda de arreglos 2): solo la moneda del gris sigue valiendo; mision y clase no.
+    -- Efecto desconocido: ninguna moneda automática, tampoco por calidad gris.
     local unknownEffect = effect == 'unknown'
 
     -- Opcionales: después de TODAS las protecciones; diario incompleto nunca habilita moneda.
@@ -345,7 +347,7 @@ local function classify(item, ctx)
     end
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
-    if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
+    if item.quality == 0 then
         reasons[#reasons + 1] = { kind = 'gray' }
     end
     if unknownEffect then
@@ -376,7 +378,7 @@ local function classify(item, ctx)
     if #reasons > 0 and (ctx.questLogIncomplete or logUnknown) then
         result.reasons = { { kind = 'quest_log_incomplete' } }
         reasons = result.reasons
-    elseif #reasons > 0 then
+    elseif #reasons > 0 and not unknownEffect then
         result.mark = 'coin'
     end
     if tradeable then reasons[#reasons + 1] = tradeable end
@@ -388,12 +390,44 @@ end
 function ns.Classify(item, ctx)
     local result = classify(item, ctx)
     if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
+    if item.pending == true or item.quality == nil then
+        result.mark, result.pending = nil, true
+        return result
+    end
     if item.price == 0 then
         result.reasons[#result.reasons + 1] = { kind = 'no_sell_price' }
     end
     local manual = ctx.overrides and ctx.overrides[item.id] == 'sell'
-    if result.mark == 'coin' and not manual and not (type(item.price) == 'number' and item.price > 0) then
-        result.mark = nil
+    result.reasonMark = result.mark
+    local protected = ctx.overrides and ctx.overrides[item.id] == 'keep'
+    local active = result.quest == true or result.mark == 'quest'
+    if protected then result.mark = 'protected'
+    elseif active then result.mark = 'quest'
+    elseif not manual and result.mark == 'coin' and not (type(item.price) == 'number' and item.price > 0) then
+        result.mark = item.price == 0 and 'trash' or 'useful'
+    end
+    result.mark = result.mark or 'useful'
+    local price = ns.AuctionPrice(item.id)
+    result.auctionPrice = price
+    if not manual and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
+        and (result.mark == 'coin' or result.mark == 'useful')
+        and item.isBound ~= true and price then
+        local settings = ns.DB and ns.DB.auction or {}
+        if price >= math.max((type(item.price) == 'number' and item.price or 0) * (settings.factor or 2), settings.minCopper or 100) then
+            result.mark = 'auction'
+        end
     end
     return result
+end
+
+-- API opcional: ni la ausencia del addon ni una base sin inicializar cortan la clasificación.
+function ns.AuctionPrice(id)
+    local success, price = pcall(function()
+        local root = rawget(_G, 'Auctionator')
+        local api = root and root.API and root.API.v1
+        if api and type(api.GetAuctionPriceByItemID) == 'function' then
+            return api.GetAuctionPriceByItemID('KnuJunk', id)
+        end
+    end)
+    if success and type(price) == 'number' and price == price and price >= 0 and price < math.huge then return price end
 end

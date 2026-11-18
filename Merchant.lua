@@ -104,7 +104,7 @@ local function popup(bag, slot)
     if type(StaticPopupDialogs) ~= 'table' then return end
     if not StaticPopupDialogs.KNUJUNK_CONFIRM_SELL then
         StaticPopupDialogs.KNUJUNK_CONFIRM_SELL = {
-            text = ns.L['%s is marked «always keep». Sell it anyway?'],
+            text = ns.L['%s is protected. Sell it anyway?'],
             button1 = YES or ns.L['Yes'], button2 = NO or ns.L['No'],
             timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
             OnAccept = accept,

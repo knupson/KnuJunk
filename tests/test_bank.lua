@@ -280,7 +280,7 @@ test('Baganator: widget en el banco vivo dibuja; cerrado o guardado no', functio
     forever()
     local state = bagState()
     junk(100, BANK_TAB, 1)
-    local update = widget(state, 'knujunk_coin')
+    local update = widget(state, 'knujunk_icon')
     local view = bankView(true, true)
     eq(update({ itemID = 100, itemLocation = location(BANK_TAB, 1) }), false, 'banco cerrado')
     openBank()

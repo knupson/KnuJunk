@@ -1,25 +1,14 @@
 local _, ns = ...
 
--- Motivo de la marca en el tooltip de un item. Hay lineas si el item tiene marca (moneda, martillo o
--- mision), un override del usuario o es iniciador de una mision no hecha; un item sin nada de eso no
--- recibe nada (cero ruido). 'quest_log_incomplete' no agrega lineas. 'quest_active' (lo pide una
--- mision del diario: marca 'quest', o martillo con result.quest) explica por que no hay moneda:
--- 'Mision activa: <titulo>' o, sin titulo ni questID, 'Lo pide una mision activa'.
--- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_starter_done_unknown_repeat'
--- (sin marca): 'Mision entregada; no se sabe si es repetible'. 'quest_not_active' (moneda):
--- 'Ninguna mision activa lo pide'. 'library_book' y 'waylaid_crate' (sin marca): linea neutra con el
--- PNJ de entrega de la faccion del jugador (los dos si no se sabe). 'class_cannot_use_tradeable' (sin
--- marca): 'Tu clase no puede usar <subtipo>: podes subastarlo o pasarlo a otro personaje', sin icono.
--- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
--- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
--- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
+-- Leyenda de la marca con su color y precios de subasta; conserva los motivos anteriores.
+-- Sólo GameTooltip e ItemRefTooltip, callbacks protegidos y líneas sin duplicación al reentrar.
 local Tooltip = {}
 ns.Tooltip = Tooltip
 
 local ICON_SIZE = 14
 local GOLD = { 1, 0.82, 0 }
-local GREEN = { 0.25, 0.85, 0.35 }
-local GRAY = { 1, 0.85, 0.2 } -- amarillo, igual que el martillo ajeno
+local GREEN = ns.IconColors.hammer_mine
+local GRAY = ns.IconColors.hammer_other
 local WHITE = { 1, 1, 1 }
 
 local hooked = false
@@ -40,15 +29,15 @@ end
 local function icon(kind, mark)
     local textures = ns.Marks and ns.Marks.TEXTURES
     local path = type(textures) == 'table' and textures[kind]
+    if kind == 'coin' and ns.DB.icons.coinStyle ~= 'KnuJunk' then path = 'Interface\\MoneyFrame\\UI-GoldIcon' end
     if type(path) ~= 'string' then return '' end
     if kind == 'hammer' then
-        local tints = ns.Marks.TINTS
-        local tint = type(tints) == 'table' and tints[mark] or WHITE
+        local tint = ns.Marks.Color(mark)
         return '|T' .. path .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. ':0:0:64:64:0:64:0:64:'
             .. math.floor(tint[1] * 255 + 0.5) .. ':' .. math.floor(tint[2] * 255 + 0.5) .. ':'
             .. math.floor(tint[3] * 255 + 0.5) .. '|t '
     end
-    local atlas = kind == 'coin' and ns.Marks.COIN_ATLAS
+    local atlas = kind == 'coin' and ns.DB.icons.coinStyle ~= 'KnuJunk' and ns.Marks.COIN_ATLAS
     if atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
         return '|A:' .. atlas .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. '|a '
     end
@@ -156,12 +145,32 @@ function Tooltip.Lines(link, bound, bag, slot)
 
     local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
         recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true }
+    local neutral = (mark == nil or mark == 'useful' or mark == 'trash' or mark == 'auction')
     local noPrice = not (type(item.price) == 'number' and item.price > 0)
     local function add(text, color, kind)
-        if kind == 'coin' and mark == nil and noPrice then color, kind = WHITE, nil end
+        if kind == 'coin' and neutral and noPrice then color, kind = WHITE, nil end
         lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
 
+    local names = {
+        protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
+        hammer_other = 'Other profession material', auction = 'Auction', coin = 'Sell',
+        trash = 'Trash (cannot be sold)', useful = 'Useful',
+    }
+    local function money(value)
+        if type(value) ~= 'number' then return L['unknown price'] end
+        value = math.floor(value)
+        return string.format(L['%dg %ds %dc'], math.floor(value / 10000), math.floor(value / 100) % 100, value % 100)
+    end
+    if mark and names[mark] then
+        local label = L[names[mark]]
+        if mark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
+        add(L['Icon: %s']:format(label), ns.Marks.Color(mark))
+    end
+
+    if mark == 'quest' and (result.reasonMark == 'hammer_mine' or result.reasonMark == 'hammer_other') then
+        mark = result.reasonMark
+    end
     if ns.Merchant then
         local key = ns.Merchant.ProtectionText(bag, slot)
         if key then add(L[key], WHITE) end
@@ -171,12 +180,12 @@ function Tooltip.Lines(link, bound, bag, slot)
         local kind = reason.kind
         if kind == 'no_sell_price' then
             add(L['Cannot be sold (no vendor price)'], WHITE)
-        elseif kind == 'recipe_known_tradeable' and mark == nil then
+        elseif kind == 'recipe_known_tradeable' and neutral then
             add(L['You already know it; you can pass it on or auction it'], WHITE)
         elseif kind == 'override_keep' then
-            add(L['Marked by hand: keep'], WHITE)
+            add(L['Protected (by hand)'], WHITE)
         elseif kind == 'override_sell' then
-            add(L['Marked by hand: sell'], WHITE, 'coin')
+            add(L['Sell (legacy mark)'], WHITE, 'coin')
         elseif kind == 'key' then
             add(L['Key: opens a lock; keep it'], WHITE)
         elseif kind == 'lockbox' then
@@ -193,7 +202,7 @@ function Tooltip.Lines(link, bound, bag, slot)
             else
                 add(L['Waylaid crate: fill it with one option from the list and turn it in to %s']:format(npc), WHITE)
             end
-        elseif (mark == 'coin' and shows('coin')) or (mark == nil and noPrice and saleReasons[kind]) then
+        elseif ((mark == 'coin' or mark == 'auction') and shows('coin')) or (neutral and noPrice and saleReasons[kind]) then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')
             elseif kind == 'food_outgrown' then
@@ -209,7 +218,7 @@ function Tooltip.Lines(link, bound, bag, slot)
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
             end
-        elseif kind == 'class_reagent' and mark == nil then
+        elseif kind == 'class_reagent' and neutral then
             -- Reactivo de hechizo de clase: neutro y sin icono. Tu clase: el primer hechizo con nombre
             -- (y cuantos mas lo usan); sin nombre, generico. Otra clase: solo la clase.
             if reason.own then
@@ -228,7 +237,7 @@ function Tooltip.Lines(link, bound, bag, slot)
             else
                 add(L['%s reagent']:format(classList(reason.classes)), WHITE)
             end
-        elseif kind == 'class_cannot_use_tradeable' and mark == nil then
+        elseif kind == 'class_cannot_use_tradeable' and neutral then
             -- Sin ligar o sin saberlo: no es basura, se puede vender en subasta o pasar (sin icono).
             add(L["Your class can't use %s: you can auction it or pass it to another character"]:format(
                 subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), WHITE)
@@ -242,11 +251,11 @@ function Tooltip.Lines(link, bound, bag, slot)
             else
                 add(L['Needed by an active quest'], WHITE, 'quest')
             end
-        elseif kind == 'quest_starter' and mark == nil then
+        elseif kind == 'quest_starter' and neutral then
             add(L["Starts a quest you haven't done: %s"]:format(questName(reason.questID)), WHITE, 'quest')
-        elseif kind == 'quest_starter_done_unknown_repeat' and mark == nil then
+        elseif kind == 'quest_starter_done_unknown_repeat' and neutral then
             add(L["Quest turned in; unknown if it's repeatable"], WHITE)
-        elseif kind == 'future_level' and mark == nil then
+        elseif kind == 'future_level' and neutral then
             add(L['Usable from level %d']:format(reason.level), WHITE)
         elseif kind == 'recipe' and shows('hammer') then
             local text = L['Recipe for %s']:format(professionList({ reason.skillLine }))

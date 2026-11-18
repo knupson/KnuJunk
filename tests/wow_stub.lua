@@ -393,6 +393,7 @@ function FAKE.InstallBaganator()
     return state
 end
 function FAKE.Reset()
+    Auctionator, ColorPickerFrame = nil, nil
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
     FAKE.bindings = {}; FAKE.savedBindings = {}; FAKE.inCombat = false
     FAKE.shift, FAKE.ctrl, FAKE.alt = false, false, false

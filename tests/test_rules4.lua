@@ -91,17 +91,17 @@ end
 test('R9: cazadores conservan comida y bebida para sus mascotas', function()
     local i,c=food(),context('food'); c.class='HUNTER'
     c.bagStock={{id=4541,usable=true}}
-    eq(ns.Classify(i,c).mark,nil)
+    eq(ns.Classify(i,c).mark,'useful')
     i.id=5350; c.bagStock={{id=1205,usable=true}}
-    eq(ns.Classify(i,c).mark,nil)
+    eq(ns.Classify(i,c).mark,'useful')
 end)
 
 test('R9: sólo ejemplares en bolsas 0 a 4', function()
     local i,c=food(),context('food'); c.bagStock={{id=4541,usable=true}}
     for _,bag in ipairs({0,4}) do i.bag=bag; eq(ns.Classify(i,c).mark,'coin') end
-    for _,bag in ipairs({-1,5}) do i.bag=bag; eq(ns.Classify(i,c).mark,nil) end
-    i.bag=nil; eq(ns.Classify(i,c).mark,nil)
-    i.bag=0; i.slot=nil; eq(ns.Classify(i,c).mark,nil)
+    for _,bag in ipairs({-1,5}) do i.bag=bag; eq(ns.Classify(i,c).mark,'useful') end
+    i.bag=nil; eq(ns.Classify(i,c).mark,'useful')
+    i.bag=0; i.slot=nil; eq(ns.Classify(i,c).mark,'useful')
 end)
 
 test('R12/13: hechizo de enseñar permite moneda y conserva R14 sin condiciones', function()
@@ -112,8 +112,8 @@ test('R12/13: hechizo de enseñar permite moneda y conserva R14 sin condiciones'
         local i=ns.Player.ReadItem(0,3); eq(i.effect,'yes'); eq(i.knownRecipe,true)
         local c=context('knownRecipe')
         local r=ns.Classify(i,c); eq(r.mark,'coin'); eq(reason(r,'recipe'),nil)
-        i.isBound=false; eq(ns.Classify(i,c).mark,nil)
-        i.isBound=true; i.price=0; eq(ns.Classify(i,c).mark,'hammer_other')
+        i.isBound=false; eq(ns.Classify(i,c).mark,'useful')
+        i.isBound=true; i.price=0; eq(ns.Classify(i,c).mark,'trash')
         i.price=5; i.effect='unknown'; eq(ns.Classify(i,c).mark,'hammer_other')
         i.effect='yes'; c.questLogIncomplete=true
         r=ns.Classify(i,c); eq(r.mark,'hammer_other'); ok(reason(r,'recipe'))
@@ -160,8 +160,8 @@ test('R9/R16: bolsas reales, banco excluido y refresco al sacar alternativa', fu
         FAKE.bags['0:2']=nil; FAKE.bags['0:5']=nil
         FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(0.25)
         c=ns.Player.GetContext()
-        eq(ns.Classify(ns.Player.ReadItem(0,1),c).mark,nil)
-        eq(ns.Classify(ns.Player.ReadItem(0,4),c).mark,nil)
+        eq(ns.Classify(ns.Player.ReadItem(0,1),c).mark,'useful')
+        eq(ns.Classify(ns.Player.ReadItem(0,4),c).mark,'useful')
     end)
     UnitLevel,GetInventoryItemID=level,inv
     if not good then error(err,0) end
@@ -192,7 +192,7 @@ test('R9: sólo exceptúa restauración acreditada, cachea y conserva efectos ex
         C_Item={GetItemSpell=GetItemSpell}; GetItemSpell=nil; ns.Player.Invalidate()
         eq(ns.Player.ReadItem(0,1).restorationOnly,true)
         FAKE.items[117].tooltip={'Use: Restores health.','Equip: Other effect.'}; ns.Player.Invalidate()
-        i=ns.Player.ReadItem(0,1); eq(i.restorationOnly,nil); eq(ns.Classify(i,c).mark,nil)
+        i=ns.Player.ReadItem(0,1); eq(i.restorationOnly,nil); eq(ns.Classify(i,c).mark,'useful')
     end)
     GetItemSpell,UnitLevel,GetInventoryItemID,C_Item=spell,level,inv,modern
     if not good then error(err,0) end
@@ -226,7 +226,7 @@ test('R9: bebida superior y restauración doble deben cubrir el mismo recurso', 
     local saved=ns.Data.food[990009]
     ns.Data.food[990009]={health=294,mana=294,reqLevel=0,spell=2639}
     local good,err=pcall(function()
-        i.id=990009; c.bagStock={{id=1205,usable=true}}; eq(ns.Classify(i,c).mark,nil)
+        i.id=990009; c.bagStock={{id=1205,usable=true}}; eq(ns.Classify(i,c).mark,'useful')
         c.bagStock={{id=262433,usable=true}}; eq(ns.Classify(i,c).mark,'coin')
     end)
     ns.Data.food[990009]=saved
@@ -255,13 +255,15 @@ test('Tanda4: tooltips en ambos idiomas para bolsas, sin conocimiento por enlace
                 {2512,4,'You have compatible ammunition with higher damage'},
                 {2406,3,'You already know this recipe'}}) do
                 local lines=ns.Tooltip.Lines(FAKE.linkOf(case[1]),nil,0,case[2])
-                ok(#lines>0); ok(lines[1].text:find(ns.L[case[3]],1,true))
+                ok(#lines>0); ok(lines[2].text:find(ns.L[case[3]],1,true))
             end
             FAKE.bound['0:3']=false
             local lines=ns.Tooltip.Lines(FAKE.linkOf(2406),nil,0,3)
-            ok(lines[1].text:find(ns.L['You already know it; you can pass it on or auction it'],1,true))
+            ok(lines[2].text:find(ns.L['You already know it; you can pass it on or auction it'],1,true))
             FAKE.bound['0:3']=true
-            ok(not ns.Tooltip.Lines(FAKE.linkOf(2406))[1].text:find(ns.L['You already know this recipe'],1,true))
+            for _, line in ipairs(ns.Tooltip.Lines(FAKE.linkOf(2406))) do
+                ok(not line.text:find(ns.L['You already know this recipe'],1,true))
+            end
         end
     end)
     UnitLevel,GetInventoryItemID,GetLocale,ns.L=level,inv,locale,L
@@ -291,33 +293,33 @@ test('R9: alternativa del mismo tipo, umbral exacto y OFF sin cambio', function(
     c.bagStock={{id=4541,usable=true}}
     c.level=ns.Data.food[117].reqLevel+15
     eq(ns.Classify(i,c).mark,'coin'); ok(reason(ns.Classify(i,c),'food_outgrown'))
-    c.level=c.level-1; eq(ns.Classify(i,c).mark,nil)
+    c.level=c.level-1; eq(ns.Classify(i,c).mark,'useful')
     c.level=40
     for _,stock in ipairs({{},{{id=4540,usable=true}},{{id=159,usable=true}},{{id=4541,usable=false}}}) do
-        c.bagStock=stock; eq(ns.Classify(i,c).mark,nil)
+        c.bagStock=stock; eq(ns.Classify(i,c).mark,'useful')
     end
-    c.bagStock={{id=4541,usable=true}}; c.rules={}; eq(ns.Classify(i,c).mark,nil)
-    i.id=999999; c.rules.food=true; eq(ns.Classify(i,c).mark,nil)
+    c.bagStock={{id=4541,usable=true}}; c.rules={}; eq(ns.Classify(i,c).mark,'useful')
+    i.id=999999; c.rules.food=true; eq(ns.Classify(i,c).mark,'useful')
 end)
 
 test('R16: mismo subtipo, daño superior, usable, reserva y OFF', function()
     local i,c=ammo(),context('ammo')
     eq(ns.Classify(i,c).mark,'coin'); ok(reason(ns.Classify(i,c),'ammo_outgrown'))
     for _,stock in ipairs({{},{{id=2512,usable=true}},{{id=2516,usable=true}},{{id=2515,usable=false}}}) do
-        c.bagStock=stock; eq(ns.Classify(i,c).mark,nil)
+        c.bagStock=stock; eq(ns.Classify(i,c).mark,'useful')
     end
-    c=context('ammo'); i.slot=nil; eq(ns.Classify(i,c).mark,nil)
-    i=ammo(); c.rules={}; eq(ns.Classify(i,c).mark,nil)
-    c.rules.ammo=true; i.equippedAmmo=true; eq(ns.Classify(i,c).mark,nil)
+    c=context('ammo'); i.slot=nil; eq(ns.Classify(i,c).mark,'useful')
+    i=ammo(); c.rules={}; eq(ns.Classify(i,c).mark,'useful')
+    c.rules.ammo=true; i.equippedAmmo=true; eq(ns.Classify(i,c).mark,'useful')
 end)
 
 test('R16: conserva la mejor reserva, exige nivel y diferencia de ilvl', function()
     local i,c=ammo(),context('ammo')
-    c.level=9; eq(ns.Classify(i,c).mark,nil)
-    c=context('ammo'); c.bagStock[4].id=2514; eq(ns.Classify(i,c).mark,nil)
+    c.level=9; eq(ns.Classify(i,c).mark,'useful')
+    c=context('ammo'); c.bagStock[4].id=2514; eq(ns.Classify(i,c).mark,'useful')
     c=context('ammo'); i.id=2515; i.slot=2
-    eq(ns.Classify(i,c).mark,nil)
-    c=context('ammo'); i=ammo(); i.bag=-1; eq(ns.Classify(i,c).mark,nil)
+    eq(ns.Classify(i,c).mark,'useful')
+    c=context('ammo'); i=ammo(); i.bag=-1; eq(ns.Classify(i,c).mark,'useful')
 end)
 
 test('Tanda4: efectos desconocidos y venta manual explícita', function()
@@ -340,9 +342,9 @@ end)
 test('R12/13: evidencia positiva, ligado, precio y OFF', function()
     local i,c=recipe(),context('knownRecipe')
     eq(ns.Classify(i,c).mark,'coin'); ok(reason(ns.Classify(i,c),'recipe_known'))
-    i.isBound=false; local r=ns.Classify(i,c); eq(r.mark,nil); ok(reason(r,'recipe_known_tradeable'))
-    i.isBound=nil; eq(ns.Classify(i,c).mark,nil)
-    i.isBound=true; i.price=0; eq(ns.Classify(i,c).mark,'hammer_other')
+    i.isBound=false; local r=ns.Classify(i,c); eq(r.mark,'useful'); ok(reason(r,'recipe_known_tradeable'))
+    i.isBound=nil; eq(ns.Classify(i,c).mark,'useful')
+    i.isBound=true; i.price=0; eq(ns.Classify(i,c).mark,'trash')
     i.price=5; i.knownRecipe=nil; eq(ns.Classify(i,c).mark,'hammer_other')
     i.knownRecipe=true; c.rules={}; eq(ns.Classify(i,c).mark,'hammer_other')
 end)

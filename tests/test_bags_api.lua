@@ -761,7 +761,7 @@ test('Baggins: el slot cambia sin nueva senal -> el refresco y BagOpened limpian
     -- el mismo slot, ahora util en el callback: no hay moneda
     local useful = bagginsButton('u', 0, 5)
     state.update(useful, 0, 5)
-    ok(not marked(useful), 'item util en el callback')
+    ok(marked(useful)); eq(useful.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
     -- slot cambiado a un gris SIN senal: sigue sin moneda tras refrescar
     FAKE.bags['0:5'] = 101
     ns.Bags.RefreshAll(); FAKE.Advance(1)
@@ -976,7 +976,7 @@ test('LiteBag: el slot pasa a un gris sin redibujar -> el refresco limpia, sin m
     local panel = CreateFrame('Frame', 'LiteBagBackpackPanel'); panel.id = 0
     local button = slotButton(nil, panel, 1, 100)
     state.callback(button)
-    ok(not marked(button), 'el 100 es util')
+    ok(marked(button)); eq(button.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
     FAKE.bags['0:1'] = 101
     ns.Bags.RefreshAll(); FAKE.Advance(1)
     ok(not marked(button), 'el boton muestra 100: no se pinta la moneda del 101')

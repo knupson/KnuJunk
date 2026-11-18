@@ -34,7 +34,7 @@ local function openPanel()
     return panel
 end
 
-local PATHS = { 'enabled', 'protectKeep', 'show.coin', 'show.hammer', 'show.loot', 'rules.food', 'rules.ammo', 'rules.knownRecipe' }
+local PATHS = { 'enabled','protectKeep','show.loot','show.protected','show.quest','show.hammer_mine','show.hammer_other','show.auction','show.coin','show.trash','show.useful','icons.background','rules.food','rules.ammo','rules.knownRecipe' }
 
 local function lookup(path)
     local value = ns.DB
@@ -85,7 +85,7 @@ test('las reglas opcionales arrancan apagadas en el panel', function()
     for _, path in ipairs({ 'rules.food', 'rules.ammo', 'rules.knownRecipe' }) do
         eq(panel.checks[path]:GetChecked(), false, path)
     end
-    for _, path in ipairs({ 'enabled', 'show.coin', 'show.hammer', 'show.loot' }) do
+    for _, path in ipairs({ 'enabled', 'show.coin', 'show.hammer_mine', 'show.loot' }) do
         eq(panel.checks[path]:GetChecked(), true, path)
     end
 end)
@@ -98,9 +98,9 @@ end)
 
 test('al mostrar el panel las casillas se leen de la DB', function()
     local panel = ns.Options.Build()
-    ns.DB.show.hammer = false; ns.DB.rules.ammo = true
+    ns.DB.show.hammer_mine = false; ns.DB.rules.ammo = true
     panel.scripts.OnShow(panel)
-    eq(panel.checks['show.hammer']:GetChecked(), false)
+    eq(panel.checks['show.hammer_mine']:GetChecked(), false)
     eq(panel.checks['rules.ammo']:GetChecked(), true)
     eq(panel.checks['enabled']:GetChecked(), true)
 end)
@@ -145,9 +145,9 @@ test('la lista del panel muestra icono, nombre y accion de cada marca manual', f
     local panel = openPanel()
     local rows = visibleRows(panel)
     eq(#rows, 2)
-    eq(rows[1].id, 7); eq(rows[1].name:GetText(), 'Hierro'); eq(rows[1].kind:GetText(), ns.L['Keep'])
+    eq(rows[1].id, 7); eq(rows[1].name:GetText(), 'Hierro'); eq(rows[1].kind:GetText(), ns.L['Protected'])
     eq(rows[1].icon.texture, 'icon')
-    eq(rows[2].id, 42); eq(rows[2].name:GetText(), 'Gema'); eq(rows[2].kind:GetText(), ns.L['Sell'])
+    eq(rows[2].id, 42); eq(rows[2].name:GetText(), 'Gema'); eq(rows[2].kind:GetText(), ns.L['Sell (legacy mark)'])
     eq(panel.empty:IsShown(), false)
 end)
 
@@ -269,11 +269,11 @@ end)
 
 test('todos los textos del panel tienen traduccion al castellano', function()
     withLocale('esES', function()
-        local keys = { 'Marks', 'Optional rules (off by default)', 'Manual marks', 'Keep', 'Sell', 'Remove',
+        local keys = { 'Marks', 'Optional rules (off by default)', 'Manual marks', 'Protected', 'Sell (legacy mark)', 'Remove',
             'Item %d', 'No manual marks yet. Assign a key above to change an item mark under the mouse.' }
         for _, toggle in ipairs(ns.Options.TOGGLES) do keys[#keys + 1] = toggle.label; keys[#keys + 1] = toggle.help end
         for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'sin traducir: ' .. key) end
-        eq(ns.L['Marks'], 'Marcas'); eq(ns.L['Remove'], 'Quitar'); eq(ns.L['Keep'], 'Guardar'); eq(ns.L['Sell'], 'Vender')
+        eq(ns.L['Marks'], 'Marcas'); eq(ns.L['Remove'], 'Quitar'); eq(ns.L['Protected'], 'Protegido'); eq(ns.L['Sell (legacy mark)'], 'Vender (marca vieja)')
     end)
     withLocale('enUS', function()
         eq(ns.L['Marks'], 'Marks'); eq(ns.L['Remove'], 'Remove')
@@ -287,7 +287,7 @@ test('el panel se construye con los textos del idioma del cliente', function()
         local panel = ns.Options.Build()
         eq(panel.checks['enabled'].label:GetText(), 'Activar KnuJunk')
         eq(panel.checks['show.coin'].label:GetText(), 'Monedita')
-        eq(panel.checks['show.hammer'].label:GetText(), 'Martillito')
+        eq(panel.checks['show.hammer_mine'].label:GetText(), 'Material de tu profesión')
         eq(panel.checks['show.loot'].label:GetText(), 'Marcas en el botín')
         eq(panel.checks['rules.food'].label:GetText(), 'Comida y bebida superadas')
         eq(panel.checks['rules.ammo'].label:GetText(), 'Munición superada')

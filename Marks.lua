@@ -1,33 +1,24 @@
 local _, ns = ...
 
--- Dibuja (o esconde) la marca de un boton de item: moneda, martillo o signo de mision.
--- Regla de oro: ante cualquier duda, sin marca. Nada se marca fuera de las bolsas 0-4 ni con el
--- addon apagado, y un item cuyos datos el cliente aun no tiene queda sin marca hasta que lleguen.
--- Excepcion: el banco VIVO del personaje actual (ns.Bank: abierto en un banquero) se marca si el
--- dueno del boton es un adaptador que declaro bank = true (ns.Bags.AllowsBank). Al cerrarse el banco
--- se borran sus marcas y nada pendiente o diferido vuelve a marcarlo.
--- Texturas: iconos del juego, salvo el martillo (media\martillo.tga, propio). Decision documentada:
---   coin   -> Interface\MoneyFrame\UI-GoldIcon           (la moneda de oro de la interfaz)
---   hammer -> Interface\AddOns\KnuJunk\media\martillo   (silueta blanca con borde negro, propia del addon;
---                                                          propio: tinte verde, ajeno: gris claro; sin recorte)
---   quest  -> Interface\GossipFrame\AvailableQuestIcon   (signo de mision; solo en el botin)
--- Si el arte final cambia, basta con tocar TEXTURES.
+-- Una marca configurable por ítem legible; datos pendientes, vistas guardadas y addon apagado no dibujan.
+-- Sólo bolsas propias 0-4 y banco vivo con adaptador habilitado. Al cerrar el banco se limpia todo.
+-- Siluetas propias en media/, martillo existente y moneda Blizzard opcional.
 local Marks = {}
 ns.Marks = Marks
 
-local SIZE = 20
+local SIZE = 14
 local COIN_ATLAS = 'bags-junkcoin'
 Marks.COIN_ATLAS = COIN_ATLAS
-local TEXTURES = {
-    coin = 'Interface\\MoneyFrame\\UI-GoldIcon',
-    hammer = 'Interface\\AddOns\\KnuJunk\\media\\martillo',
-    quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
-}
-Marks.TEXTURES = TEXTURES -- las usa el tooltip para el icono en linea de cada motivo
-local MINE_TINT = { 0.25, 0.85, 0.35 }
-local OTHER_TINT = { 1, 0.85, 0.2 } -- amarillo: material de una profesion que no tenes (vendible)
--- Color de cada martillo (el tooltip lo usa para teñir su icono en linea igual que la marca).
-Marks.TINTS = { hammer_mine = MINE_TINT, hammer_other = OTHER_TINT }
+local ROOT = 'Interface\\AddOns\\KnuJunk\\media\\'
+local TEXTURES = { hammer = ROOT .. 'martillo' }
+for _, kind in ipairs(ns.IconKinds) do
+    TEXTURES[kind] = ROOT .. ((kind == 'hammer_mine' or kind == 'hammer_other') and 'martillo' or kind)
+end
+Marks.TEXTURES, Marks.TINTS = TEXTURES, ns.IconColors
+function Marks.Color(mark)
+    local colors = ns.DB and ns.DB.icons and ns.DB.icons.colors or ns.IconColors
+    return colors[mark] or ns.IconColors[mark] or {1, 1, 1}
+end
 
 -- [boton] = { id = itemID, bag =, slot = | link =, owner = }: botones esperando datos del item.
 local pending = setmetatable({}, { __mode = 'k' })
@@ -70,6 +61,7 @@ end
 local function hide(button)
     local texture = button.KnuJunkMark
     if texture then texture:Hide() end
+    if button.KnuJunkBackground then button.KnuJunkBackground:Hide() end
 end
 
 local function enabled()
@@ -79,52 +71,58 @@ end
 
 local function shows(kind)
     local show = ns.DB and ns.DB.show
+    if (kind == 'hammer_mine' or kind == 'hammer_other') and show and show.hammer == false then return false end
     return not (type(show) == 'table' and show[kind] == false)
+end
+
+local function background(parent, icon)
+    local texture = parent:CreateTexture(nil, 'OVERLAY', nil, 6)
+    texture:SetTexture(ROOT .. 'fondo')
+    texture:SetAllPoints(icon)
+    return texture
 end
 
 local function ensureTexture(button)
     local texture = button.KnuJunkMark
     if texture then return texture end
     texture = button:CreateTexture(nil, 'OVERLAY', nil, 7)
-    texture:SetSize(SIZE, SIZE)
-    texture:SetPoint('TOPLEFT', button, 'TOPLEFT', 1, -1)
     button.KnuJunkMark = texture
+    button.KnuJunkBackground = background(button, texture)
     return texture
 end
 
-local function kindOf(mark, allowQuest)
-    if mark == 'coin' then return 'coin' end
-    if mark == 'hammer_mine' or mark == 'hammer_other' then return 'hammer' end
-    if mark == 'quest' and allowQuest then return 'quest' end
+local function kindOf(mark)
+    if TEXTURES[mark] and mark ~= 'hammer' then return mark end
 end
 
--- Deja `texture` con el aspecto de la marca (textura, tinte). Los botones se reciclan:
--- cada dibujo parte de un estado limpio. Tambien lo usan los adaptadores que dibujan en sus propias
--- esquinas (Baganator).
 local function style(texture, kind, mark)
-    -- Moneda: el mismo atlas de basura de Blizzard que usa Baganator ('bags-junkcoin'); si el cliente
-    -- no lo tiene, la moneda de oro.
-    local atlas = kind == 'coin' and texture.SetAtlas and C_Texture and C_Texture.GetAtlasInfo
-        and C_Texture.GetAtlasInfo(COIN_ATLAS) and COIN_ATLAS
-    -- con el tamaño propio del atlas, igual que el JunkIcon de Blizzard que muestra Baganator
-    if atlas then texture:SetAtlas(atlas, true) else texture:SetTexture(TEXTURES[kind]) end
-    if not atlas then texture:SetTexCoord(0, 1, 0, 1); texture:SetSize(SIZE, SIZE) end
-    texture:SetVertexColor(1, 1, 1)
-    texture:SetAlpha(1)
+    local settings = ns.DB and ns.DB.icons or ns.Defaults.icons
+    local atlas = kind == 'coin' and settings.coinStyle ~= 'KnuJunk' and texture.SetAtlas
+        and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(COIN_ATLAS) and COIN_ATLAS
+    if atlas then texture:SetAtlas(atlas, false)
+    else texture:SetTexture(kind == 'coin' and settings.coinStyle ~= 'KnuJunk'
+        and 'Interface\\MoneyFrame\\UI-GoldIcon' or TEXTURES[kind]) end
+    texture:SetTexCoord(0, 1, 0, 1)
+    texture:SetSize(settings.size or SIZE, settings.size or SIZE)
+    local color = Marks.Color(mark)
+    texture:SetVertexColor(color[1], color[2], color[3])
+    texture:SetAlpha(settings.opacity or 1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end
-    if mark == 'hammer_mine' then
-        texture:SetVertexColor(MINE_TINT[1], MINE_TINT[2], MINE_TINT[3])
-    elseif mark == 'hammer_other' then
-        texture:SetVertexColor(OTHER_TINT[1], OTHER_TINT[2], OTHER_TINT[3])
-    end
 end
 
--- mark = veredicto del clasificador; allowQuest solo en el botin.
-local function paint(button, mark, allowQuest)
-    local kind = kindOf(mark, allowQuest)
-    if not kind or not shows(kind == 'quest' and 'loot' or kind) then return hide(button) end
+local function paint(button, mark)
+    local kind = kindOf(mark)
+    if not kind or not shows(kind) then return hide(button) end
     local texture = ensureTexture(button)
+    local settings = ns.DB and ns.DB.icons or ns.Defaults.icons
+    local corner = settings.corner or 'TOPRIGHT'
+    local left = corner == 'TOPLEFT' or corner == 'BOTTOMLEFT'
+    local top = corner == 'TOPLEFT' or corner == 'TOPRIGHT'
+    texture:ClearAllPoints()
+    texture:SetPoint(corner, button, corner, left and 1 or -1, top and -1 or 1)
     style(texture, kind, mark)
+    button.KnuJunkBackground:SetAlpha(settings.opacity or 1)
+    button.KnuJunkBackground:SetShown(settings.background ~= false)
     texture:Show()
 end
 
@@ -134,11 +132,10 @@ local function classify(item)
     if success and type(result) == 'table' then return result end
 end
 
--- Marca a dibujar. En el botin (forLoot) un reactivo/herramienta util para una mision pendiente
--- (quest = true) lleva el signo de mision: ahi la mision tiene prioridad; en bolsas, el martillo.
+-- Misión activa tiene la misma prioridad en bolsas, banco y botín.
 local function markOf(result, forLoot)
     if not result then return nil end
-    if forLoot and result.quest == true then return 'quest' end
+    if result.mark ~= 'protected' and result.quest == true then return 'quest' end
     return result.mark
 end
 
@@ -209,7 +206,7 @@ local function defer(button, entry)
 end
 
 -- Marca el item de bolsa `bag`/`slot` (bolsas 0-4, o el banco vivo si `owner` lo soporta) en
--- `button`. 'quest' no se dibuja aqui.
+-- `button`, incluida misión activa.
 function Marks.Update(button, bag, slot, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
@@ -259,10 +256,29 @@ function Marks.SlotItemID(bag, slot)
 end
 
 -- Pinta `texture` (de una esquina ajena) con la marca; false si la marca no es dibujable.
-function Marks.Style(texture, mark)
-    local kind = kindOf(mark, false)
-    if not kind then return false end
-    return pcall(style, texture, kind, mark)
+function Marks.Style(widget, mark)
+    local kind = kindOf(mark)
+    if not kind or not shows(kind) then return false end
+    return pcall(function()
+        local texture = widget.Icon or widget
+        style(texture, kind, mark)
+        if widget.Icon then
+            local settings = ns.DB and ns.DB.icons or ns.Defaults.icons
+            widget:SetSize(settings.size or SIZE, settings.size or SIZE)
+            widget.Background:SetAlpha(settings.opacity or 1)
+            widget.Background:SetShown(settings.background ~= false)
+        end
+    end)
+end
+
+function Marks.CreateWidget(button)
+    local widget = CreateFrame('Frame', nil, button)
+    widget:SetSize(SIZE, SIZE)
+    widget.Icon = widget:CreateTexture(nil, 'OVERLAY', nil, 7)
+    widget.Icon:SetAllPoints(widget)
+    widget.Background = background(widget, widget.Icon)
+    widget.padding = 0
+    return widget
 end
 
 -- Solo para pruebas: deja el modulo como recien cargado.

@@ -103,7 +103,7 @@ test('coin off apaga show.coin y refresca', function()
 end)
 
 test('hammer y loot cambian su propio flag', function()
-    run('hammer off'); eq(ns.DB.show.hammer, false); eq(ns.DB.show.coin, true); eq(ns.DB.show.loot, true)
+    run('hammer off'); eq(ns.DB.show.hammer_mine, false); eq(ns.DB.show.hammer_other, false); eq(ns.DB.show.coin, true); eq(ns.DB.show.loot, true)
     run('loot off'); eq(ns.DB.show.loot, false)
     run('LOOT ON'); eq(ns.DB.show.loot, true)
 end)
@@ -167,7 +167,7 @@ test('status con QuestieDB disponible', function()
 end)
 
 test('status muestra los flags', function()
-    ns.DB.enabled = false; ns.DB.show.hammer = false
+    ns.DB.enabled = false; ns.DB.show.hammer_mine = false; ns.DB.show.hammer_other = false
     run('status')
     ok(hasText(string.format(ns.L['Marks: %s | coin: %s | hammer: %s | loot: %s'],
         ns.L['off'], ns.L['on'], ns.L['off'], ns.L['on'])))
@@ -229,14 +229,14 @@ test('Commands.lua registra su comando por ns.OnLogin y no al cargar el archivo'
         captured[1]()
         ok(KL.commands.junk, 'junk registrado tras el login')
         eq(KL.commandAliases.kj, 'junk')
-        eq(KL.commands.junk.help, ns.L['Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status'])
+        eq(KL.commands.junk.help, ns.L['Junk marks: options panel, on/off, coin/hammer/loot, keep/clear, rules, status'])
         -- A traves del despachador real, con mayusculas y espacios de mas.
         KL:Dispatch('junk coin off')
         eq(ns.DB.show.coin, false)
         KL:Dispatch('  KJ   coin   on  ')
         eq(ns.DB.show.coin, true)
         KL:Dispatch('JUNK hammer off')
-        eq(ns.DB.show.hammer, false)
+        eq(ns.DB.show.hammer_mine, false); eq(ns.DB.show.hammer_other, false)
     end)
 end)
 
@@ -339,7 +339,7 @@ test('ayuda en castellano (esES y esMX)', function()
                 PREFIX .. 'Panel de opciones: /knu junk',
                 PREFIX .. 'Activar o desactivar las marcas: /knu junk on | off',
                 PREFIX .. 'Un solo tipo de marca: /knu junk coin|hammer|loot on|off',
-                PREFIX .. 'A mano: /knu junk keep|sell|clear <enlace o ID de ítem>',
+                PREFIX .. 'A mano: /knu junk keep|clear <enlace o ID de ítem>',
                 PREFIX .. 'Reglas opcionales: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Ver el estado: /knu junk status',
             }, '\n'), locale)
@@ -355,7 +355,7 @@ test('ayuda en ingles (enUS y cualquier otro idioma)', function()
                 PREFIX .. 'Options panel: /knu junk',
                 PREFIX .. 'Marks on/off: /knu junk on | off',
                 PREFIX .. 'One kind: /knu junk coin|hammer|loot on|off',
-                PREFIX .. 'By hand: /knu junk keep|sell|clear <item link or ID>',
+                PREFIX .. 'By hand: /knu junk keep|clear <item link or ID>',
                 PREFIX .. 'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Show state: /knu junk status',
             }, '\n'), locale)
@@ -367,11 +367,11 @@ test('la ayuda de /knu usa el texto del idioma que tenia el cliente al cargar', 
     withCleanDispatcher(function(KL)
         withLocale('esES', function()
             ns.Commands.Register()
-            eq(KL.commands.junk.help, 'Marcas de basura: panel de opciones, on/off, coin/hammer/loot, keep/sell/clear, rules, status')
+            eq(KL.commands.junk.help, 'Marcas: panel de opciones, on/off, coin/hammer/loot, keep/clear, rules, status')
         end)
         withLocale('enUS', function()
             ns.Commands.Register()
-            eq(KL.commands.junk.help, 'Junk marks: options panel, on/off, coin/hammer/loot, keep/sell/clear, rules, status')
+            eq(KL.commands.junk.help, 'Junk marks: options panel, on/off, coin/hammer/loot, keep/clear, rules, status')
         end)
     end)
 end)

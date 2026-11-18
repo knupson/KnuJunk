@@ -15,12 +15,8 @@ local function L(key) return ns.L[key] end
 Options.TOGGLES = {
     { section = 'Marks', path = 'enabled', label = 'Enable KnuJunk',
         help = 'Master switch: turns icons and merchant protection off. KnuJunk never sells anything on its own.' },
-    { section = 'Marks', path = 'protectKeep', label = 'Protect «always keep» items at the merchant',
+    { section = 'Marks', path = 'protectKeep', label = 'Protect protected items at the merchant',
         help = 'Locks them while the merchant is open; right-click asks before selling.' },
-    { section = 'Marks', path = 'show.coin', label = 'Coin',
-        help = 'What you can sell: greys, quest leftovers and gear your class never uses.' },
-    { section = 'Marks', path = 'show.hammer', label = 'Hammer',
-        help = "Profession materials: green for one of your professions, yellow for one you lack." },
     { section = 'Marks', path = 'show.loot', label = 'Marks in loot',
         help = 'The same icons in the loot window (with autoloot there is no window).' },
     { section = 'Rules', path = 'rules.food', label = 'Outleveled food and drink',
@@ -30,6 +26,13 @@ Options.TOGGLES = {
     { section = 'Rules', path = 'rules.knownRecipe', label = 'Recipes already learned',
         help = 'Coin on recipes you already know, only if bound and with a sell price. Unbound: no coin; the tooltip says you can pass it on or auction it.' },
 }
+
+local ICON_LABELS = { protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
+    hammer_other = 'Other profession material', auction = 'Auction', coin = 'Coin', trash = 'Trash (cannot be sold)', useful = 'Useful' }
+for index, kind in ipairs(ns.IconKinds) do
+    table.insert(Options.TOGGLES, 3 + index, { section = 'Icons', path = 'show.' .. kind, label = ICON_LABELS[kind], help = 'Show this icon.' })
+end
+table.insert(Options.TOGGLES, 12, { section = 'Icons', path = 'icons.background', label = 'Dark background behind the icon', help = 'Helps distinguish the icon from the item.' })
 
 -- Valor de una ruta de ns.DB ('show.coin'); nil si falta algun tramo.
 local function lookup(path)
@@ -218,6 +221,7 @@ local function section(panel, y, key)
     return y - 32
 end
 
+local colorPicker
 local function toggleRow(panel, y, toggle, height)
     local body = panel.content or panel
     local previous, left = panel.flowBottom, panel.flowLeft
@@ -238,9 +242,150 @@ local function toggleRow(panel, y, toggle, height)
     help:SetText(L(toggle.help))
     check.help = help
     check:SetScript('OnClick', function(self) Options.Set(toggle.path, self:GetChecked() and true or false) end)
+    local kind = toggle.path:match('^show%.(.+)$')
+    if ICON_LABELS[kind] then
+        check:SetHitRectInsets(0,-220,0,0)
+        local picker = rawget(_G, 'ColorPickerFrame')
+        if picker and type(picker.GetColorRGB) == 'function'
+            and (type(picker.SetupColorPickerAndShow) == 'function' or type(picker.SetColorRGB) == 'function') then
+            local swatch = CreateFrame('Button',nil,body)
+            swatch:SetSize(22,22); swatch:SetPoint('TOPRIGHT',previous,'BOTTOMRIGHT',-8,-8)
+            swatch.fill = swatch:CreateTexture(nil,'ARTWORK'); swatch.fill:SetAllPoints(swatch)
+            swatch:SetScript('OnClick',function() colorPicker(kind) end)
+            panel.swatches[kind] = swatch
+        end
+    end
     panel.checks[toggle.path] = check
     panel.flowBottom, panel.flowLeft = help, PAD + 26
     return y - height
+end
+
+-- Controles numéricos y selecciones: validar antes de modificar la DB.
+local LIMITS = { ['icons.size'] = {10,32}, ['icons.opacity'] = {.3,1},
+    ['auction.factor'] = {1.5,5}, ['auction.minCopper'] = {0,1000000} }
+local CHOICES = { ['icons.corner'] = { TOPLEFT=true, TOPRIGHT=true, BOTTOMLEFT=true, BOTTOMRIGHT=true },
+    ['icons.coinStyle'] = { Blizzard=true, KnuJunk=true } }
+function Options.SetValue(path, value)
+    if LIMITS[path] then
+        if type(value) ~= 'number' or value ~= value then return false end
+        value = math.max(LIMITS[path][1], math.min(LIMITS[path][2], value))
+    elseif not (CHOICES[path] and CHOICES[path][value]) then return false end
+    local group, key = path:match('^([^.]+)%.([^.]+)$')
+    if ns.DB[group][key] == value then return false end
+    ns.DB[group][key] = value
+    ns.Changed()
+    return true
+end
+
+function Options.SetColor(kind, r, g, b)
+    if not ICON_LABELS[kind] then return false end
+    for _, value in ipairs({r,g,b}) do
+        if type(value) ~= 'number' or value ~= value or value < 0 or value > 1 then return false end
+    end
+    if r == nil or g == nil or b == nil then return false end
+    ns.DB.icons.colors[kind] = {r,g,b}
+    ns.Changed()
+    return true
+end
+
+function Options.RestoreColors()
+    for kind, color in pairs(ns.IconColors) do ns.DB.icons.colors[kind] = {color[1],color[2],color[3]} end
+    ns.Changed()
+end
+
+function colorPicker(kind)
+    local picker = rawget(_G, 'ColorPickerFrame')
+    if not picker or type(picker.GetColorRGB) ~= 'function' then return false end
+    local color, old = ns.Marks.Color(kind), ns.Marks.Color(kind)
+    old = {old[1], old[2], old[3]}
+    local function apply() Options.SetColor(kind, picker:GetColorRGB()) end
+    local function cancel() Options.SetColor(kind, old[1],old[2],old[3]) end
+    if type(picker.SetupColorPickerAndShow) == 'function' then
+        return pcall(picker.SetupColorPickerAndShow, picker, { r=color[1], g=color[2], b=color[3],
+            hasOpacity=false, swatchFunc=apply, cancelFunc=cancel })
+    elseif type(picker.SetColorRGB) == 'function' and type(picker.Show) == 'function' then
+        return pcall(function()
+            picker:Hide()
+            picker.hasOpacity, picker.func, picker.cancelFunc = false, apply, cancel
+            picker:SetColorRGB(color[1], color[2], color[3])
+            picker:Show()
+        end)
+    end
+    return false
+end
+
+local function controlLine(panel, text)
+    local label = newText(panel, panel.content, 12, 'text')
+    label:SetPoint('TOPLEFT', panel.flowBottom, 'BOTTOMLEFT', PAD-panel.flowLeft, -14)
+    label:SetPoint('TOPRIGHT', panel.flowBottom, 'BOTTOMRIGHT', 0, -14)
+    label:SetWordWrap(true)
+    label:SetText(text)
+    panel.flowBottom, panel.flowLeft = label, PAD
+    return label
+end
+
+local function sliderRow(panel, path, title, low, high, step, scale)
+    local label = controlLine(panel, '')
+    local slider = CreateFrame('Slider', nil, panel.content)
+    slider:SetPoint('TOPLEFT', label, 'BOTTOMLEFT', 8, -10)
+    slider:SetPoint('TOPRIGHT', label, 'BOTTOMRIGHT', -8, -10)
+    slider:SetHeight(18)
+    slider:SetOrientation('HORIZONTAL')
+    slider:SetMinMaxValues(low, high); slider:SetValueStep(step); slider:SetObeyStepOnDrag(true)
+    slider:SetThumbTexture('Interface\\Buttons\\WHITE8X8')
+    slider:GetThumbTexture():SetSize(12,18)
+    local rail = slider:CreateTexture(nil, 'BACKGROUND')
+    rail:SetAllPoints(slider); rail:SetColorTexture(.3,.3,.3,.6)
+    local function refreshValue()
+        panel.updatingControls = true
+        slider:SetValue(lookup(path) / scale)
+        label:SetText(L(title) .. ': ' .. string.format('%g', lookup(path) / scale))
+        panel.updatingControls = false
+    end
+    slider:SetScript('OnValueChanged', function(_, value)
+        if panel.updatingControls then return end
+        value = math.floor(value / step + .5) * step
+        Options.SetValue(path, value * scale)
+        refreshValue()
+    end)
+    panel.controls[path] = { widget=slider, refresh=refreshValue }
+    panel.flowBottom, panel.flowLeft = slider, PAD+8
+end
+
+local function choicesRow(panel, path, title, choices)
+    local label = controlLine(panel, L(title))
+    local previous
+    for _, choice in ipairs(choices) do
+        local button = CreateFrame('CheckButton', nil, panel.content, 'UICheckButtonTemplate')
+        button:SetSize(22,22)
+        if previous then button:SetPoint('TOPLEFT', previous, 'BOTTOMLEFT', 0,-5)
+        else button:SetPoint('TOPLEFT', label, 'BOTTOMLEFT', 0,-6) end
+        local text = newText(panel, panel.content, 12, 'text')
+        text:SetPoint('LEFT',button,'RIGHT',4,0); text:SetText(L(choice[2]))
+        button:SetHitRectInsets(0,-220,0,0)
+        button:SetScript('OnClick',function() Options.SetValue(path, choice[1]) end)
+        panel.controls[path .. choice[1]] = { widget=button, refresh=function() button:SetChecked(lookup(path)==choice[1]) end }
+        previous = button
+    end
+    panel.flowBottom, panel.flowLeft = previous, PAD
+end
+
+local function customization(panel, y)
+    sliderRow(panel,'icons.size','Icon size (px)',10,32,1,1)
+    sliderRow(panel,'icons.opacity','Opacity (%)',30,100,1,.01)
+    choicesRow(panel,'icons.corner','Icon corner',{{'TOPLEFT','Top left'},{'TOPRIGHT','Top right'},{'BOTTOMLEFT','Bottom left'},{'BOTTOMRIGHT','Bottom right'}})
+    controlLine(panel,L('With Baganator, choose the corner in Baganator options (Corner icons).'))
+    choicesRow(panel,'icons.coinStyle','Coin style',{{'Blizzard','Blizzard'},{'KnuJunk','KnuJunk'}})
+    local restore = CreateFrame('Button',nil,panel.content,'UIPanelButtonTemplate')
+    restore:SetSize(180,24); restore:SetPoint('TOPLEFT',panel.flowBottom,'BOTTOMLEFT',0,-12)
+    restore:SetText(L('Restore colors')); restore:SetScript('OnClick',Options.RestoreColors)
+    panel.restoreColors = restore
+    panel.flowBottom, panel.flowLeft = restore,PAD
+    y = section(panel,y-400,'Auction (Auctionator)')
+    panel.auctionStatus = controlLine(panel,'')
+    sliderRow(panel,'auction.factor','Auction price factor',1.5,5,.1,1)
+    sliderRow(panel,'auction.minCopper','Minimum price (silver)',0,10000,1,100)
+    return y-160
 end
 
 local BINDING = 'KNUJUNK_CYCLE_HOVERED'
@@ -325,7 +470,7 @@ local function bindingRow(panel, y)
     help:SetPoint('TOPLEFT', panel.bindingKey, 'BOTTOMLEFT', 0, -12)
     help:SetPoint('TOPRIGHT', panel.bindingKey, 'BOTTOMRIGHT', 0, -12)
     help:SetWordWrap(true)
-    help:SetText(L('Hover an item in your bags or loot window and press the key: automatic > always keep > always sell > automatic.'))
+    help:SetText(L('Hover an item in your bags or loot window and press the key to toggle Protected / Automatic.'))
     panel.flowBottom, panel.flowLeft = help, PAD
     refreshBinding(panel)
     return y - 82
@@ -361,7 +506,7 @@ local function newRow(panel, index)
     row.remove:SetText(L('Remove'))
     style('StyleButton', row.remove)
     row.kind = newText(panel, row, 12, 'accentHi')
-    row.kind:SetWidth(64)
+    row.kind:SetWidth(142)
     row.kind:SetPoint('RIGHT', row.remove, 'LEFT', -8, 0)
     row.name = newText(panel, row, 12, 'text')
     row.name:SetPoint('LEFT', row.icon, 'RIGHT', 8, 0)
@@ -410,7 +555,7 @@ function refreshList(panel)
                 row.name:SetTextColor(color('text'))
             end
             row.icon:SetTexture(icon or 'Interface\\Icons\\INV_Misc_QuestionMark')
-            row.kind:SetText(item.action == 'keep' and L('Keep') or item.action == 'sell' and L('Sell')
+            row.kind:SetText(item.action == 'keep' and L('Protected') or item.action == 'sell' and L('Sell (legacy mark)')
                 or tostring(item.action))
             row:Show()
         else
@@ -436,6 +581,14 @@ local function refreshFooter(panel)
 end
 
 local function refresh(panel)
+    for _, control in pairs(panel.controls) do control.refresh() end
+    for kind, swatch in pairs(panel.swatches) do
+        local color = ns.Marks.Color(kind)
+        swatch.fill:SetColorTexture(color[1],color[2],color[3],1)
+    end
+    local root = rawget(_G,'Auctionator')
+    local detected = root and root.API and root.API.v1 and type(root.API.v1.GetAuctionPriceByItemID)=='function'
+    panel.auctionStatus:SetText(L('Auctionator detected: %s'):format(L(detected and 'yes' or 'no')))
     refreshBinding(panel)
     refreshChecks(panel)
     refreshList(panel)
@@ -467,6 +620,7 @@ function Options.Build()
     local panel = CreateFrame('Frame', nil, UIParent, template)
     panel.name = 'KnuJunk'
     panel.painted, panel.checks, panel.rows, panel.sections, panel.footer = {}, {}, {}, {}, {}
+    panel.controls, panel.swatches = {}, {}
     panel.offset = 0
     local viewport = CreateFrame('ScrollFrame', nil, panel)
     viewport:SetPoint('TOPLEFT', panel, 'TOPLEFT', 0, 0)
@@ -504,8 +658,9 @@ function Options.Build()
     local currentSection
     for _, toggle in ipairs(Options.TOGGLES) do
         if toggle.section ~= currentSection then
+            if currentSection == 'Icons' then y = customization(panel, y) end
             currentSection = toggle.section
-            y = section(panel, y, toggle.section == 'Marks' and 'Marks' or 'Optional rules (off by default)')
+            y = section(panel, y, toggle.section == 'Rules' and 'Optional rules (off by default)' or toggle.section)
         end
         y = toggleRow(panel, y, toggle, toggle.section == 'Marks' and 36 or 52)
     end

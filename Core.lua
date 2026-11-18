@@ -1,8 +1,18 @@
 local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
-ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, hammer = true, loot = true }, overrides = {} }
+ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, loot = true }, overrides = {} }
 ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false }
+ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful' }
+ns.IconColors = {
+    protected = {111/255,179/255,1}, quest = {242/255,227/255,179/255},
+    hammer_mine = {95/255,208/255,104/255}, hammer_other = {1,154/255,60/255},
+    auction = {194/255,123/255,1}, coin = {1,210/255,60/255},
+    trash = {224/255,106/255,90/255}, useful = {138/255,138/255,138/255},
+}
+ns.Defaults.icons = { size = 14, opacity = 1, background = true, corner = 'TOPRIGHT', coinStyle = 'Blizzard', colors = ns.IconColors }
+ns.Defaults.auction = { factor = 2, minCopper = 100 }
+for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
 ns.Print = KL:NewPrinter('Junk')
 ns.Data = ns.Data or {}
 
@@ -56,6 +66,13 @@ frame:SetScript('OnEvent', function(_, event, name)
     if event == 'ADDON_LOADED' then
         if name ~= 'KnuJunk' then return end
         if type(KnuJunkDB) ~= 'table' then KnuJunkDB = {} end
+        -- Migrar antes de completar defaults; nunca pisar preferencias nuevas.
+        local show = KnuJunkDB.show
+        if type(show) == 'table' then
+            if show.hammer_mine == nil then show.hammer_mine = show.hammer end
+            if show.hammer_other == nil then show.hammer_other = show.hammer end
+            show.hammer = nil
+        end
         merge(KnuJunkDB, ns.Defaults)
         ns.DB = KnuJunkDB
     elseif event == 'PLAYER_LOGIN' then

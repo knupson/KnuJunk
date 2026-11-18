@@ -198,7 +198,7 @@ test('C_TooltipInfo parcial y despues con efecto: nunca false, se resuelve y avi
     local item = ns.Player.ReadLink(FAKE.linkOf(760))
     eq(item.hasUseOrEquipSpell, true, 'parcial: no se sabe')
     item.isBound = true
-    eq(ns.Classify(item, { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {} }).mark, nil, 'sin moneda')
+    eq(ns.Classify(item, { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {} }).mark, 'useful', 'sin moneda')
     full = true
     FAKE.Advance(5)
     eq(ns.Player.ReadLink(FAKE.linkOf(760)).hasUseOrEquipSpell, true, 'efecto visto')
@@ -409,11 +409,11 @@ test('tooltip oculto con region sin texto (nil): pendiente; el gris igual lleva 
     local success, err = pcall(function()
         local gray = ns.Player.ReadLink(FAKE.linkOf(99785))
         eq(gray.effect, 'unknown')
-        eq(ns.Classify(gray, classifyCtx()).mark, 'coin', 'el desconocido no bloquea el gris')
+        eq(ns.Classify(gray, classifyCtx()).mark, 'useful', 'efecto desconocido nunca da moneda')
         FAKE.bags['0:2'] = 99786; FAKE.bound['0:2'] = true
         local plate = ns.Player.ReadItem(0, 2)
         eq(plate.effect, 'unknown')
-        eq(ns.Classify(plate, classifyCtx()).mark, nil, 'clase exige efecto no')
+        eq(ns.Classify(plate, classifyCtx()).mark, 'useful', 'clase exige efecto no')
     end)
     restore()
     if not success then error(err, 0) end
@@ -471,7 +471,7 @@ test('no guardado: TOOLTIP_DATA_UPDATE de su instancia lo relee; efecto tardio q
     FAKE.Advance(0.1)
     local item = ns.Player.ReadItem(0, 3)
     eq(item.effect, 'yes')
-    eq(ns.Classify(item, classifyCtx()).mark, nil, 'efecto tardio: sin moneda')
+    eq(ns.Classify(item, classifyCtx()).mark, 'useful', 'efecto tardio: sin moneda')
     C_TooltipInfo.GetHyperlink = real
 end)
 
@@ -507,14 +507,14 @@ test('no invalidado con relectura parcial: pendiente valido, aviso y moneda reti
     eq(changed, 1, 'no -> unknown avisa')
     local again = ns.Player.ReadItem(0, 4) -- no debe fallar
     eq(again.effect, 'unknown')
-    eq(ns.Classify(again, ns.Player.GetContext()).mark, nil, 'sin moneda de clase')
-    ok(not coinShown(), 'moneda retirada')
+    eq(ns.Classify(again, ns.Player.GetContext()).mark, 'useful', 'sin moneda de clase')
+    ok(coinShown(), 'ícono útil visible'); eq(button.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
     eq(ns.Player.ReadLink(FAKE.linkOf(99790)).effect, 'unknown', 'otra lectura tampoco falla')
     phase = 'effect'
     FAKE.Advance(5) -- reintento por timer
     local final = ns.Player.ReadItem(0, 4)
     eq(final.effect, 'yes')
-    eq(ns.Classify(final, ns.Player.GetContext()).mark, nil, 'efecto confirmado: sin moneda')
+    eq(ns.Classify(final, ns.Player.GetContext()).mark, 'useful', 'efecto confirmado: sin moneda')
     eq(changed, 2, 'unknown -> yes avisa')
     C_TooltipInfo.GetHyperlink = real
 end)
@@ -550,7 +550,7 @@ test('GetItemSpell con nombre nil e ID -> hasUseOrEquipSpell = true', function()
     eq(item.hasUseOrEquipSpell, true)
     local ctx = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
         isQuestDone = function() return false end }
-    eq(ns.Classify(item, ctx).mark, nil, 'placas con hechizo por ID: sin moneda')
+    eq(ns.Classify(item, ctx).mark, 'useful', 'placas con hechizo por ID: sin moneda')
 end)
 
 test('C_Item.GetItemSpell con ID solo o con error -> conservador', function()
@@ -682,7 +682,7 @@ test('mision aceptada en combate bajo encabezado plegado -> questLogIncomplete h
     local ctx = ns.Player.GetContext()
     eq(ctx.questLogIncomplete, true, 'diario cambiado sin poder releerlo')
     eq(ctx.questItemsInLog[500], true, 'lo del ultimo escaneo sigue protegiendo')
-    eq(ns.Classify(ns.Player.ReadLink(FAKE.linkOf(502)), ctx).mark, nil, 'gris nuevo sin moneda')
+    eq(ns.Classify(ns.Player.ReadLink(FAKE.linkOf(502)), ctx).mark, 'useful', 'gris nuevo sin moneda')
     eq(FAKE.calls.expand, 1, 'no expande en combate')
     -- Otro evento cualquiera en combate no devuelve la certificacion.
     FAKE.Fire('QUEST_LOG_UPDATE')
@@ -712,7 +712,7 @@ test('sin escaneo previo y plegado en combate -> questLogIncomplete y gris sin m
     eq(FAKE.calls.expand, 0)
     addItem(900, { quality = 0, price = 5 })
     local result = ns.Classify(ns.Player.ReadLink(FAKE.linkOf(900)), ctx)
-    eq(result.mark, nil)
+    eq(result.mark, 'useful')
     local found = false
     for _, reason in ipairs(result.reasons) do if reason.kind == 'quest_log_incomplete' then found = true end end
     ok(found, 'reason quest_log_incomplete')

@@ -25,9 +25,9 @@ test('juego1: Show reentra al hook sin repetir lineas ni recursar', function()
         self:GetScript('OnTooltipSetItem')(self)
     end
     ns.Tooltip.Decorate(tip)
-    eq(calls, 1); eq(#tip.lines, 1)
+    eq(calls, 1); eq(#tip.lines, 2)
     ns.Tooltip.Decorate(tip)
-    eq(calls, 1); eq(#tip.lines, 1)
+    eq(calls, 1); eq(#tip.lines, 2)
 end)
 
 test('juego1: Show con error no propaga ni repite lineas', function()
@@ -35,7 +35,7 @@ test('juego1: Show con error no propaga ni repite lineas', function()
     local tip = tooltip(900001)
     function tip:Show() error('fallo simulado') end
     ns.Tooltip.Decorate(tip); ns.Tooltip.Decorate(tip)
-    eq(#tip.lines, 1)
+    eq(#tip.lines, 2)
 end)
 
 test('juego1: tooltip oculto no se abre al decorarlo', function()
@@ -49,7 +49,7 @@ test('juego1: tecla resuelve GetItem despues de OnTooltipCleared', function()
     addItem(900001, 10, 0, 15)
     local tip = tooltip(900001)
     ns.Tooltip.Decorate(tip)
-    for _, expected in ipairs({ 'keep', 'sell', 'auto' }) do
+    for _, expected in ipairs({ 'keep', 'auto', 'keep' }) do
         tip:GetScript('OnTooltipCleared')(tip)
         eq(ns.Overrides.hovered, nil)
         KnuJunk_CycleHovered()
@@ -71,10 +71,10 @@ test('juego1: GetItem ausente fallido u oculto conserva fallback', function()
     GameTooltip.GetItem = function() error('fallo simulado') end
     KnuJunk_CycleHovered(); eq(ns.DB.overrides[900001], 'keep')
     GameTooltip.GetItem = nil
-    KnuJunk_CycleHovered(); eq(ns.DB.overrides[900001], 'sell')
+    KnuJunk_CycleHovered(); eq(ns.DB.overrides[900001], nil)
     GameTooltip.GetItem = function() return 'Otro', 'item:900002' end
     GameTooltip:Hide()
-    KnuJunk_CycleHovered(); eq(ns.DB.overrides[900001], nil)
+    KnuJunk_CycleHovered(); eq(ns.DB.overrides[900001], 'keep')
     eq(ns.DB.overrides[900002], nil)
 end)
 
@@ -95,7 +95,7 @@ test('juego1: sin APIs de foco no crea escudo ni interrumpe tooltip', function()
     eq(ns.Merchant.ShowHoveredShield(0, 1), nil)
     local tip = tooltip(900001)
     ns.Tooltip.Decorate(tip)
-    eq(#tip.lines, 2)
+    eq(#tip.lines, 3)
 end)
 
 local function protected()
@@ -158,7 +158,7 @@ test('juego1: Show conserva bolsa y slot del hook SetBagItem sin GetBagItem', fu
     function tip:Show() self:GetScript('OnTooltipSetItem')(self) end
     GetMouseFoci = function() return { shield } end
     ns.Tooltip.Decorate(tip, nil, 0, 1)
-    ok(shield:IsShown()); eq(#tip.lines, 2)
+    ok(shield:IsShown()); eq(#tip.lines, 3)
 end)
 
 test('juego1: OnLeave reenvia al boton y despues oculta escudo', function()
@@ -231,7 +231,7 @@ for _, price in ipairs({ 0, 10, 'unknown' }) do
         if value ~= 'unknown' then item.price = value end
         local ctx = { overrides = {}, questItemsInLog = {}, questInLog = function() return false end }
         local result = ns.Classify(item, ctx)
-        eq(result.mark, value == 10 and 'coin' or nil)
+        eq(result.mark, value == 10 and 'coin' or value == 0 and 'trash' or 'useful')
         local reasons = {}
         for _, reason in ipairs(result.reasons) do reasons[reason.kind] = true end
         ok(reasons.quest_not_active)
@@ -256,11 +256,11 @@ test('juego1: tooltip sin precio automatico y venta manual en tres locales', fun
                 eq(lines[#lines].text, expected)
                 ok(not lines[#lines].text:find('|T', 1, true))
                 if not manual then
-                    eq(lines[1].text, ns.L['No active quest needs it'])
-                    eq(lines[1].r, 1); eq(lines[1].g, 1); eq(lines[1].b, 1)
+                    eq(lines[2].text, ns.L['No active quest needs it'])
+                    eq(lines[2].r, 1); eq(lines[2].g, 1); eq(lines[2].b, 1)
                 end
             end
-            ok(not ns.L['Hover an item in your bags or loot window and press the key: automatic > always keep > always sell > automatic.']:find('→', 1, true))
+            ok(not ns.L['Hover an item in your bags or loot window and press the key to toggle Protected / Automatic.']:find('→', 1, true))
             ok(not ns.L['Press a key... (Esc cancels)']:find('…', 1, true))
         end
     end)

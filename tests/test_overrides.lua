@@ -13,7 +13,8 @@ test('ciclo automatico guardar vender automatico con un Changed por paso', funct
     ns.Changed = function() calls = calls + 1 end
     local success, err = pcall(function()
         eq(ns.Overrides.Cycle(123), 'keep'); eq(calls, 1)
-        eq(ns.Overrides.Cycle(123), 'sell'); eq(calls, 2)
+        eq(ns.Overrides.Cycle(123), nil); eq(calls, 2)
+        ns.DB.overrides[123] = 'sell'
         eq(ns.Overrides.Cycle(123), nil); eq(calls, 3)
         eq(ns.DB.overrides[123], nil)
     end)
@@ -30,7 +31,7 @@ end)
 
 test('con hover informa cada estado y usa fallback sin cache', function()
     ns.Overrides.hovered = 123
-    for _, text in ipairs({ 'Always keep: %s (never a coin)', 'Always sell: %s (always a coin)', 'Automatic again: %s' }) do
+    for _, text in ipairs({ 'Protected: %s', 'Automatic: %s', 'Protected: %s' }) do
         KnuJunk_CycleHovered()
         ok(FAKE.messages[#FAKE.messages]:find(string.format(ns.L[text], string.format(ns.L['item %d'], 123)), 1, true))
     end
@@ -151,7 +152,7 @@ test('binding XML llama al global y no esta en el toc', function()
     local toc = file:read('*a'); file:close()
     eq(toc:find('Bindings.xml', 1, true), nil)
     eq(BINDING_HEADER_KNUJUNK, 'KnuJunk')
-    eq(BINDING_NAME_KNUJUNK_CYCLE_HOVERED, ns.L['Change mark of item under mouse'])
+    eq(BINDING_NAME_KNUJUNK_CYCLE_HOVERED, ns.L['Protect / unprotect the item under the mouse'])
 end)
 
 test('hover moderno funciona sin lineas y sin marcas activadas', function()
@@ -192,8 +193,8 @@ test('traducciones nuevas cubren esES esMX y enUS', function()
         for _, locale in ipairs({ 'esES', 'esMX', 'enUS' }) do
             FAKE.locale = locale
             assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
-            eq(ns.L['Change mark of item under mouse'], locale == 'enUS'
-                and 'Change mark of item under mouse' or 'Cambiar marca del ítem bajo el mouse')
+            eq(ns.L['Protect / unprotect the item under the mouse'], locale == 'enUS'
+                and 'Protect / unprotect the item under the mouse' or 'Proteger / desproteger el ítem bajo el mouse')
             eq(ns.L['Hover an item first, then press the key'], locale == 'enUS'
                 and 'Hover an item first, then press the key' or 'Pasá el mouse por un ítem y apretá la tecla')
             eq(ns.L['Press a key... (Esc cancels)'], locale == 'enUS'

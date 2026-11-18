@@ -92,7 +92,7 @@ test('Loot clasico: objetivo de mision activa -> quest', function()
     FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
     open()
     ok(visible(buttons[1]))
-    eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
 end)
 
 test('Loot clasico: item de una mision del diario segun Questie -> quest', function()
@@ -105,7 +105,7 @@ test('Loot clasico: item de una mision del diario segun Questie -> quest', funct
     FAKE.Advance(5)
     open()
     ok(visible(buttons[1]))
-    eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
 end)
 
 -- Regla del 2026-11-17: una mision que no esta en el diario no protege; en el botin va la moneda.
@@ -132,7 +132,7 @@ test('Loot clasico: fila reciclada a otro slot cambia la marca (LootFrame_Update
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
     buttons[1].slot = 2                      -- Blizzard recicla el boton a otro slot
     LootFrame_Update()                       -- el hook sobre LootFrame_Update repinta
-    eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
     buttons[1].slot = 3                      -- ahora un slot de dinero: sin marca
     LootFrame_Update()
     ok(not visible(buttons[1]), 'fila reciclada a dinero limpia la marca')
@@ -176,7 +176,7 @@ test('Loot: LOOT_SLOT_CHANGED repinta el slot', function()
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
     FAKE.loot[1] = 500
     FAKE.Fire('LOOT_SLOT_CHANGED', 1)
-    eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
 end)
 
 test('Loot: botones ocultos o ventana cerrada no se marcan', function()
@@ -253,11 +253,11 @@ test('Loot moderno: ScrollBox con filas recicladas; marca en row.Item', function
         open()
         ok(visible(rows[1].Item) and rows[1].KnuJunkMark == nil, 'la marca va en el icono')
         eq(rows[1].Item.KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
-        eq(rows[2].Item.KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+        eq(rows[2].Item.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
         -- la lista recicla la fila 1 a otro slot y llama al callback de inicializacion
         rows[1].slotIndex = 2
         callbacks[1].callback(callbacks[1].owner, rows[1], { slotIndex = 2 })
-        eq(rows[1].Item.KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+        eq(rows[1].Item.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
         rows[1].slotIndex = 9                -- slot de dinero
         callbacks[1].callback(callbacks[1].owner, rows[1], { slotIndex = 9 })
         ok(not visible(rows[1].Item), 'fila reciclada a dinero: sin marca')
@@ -343,7 +343,7 @@ test('Loot moderno sin ScrollUtil: fila creada ANTES del hook, row:Init() al rec
     ok(visible(rows[1].Item), 'control: gris -> coin')
     FAKE.loot[1] = 101; rows[1].slotIndex = 1
     rows[1]:Init()                               -- Blizzard recicla la fila; ningun otro evento ni refresco
-    ok(not visible(rows[1].Item), 'gris -> item util: sin marca')
+    ok(visible(rows[1].Item)); eq(rows[1].Item.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
     FAKE.loot[1] = 100
     rows[1]:Init()
     ok(visible(rows[1].Item), 'control: vuelve a gris, coin')
@@ -376,10 +376,10 @@ test('Loot: martillo verde y gris en el botin; el tinte no se hereda al reciclar
     with('hammer_mine', open)
     local texture = buttons[1].KnuJunkMark
     ok(visible(buttons[1])); eq(texture.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
-    eq(texture.vertex[1], 0.25); eq(texture.vertex[2], 0.85); eq(texture.vertex[3], 0.35)
+    eq(texture.vertex[1], (95/255)); eq(texture.vertex[2], (208/255)); eq(texture.vertex[3], (104/255))
     ok(not texture.desaturated)
     with('hammer_other', function() LootFrame_Update() end)
-    ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 1); eq(texture.vertex[3], 0.2)
+    ok(not texture.desaturated); eq(texture.alpha, 1); eq(texture.vertex[1], 1); eq(texture.vertex[3], (60/255))
     with('hammer_mine', function() LootFrame_Update() end)
     ok(not texture.desaturated, 'verde no hereda el desaturado del gris')
     eq(texture.alpha, 1)
@@ -479,7 +479,7 @@ test('Loot clasico: reactivo que pide una mision activa -> quest (no martillo)',
     local success, err = pcall(function()
         open()
         ok(visible(buttons[1]))
-        eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+        eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
     end)
     ns.Data.reagents = saved
     if not success then error(err, 0) end

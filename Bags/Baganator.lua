@@ -1,16 +1,9 @@
 local _, ns = ...
 
--- Baganator por su API oficial (Baganator.API): ni hooks ni frames propios sobre sus botones.
---   * junk plugin 'KnuJunk': Baganator pinta SU moneda de basura donde devolvemos true y, en la vista
---     de categorias, MUEVE esos items a su categoria de basura (CategoryViews/BagLayout.lua l.39-66,
---     ItemsPreparation.lua l.38-46). KnuJunk nunca recategoriza: devolvemos true SOLO donde Baganator
---     tambien diria basura con su opcion por defecto (gris con precio de venta, ItemButton.lua l.216)
---     y nuestras protecciones no lo salvan. Las demas monedas (mision terminada, clase, a mano...)
---     solo las dibuja la esquina 'KnuJunk: monedita'.
---   * corner widgets 'KnuJunk: martillo' y 'KnuJunk: monedita': nuestra marca en una esquina del
---     boton (el martillo se autoinserta arriba a la derecha; la monedita arriba a la izquierda, donde
---     Baganator pone su icono de basura). Este adaptador nunca escribe la configuracion de Baganator:
---     la autoinsercion es suya.
+-- API oficial: un widget KnuJunk para todas las marcas y dos IDs viejos inertes.
+-- Baganator gestiona esquina y autoinserción; no escribimos su configuración.
+-- El plugin de basura conserva sólo grises vendibles con veredicto coin. Si ya dibuja
+-- su moneda nativa, el widget evita duplicarla.
 -- Regla de oro: si un boton no se puede PROBAR como una casilla viva de las bolsas 0-4 (o del banco
 -- VIVO, ns.Bank) del personaje actual (vistas guardadas de otros personajes, banco cerrado, hermandad),
 -- no se marca.
@@ -24,7 +17,6 @@ local _, ns = ...
 local Adapter = {}
 ns.BaganatorAdapter = Adapter
 
-local SIZE = 20
 local RESCAN_SECONDS = 2
 -- Vistas de mochila: "<prefijo><skin>" (ViewManagement/Initialize.lua l.150-151, frameGroup = clave
 -- de skin, Skins/Initialize.lua l.43). Claves de las skins que trae Baganator (Skins/*.lua,
@@ -38,14 +30,12 @@ local BANK_PREFIXES = { 'Baganator_SingleViewBankViewFrame', 'Baganator_Category
 local SKIN_KEYS = { 'blizzard', 'blizzard_black', 'dark', 'elvui', 'ellesmereui', 'gw2_ui', 'ndui' }
 
 local JUNK_PLUGIN = { label = 'KnuJunk', id = 'knujunk' }
--- Autoinsercion (una sola vez, la gestiona Baganator): el martillo arriba a la derecha (por defecto
--- vacia; abajo: set y cantidad) y la monedita arriba a la izquierda, junto al icono de basura de
--- Baganator: asi las monedas que no son basura para Baganator se ven sin configurar nada.
-local HAMMER_POSITION = { corner = 'top_right', priority = 1 }
-local COIN_POSITION = { corner = 'top_left', priority = 1 }
+-- API/Main.lua admite defaultPosition; solicitar arriba a la derecha.
 local WIDGETS = {
-    { id = 'knujunk_hammer', label = 'KnuJunk: martillo', position = HAMMER_POSITION, accepts = function(mark) return mark == 'hammer_mine' or mark == 'hammer_other' end },
-    { id = 'knujunk_coin', label = 'KnuJunk: monedita', coin = true, position = COIN_POSITION, accepts = function(mark) return mark == 'coin' end },
+    { id = 'knujunk_icon', label = 'KnuJunk', position = { corner = 'top_right', priority = 1 }, accepts = function() return true end },
+    -- IDs guardados por versiones anteriores: registrados, sin dibujo ni autoinserci?n.
+    { id = 'knujunk_hammer', label = 'KnuJunk (' .. ns.L['Legacy widget'] .. ')', accepts = function() return false end },
+    { id = 'knujunk_coin', label = 'KnuJunk (' .. ns.L['Legacy widget'] .. ')', accepts = function() return false end },
 }
 
 local done = {}          -- [id] = true: lo ya registrado en Baganator (no se duplica)
@@ -169,6 +159,14 @@ local function junkPluginActive()
     return not success or result == true
 end
 
+local function nativeJunkActive()
+    if not junkPluginActive() then return false end
+    local API = api()
+    if type(API.IsCornerWidgetActive) ~= 'function' then return true end
+    local success, active = pcall(API.IsCornerWidgetActive, 'junk')
+    return not success or active == true
+end
+
 local function widgetCallback(accepts, isCoin)
     return function(texture, details)
         if type(details) ~= 'table' or type(details.itemID) ~= 'number' then return false end
@@ -181,25 +179,21 @@ local function widgetCallback(accepts, isCoin)
         local mark, pending, _, item = ns.Marks.Verdict(location.bagID, location.slotIndex, details.itemID)
         if pending then await(details.itemID) end
         -- Gris con el junk plugin de KnuJunk activo: la moneda nativa ya lo cubre (sin doble moneda).
-        if isCoin and grayJunk(mark, item) and junkPluginActive() then return false end
+        if grayJunk(mark, item) and nativeJunkActive() then return false end
         if mark and accepts(mark) and ns.Marks.Style(texture, mark) then return true end
         return false
     end
 end
 
 local function createWidget(itemButton)
-    local texture = itemButton:CreateTexture(nil, 'OVERLAY', nil, 7)
-    texture:SetSize(SIZE, SIZE)
-    -- pegada al borde de la esquina, igual que el JunkIcon de Baganator (API/ItemButton.lua:288)
-    texture.padding = 0
-    return texture
+    return ns.Marks.CreateWidget(itemButton)
 end
 
 -- ---------------------------------------------------------------------------
 -- Registro
 -- ---------------------------------------------------------------------------
 
--- true cuando los tres elementos estan registrados. Reintentable: registra solo lo que falta.
+-- true cuando el plugin, el widget único y los alias están registrados. Reintentable: registra solo lo que falta.
 function Adapter.Install()
     local API = api()
     if not API or type(API.RegisterJunkPlugin) ~= 'function' or type(API.RegisterCornerWidget) ~= 'function' then
@@ -214,7 +208,7 @@ function Adapter.Install()
                 widgetCallback(widget.accepts, widget.coin), createWidget, widget.position)
         end
     end
-    return done[JUNK_PLUGIN.id] == true and done.knujunk_hammer == true and done.knujunk_coin == true
+    return done[JUNK_PLUGIN.id] == true and done.knujunk_icon == true and done.knujunk_hammer == true and done.knujunk_coin == true
 end
 
 -- Repinta: pide a Baganator que vuelva a evaluar sus botones, solo si algo nuestro esta activo.
@@ -229,7 +223,7 @@ function Adapter.Refresh()
         local success, result = pcall(API[name], id)
         return not success or result == true
     end
-    if active('IsJunkPluginActive', JUNK_PLUGIN.id) or active('IsCornerWidgetActive', 'knujunk_hammer')
+    if active('IsJunkPluginActive', JUNK_PLUGIN.id) or active('IsCornerWidgetActive', 'knujunk_icon')
         or active('IsCornerWidgetActive', 'knujunk_coin') then
         local root = rawget(_G, 'Baganator')
         local reasons = type(root) == 'table' and type(root.Constants) == 'table' and root.Constants.RefreshReason
