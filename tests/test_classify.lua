@@ -175,7 +175,7 @@ end)
 test('subclases fuera de la tabla o clase desconocida -> nunca coin', function()
     withData({}, {}, function()
         eq(ns.Classify(item { classID = 4, subclassID = 0, quality = 2 }, ctx()).mark, nil) -- misc (anillo)
-        eq(ns.Classify(item { classID = 2, subclassID = 20, quality = 2 }, ctx()).mark, nil) -- cania
+        eq(ns.Classify(item { classID = 2, subclassID = 20, quality = 2 }, ctx()).mark, 'hammer_other') -- cania: herramienta de Pesca, nunca coin
         eq(ns.Classify(item { classID = 4, subclassID = 4, quality = 2 }, ctx { class = 'DEATHKNIGHT' }).mark, nil)
         local noClass = ctx(); noClass.class = nil
         eq(ns.Classify(item { classID = 4, subclassID = 4, quality = 2 }, noClass).mark, nil)
@@ -328,5 +328,14 @@ test('utilidad del item precede a toda moneda automatica', function()
     withData({}, { [9000] = 123 }, function()
         local starter = item { hasUseOrEquipSpell = true }
         eq(ns.Classify(starter, ctx { isQuestDone = function() return true end }).mark, nil, 'iniciador con uso')
+    end)
+end)
+
+test('caña de pescar: martillito de Pesca aunque no figure en spelltotems', function()
+    withData({}, {}, function()
+        local cana = item { id = 6256, classID = 2, subclassID = 20, quality = 0, price = 5 }
+        local mine = ns.Classify(cana, ctx { professions = { [356] = true } })
+        eq(mine.mark, 'hammer_mine'); eq(hasReason(mine, 'profession_tool').professions[1], 356)
+        eq(ns.Classify(cana, ctx()).mark, 'hammer_other', 'sin Pesca: martillo gris, nunca moneda')
     end)
 end)

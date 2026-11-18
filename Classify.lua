@@ -87,6 +87,9 @@ function ns.Classify(item, ctx)
     -- herramienta sea de una profesion tuya.
     local reagentLines = ns.Data.reagents and ns.Data.reagents[id]
     local toolLines = ns.Data.tools and ns.Data.tools[id]
+    -- Las cañas de pescar no figuran en spelltotems de Forever (Pesca no las pide como herramienta),
+    -- pero son la herramienta de Pesca: arma (classID 2) de subclase 20.
+    if not toolLines and item.classID == 2 and item.subclassID == 20 then toolLines = { 356 } end
     local function mineOf(list)
         local mine = {}
         for _, line in ipairs(list or {}) do
