@@ -22,7 +22,11 @@ function methods:IsVisible()
 end
 function methods:IsMouseOver() return self.mouseOver == true end
 function methods:SetShown(value) if value then self:Show() else self:Hide() end end
-function methods:SetText(text) self.text = text; if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self, false) end end
+function methods:SetText(text)
+    self.text = text
+    if self.Text then self.Text:SetText(text) end
+    if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self, false) end
+end
 function methods:GetText() return self.text or '' end
 function methods:SetChecked(value) self.checked = value end
 function methods:GetChecked() return self.checked end
@@ -30,7 +34,7 @@ function methods:GetID() return self.id end
 function methods:GetParent() return self.parent end
 function methods:GetFrameLevel() return self.level or 1 end
 function methods:SetPassThroughButtons(...) self.passThrough = {...} end
-function methods:CreateFontString() return CreateFrame('FontString') end
+function methods:CreateFontString() return CreateFrame('FontString', nil, self) end
 function methods:GetName() return self.name end
 function methods:GetFontString() return self.Text end
 function methods:SetAlpha(value) self.alpha = value end
@@ -56,11 +60,24 @@ for _, part in ipairs({'Normal','Pushed','Highlight','Disabled'}) do
 end
 for _, method in ipairs({'SetPoint','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetDrawLayer'}) do methods[method] = function() end end
 -- Tamanos guardados (el panel de opciones calcula filas segun el alto) y widgets de opciones.
-function methods:SetWidth(value) self.w = value end
-function methods:SetHeight(value) self.h = value end
-function methods:SetSize(w, h) self.w = w; self.h = h end
+function methods:SetSize(w, h)
+    local changed = self.w ~= w or self.h ~= h
+    self.w, self.h = w, h
+    if changed and self.scripts.OnSizeChanged then self.scripts.OnSizeChanged(self, w, h) end
+end
+function methods:SetWidth(value) self:SetSize(value, self.h) end
+function methods:SetHeight(value) self:SetSize(self.w, value) end
 function methods:GetWidth() return self.w or 0 end
 function methods:GetHeight() return self.h or 0 end
+function methods:GetStringWidth()
+    local text = self:GetText():gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')
+    return #text * (select(2, self:GetFont()) or 12) * .5
+end
+function methods:GetStringHeight()
+    self.measuredWidth = self:GetWidth()
+    local size = select(2, self:GetFont()) or 12
+    return size * math.max(1, math.ceil(self:GetStringWidth() / math.max(1, self:GetWidth())))
+end
 function methods:SetMinMaxValues(min, max) self.min = min; self.max = max end
 function methods:SetValue(value) self.value = value; if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, value) end end
 function methods:GetValue() return self.value or 0 end
@@ -70,6 +87,8 @@ function methods:GetThumbTexture() self.thumb = self.thumb or CreateFrame('Textu
 for _, method in ipairs({'SetHitRectInsets','SetValueStep','SetObeyStepOnDrag','SetOrientation','EnableMouseWheel','SetJustifyH',
     'SetJustifyV','SetWordWrap','SetMaxLines','SetFrameLevel','SetAllPoints','SetClipsChildren','SetFontObject'}) do methods[method] = function() end end
 function methods:SetPoint(...) self.points = self.points or {}; self.points[#self.points + 1] = {...} end
+function methods:SetWordWrap(value) self.wordWrap = value end
+function methods:SetJustifyH(value) self.justifyH = value end
 function methods:ClearAllPoints() self.points = {} end
 function methods:SetAllPoints(target) self.allPoints = target end
 function methods:SetFrameLevel(level) self.level = level end
@@ -79,7 +98,7 @@ function methods:SetVerticalScroll(value) self.verticalScroll = value end
 function methods:GetVerticalScroll() return self.verticalScroll or 0 end
 function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
-        name = name, enabled = true, alpha = 1 }, {__index = methods})
+        name = name, kindType = kind, template = template, enabled = true, alpha = 1 }, {__index = methods})
     FAKE.frames[#FAKE.frames + 1] = frame
     if name then _G[name] = frame; FAKE.named[name] = true end
     if template == 'UIPanelButtonTemplate' or template == 'UICheckButtonTemplate' then

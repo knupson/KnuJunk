@@ -159,7 +159,7 @@ test('widget de martillo devuelve true y textura verde para hammer_mine', functi
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
     end)
     eq(texture.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
-    eq(texture.vertex[1], (95/255)); eq(texture.vertex[2], (208/255)); eq(texture.vertex[3], (104/255))
+    eq(texture.vertex[1], (111/255)); eq(texture.vertex[2], (211/255)); eq(texture.vertex[3], (106/255))
     ok(not texture.desaturated)
     withMark('hammer_other', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)

@@ -199,28 +199,23 @@ for _, count in ipairs({ 0, 3, 25 }) do
     local marks = count
     test('juego1: anclas sin superposicion con ' .. marks .. ' marcas', function()
         for i = 1, marks do ns.DB.overrides[900000 + i] = 'keep' end
-        local panel = ns.Options.Build(); panel:Show()
-        local section = panel.sections[#panel.sections]
-        for i, current in ipairs(panel.sections) do
-            eq(current.text.points[1][3], 'BOTTOMLEFT')
-            ok(current.text.points[1][5] < 0)
-            if i == 1 then eq(current.text.points[1][2], panel.title) end
+        local panel = ns.Options.Build(); panel:SetSize(650, 300); panel:Show()
+        ns.Options.SelectTab('Marks')
+        local page = panel.tabs.Marks
+        local bottom = 0
+        for _, frame in ipairs(page.rows) do
+            local top = -frame.points[1][5]
+            ok(top >= bottom)
+            bottom = top + frame:GetHeight()
+            eq(frame.points[1][2], page.content)
         end
-        eq(section.line.points[1][2], section.text)
-        eq(section.line.points[1][3], 'BOTTOMLEFT'); ok(section.line.points[1][5] < 0)
-        eq(panel.list.points[1][2], section.line)
-        eq(panel.list.points[1][3], 'BOTTOMLEFT'); ok(panel.list.points[1][5] < 0)
         ok(panel.list:GetHeight() > 0)
-        eq(panel.footer[1].points[1][2], panel.list)
-        eq(panel.footer[1].points[1][3], 'BOTTOMLEFT'); ok(panel.footer[1].points[1][5] < 0)
-        for i = 2, 3 do eq(panel.footer[i].points[1][2], panel.footer[i - 1]) end
         eq(panel.empty:IsShown(), marks == 0)
         if marks > 6 then ok(panel.scroll:IsShown()); eq(panel.scroll.max, marks - 6) end
-        panel.viewport:SetHeight(400)
-        panel.viewport:GetScript('OnMouseWheel')(panel.viewport, -100)
-        eq(panel.viewport:GetVerticalScroll(), panel.content:GetHeight() - 400)
-        panel.viewport:GetScript('OnMouseWheel')(panel.viewport, 100)
-        eq(panel.viewport:GetVerticalScroll(), 0)
+        page.viewport:GetScript('OnMouseWheel')(page.viewport, -100)
+        eq(page.viewport:GetVerticalScroll(), page.limit)
+        page.viewport:GetScript('OnMouseWheel')(page.viewport, 100)
+        eq(page.viewport:GetVerticalScroll(), 0)
     end)
 end
 
