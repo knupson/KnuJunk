@@ -123,6 +123,7 @@ function hooksecurefunc(target, key, hook)
     local previous = target[key]
     target[key] = function(...) if previous then previous(...) end; hook(...) end
 end
+local secureHook = hooksecurefunc
 function FAKE.Fire(event, ...)
     for _, frame in ipairs(FAKE.frames) do
         if frame.events[event] and frame.scripts.OnEvent then frame.scripts.OnEvent(frame, event, ...) end
@@ -148,6 +149,21 @@ function C_Timer.NewTimer(delay, fn)
     return timer
 end
 function C_Timer.After(delay, fn) C_Timer.NewTimer(delay, fn) end
+local function newTicker(delay, fn)
+    local ticker = {}
+    function ticker:Cancel()
+        self.cancelled = true
+        if self.timer then self.timer:Cancel() end
+    end
+    local function tick()
+        if ticker.cancelled then return end
+        fn(ticker)
+        if not ticker.cancelled then ticker.timer = C_Timer.NewTimer(delay, tick) end
+    end
+    ticker.timer = C_Timer.NewTimer(delay, tick)
+    return ticker
+end
+C_Timer.NewTicker = newTicker
 function GetTime() return FAKE.time end
 function GetLocale() return FAKE.locale or 'esES' end
 function strtrim(text) return (text:gsub('^%s+', ''):gsub('%s+$', '')) end
@@ -418,6 +434,9 @@ function FAKE.InstallBaganator()
     return state
 end
 function FAKE.Reset()
+    hooksecurefunc = secureHook
+    C_Timer.NewTicker = newTicker
+    LeaPlusLC, debugstack, GetCoinTextureString, UseContainerItem = nil, nil, nil, nil
     GQ, C_EquipmentSet, GetEquipmentSetItemIDs, GetNumEquipmentSets, GetEquipmentSetInfo = nil, nil, nil, nil, nil
     Auctionator, ColorPickerFrame = nil, nil
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
@@ -456,6 +475,7 @@ function FAKE.Reset()
     if ns and ns.Questie then ns.Questie.ResetState() end
     if ns and ns.Marks then ns.Marks.ResetState() end
     if ns and ns.Merchant then ns.Merchant.ResetState() end
+    if ns and ns.AutoSell then ns.AutoSell.ResetState() end
     if ns and ns.Bags then ns.Bags.ResetState() end
     if ns and ns.Blizzard then ns.Blizzard.ResetState() end
     if ns and ns.Loot then ns.Loot.ResetState() end

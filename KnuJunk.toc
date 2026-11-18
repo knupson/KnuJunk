@@ -47,6 +47,7 @@ Bags\Generic.lua
 Loot.lua
 Overrides.lua
 Merchant.lua
+AutoSell.lua
 Tooltip.lua
 Options.lua
 Commands.lua
