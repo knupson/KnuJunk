@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Venta automática de moneditas al abrir un vendedor: una ranura cada 0,2 s, hasta 12 por visita, revalidación de GUID, marca y bloqueos, espera fuera de combate, opciones en General, resumen y detección de otros vendedores sin modificar sus ajustes; pendiente probar en Forever.
+
 - Regla «Equipo que no te sirve (según GearQuest)», activada por defecto: monedita, subasta o tacho según ligadura y precios, con protecciones, conjuntos guardados, estado en Reglas y motivo en el tooltip.
 
 - Un ícono por ítem: Protegido, misión activa, profesión propia/ajena, Subastar (Auctionator), Vender, Tirar o Útil, con prioridad uniforme en bolsas, banco vivo y botín.

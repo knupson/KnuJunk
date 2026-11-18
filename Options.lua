@@ -14,7 +14,7 @@ local function L(key) return ns.L[key] end
 -- Cada interruptor: ruta en ns.DB, texto y ayuda de una linea (claves en ingles, ver Locales.lua).
 Options.TOGGLES = {
     { section = 'Marks', path = 'enabled', label = 'Enable KnuJunk',
-        help = 'Master switch: turns icons and merchant protection off. KnuJunk never sells anything on its own.' },
+        help = 'Master switch: turns icons, merchant protection and automatic selling off.' },
     { section = 'Marks', path = 'protectKeep', label = 'Protect protected items at the merchant',
         help = 'Locks them while the merchant is open; right-click asks before selling.' },
     { section = 'Marks', path = 'show.loot', label = 'Marks in loot',
@@ -35,6 +35,10 @@ for index, kind in ipairs(ns.IconKinds) do
     table.insert(Options.TOGGLES, 3 + index, { section = 'Icons', path = 'show.' .. kind, label = ICON_LABELS[kind], help = nil })
 end
 table.insert(Options.TOGGLES, 12, { section = 'Icons', path = 'icons.background', label = 'Dark background behind the icon', help = 'Helps distinguish the icon from the item.' })
+Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.enabled', label = 'Automatic selling',
+    help = 'Opening a merchant sells only items with a coin icon. Never protected items.' }
+Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.graysOnly', label = 'Grays only',
+    help = 'Automatically sell only poor-quality items with a coin icon.' }
 
 -- Valor de una ruta de ns.DB ('show.coin'); nil si falta algun tramo.
 local function lookup(path)
@@ -273,7 +277,7 @@ local function toggleRow(panel, toggle)
     panel.checks[toggle.path] = check
 end
 
-local LIMITS = { ['icons.size'] = {10,32}, ['icons.opacity'] = {.3,1},
+local LIMITS = { ['autoSell.max'] = {1,12}, ['icons.size'] = {10,32}, ['icons.opacity'] = {.3,1},
     ['auction.factor'] = {1.5,5}, ['auction.minCopper'] = {0,1000000} }
 local CHOICES = { ['icons.corner'] = { TOPLEFT=true, TOPRIGHT=true, BOTTOMLEFT=true, BOTTOMRIGHT=true },
     ['icons.coinStyle'] = { Blizzard=true, KnuJunk=true } }
@@ -281,6 +285,7 @@ function Options.SetValue(path, value)
     if LIMITS[path] then
         if type(value) ~= 'number' or value ~= value then return false end
         value = math.max(LIMITS[path][1], math.min(LIMITS[path][2], value))
+        if path == 'autoSell.max' then value = math.floor(value) end
     elseif not (CHOICES[path] and CHOICES[path][value]) then return false end
     local group, key = path:match('^([^.]+)%.([^.]+)$')
     if ns.DB[group][key] == value then return false end
@@ -663,6 +668,9 @@ local function refreshFooter(panel)
 end
 
 local function refresh(panel)
+    local sellers = ns.AutoSell.OtherSellers()
+    panel.autoSellWarnings.Leatrix_Plus:SetText(sellers.Leatrix_Plus and L('Leatrix Plus also sells junk automatically: turn it off in its options so only KnuJunk coin items are sold.') or '')
+    panel.autoSellWarnings.ElvUI:SetText(sellers.ElvUI and L('ElvUI also sells junk automatically: turn it off in Bags > Vendor Grays so only KnuJunk coin items are sold.') or '')
     for _, control in pairs(panel.controls) do control.refresh() end
     for kind, swatch in pairs(panel.swatches) do
         local color = ns.Marks.Color(kind)
@@ -802,6 +810,11 @@ function Options.Build()
         end)
     end
     for _, toggle in ipairs(Options.TOGGLES) do toggleRow(panel, toggle) end
+    sliderRow(panel, 'General', 'autoSell.max', 'Maximum per visit', 1, 12, 1, 1)
+    panel.autoSellWarnings = {
+        Leatrix_Plus = controlLine(panel, 'General', '', 'muted'),
+        ElvUI = controlLine(panel, 'General', '', 'muted'),
+    }
     bindingRow(panel)
     customization(panel)
 

@@ -36,6 +36,7 @@ function ns.MigrateIconColors(colors)
 end
 ns.Defaults.icons = { size = 14, opacity = 1, background = true, corner = 'TOPRIGHT', coinStyle = 'Blizzard', colors = ns.IconColors }
 ns.Defaults.auction = { factor = 2, minCopper = 100 }
+ns.Defaults.autoSell = { enabled = true, graysOnly = false, max = 12 }
 ns.Defaults.ui = { tab = 'General' }
 for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
 ns.Print = KL:NewPrinter('Junk')

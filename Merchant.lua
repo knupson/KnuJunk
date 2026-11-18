@@ -4,6 +4,7 @@ ns.Merchant = Merchant
 
 local opened, syncing = false, false
 local locked, allowed = {}, {}
+function Merchant.IsLocked(guid) return locked[guid] == true end
 local buttons = setmetatable({}, { __mode = 'k' })
 
 -- Toda API del cliente queda aislada; false explícito también indica fallo.
