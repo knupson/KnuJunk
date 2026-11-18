@@ -163,12 +163,23 @@ end
 -- Indice item -> misiones
 -- ---------------------------------------------------------------------------
 
+-- Mascara de bits valida: numero entero, finito y no negativo.
+local function validMask(value)
+    return type(value) == 'number' and value == value and value >= 0 and value < math.huge and value % 1 == 0
+end
+
+-- true si algun flag valido confirma que es repetible (REPEATABLE, diaria, semanal o mensual);
+-- false SOLO con specialFlags y questFlags presentes, validos y sin esos bits; nil = no se sabe
+-- (faltan o son invalidos: no confirman nada, y el clasificador no da moneda).
 local function isRepeatable(special, flags)
-    if hasBit(special, FLAG_REPEATABLE) then return true end
-    for _, flag in ipairs(FLAGS_RECURRING) do
-        if hasBit(flags, flag) then return true end
+    if validMask(special) and hasBit(special, FLAG_REPEATABLE) then return true end
+    if validMask(flags) then
+        for _, flag in ipairs(FLAGS_RECURRING) do
+            if hasBit(flags, flag) then return true end
+        end
     end
-    return false
+    if validMask(special) and validMask(flags) then return false end
+    return nil
 end
 
 local function validID(value) return type(value) == 'number' and value > 0 end
