@@ -7,14 +7,14 @@ local _, ns = ...
 -- ctx  = { class, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
 --          questInLog(questID)->true|false|nil, questItemsInLog = {[itemID]=true},
 --          questItemTitle(itemID)->titulo|nil,
---          questieUses(itemID)->{ {questID=, repeatable=, starter=} }|nil,
+--          questieUses(itemID)->{ {questID=, repeatable=, starter=, reputationFactions={factionID,...}} }|nil,
 --          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
 -- result = { mark = 'coin'|'hammer_mine'|'hammer_other'|'quest'|nil, reasons = { {kind=...} } }
 --   quest = true cuando el item lo pide una mision del diario Y es reactivo o herramienta: la marca
 --   es el martillo (las bolsas lo dibujan) y el botin dibuja el signo de mision.
 -- Misiones (decision del user, 2026-11-17): un item de mision solo es util si lo pide una mision que
 -- esta AHORA en el diario; si no, monedita 'quest_not_active' (futuras, no tomadas, hechas y
--- repetibles no tomadas no protegen). Los iniciadores siguen su propia regla: mision no hecha (o
+-- repetibles no tomadas no protegen, salvo entregas de reputación R20). Los iniciadores siguen su propia regla: mision no hecha (o
 -- sin saberlo) -> util ('quest_starter'); hecha y no repetible CONFIRMADO por QuestieDB (repeatable =
 -- false) -> monedita 'quest_done'; hecha sin saber si es repetible -> sin moneda
 -- ('quest_starter_done_unknown_repeat').
@@ -90,6 +90,16 @@ function ns.Classify(item, ctx)
     local crate = ns.Data.waylaidCrates and ns.Data.waylaidCrates[id]
     if crate then
         reasons[#reasons + 1] = { kind = 'waylaid_crate', sealed = crate == 'sealed' or nil }
+        return result
+    end
+
+    -- R18: evidencia de cerradura/llave prevalece sobre cualquier marca automática.
+    if item.classID == 13 or (ns.Data.keys and ns.Data.keys[id]) then
+        reasons[#reasons + 1] = { kind = 'key' }
+        return result
+    end
+    if ns.Data.lockboxes and ns.Data.lockboxes[id] then
+        reasons[#reasons + 1] = { kind = 'lockbox' }
         return result
     end
 
@@ -203,6 +213,17 @@ function ns.Classify(item, ctx)
     if classReason then
         reasons[#reasons + 1] = classReason
         return result
+    end
+
+    -- R20: excepción del dueño a «fuera del diario = moneda». Sólo objetivos de entregas
+    -- repetibles que otorgan reputación; misión activa y profesión conservan su precedencia.
+    for _, use in ipairs(questUses) do
+        if use.repeatable == true and type(use.reputationFactions) == 'table' and #use.reputationFactions > 0 then
+            local factions = {}
+            for i, factionID in ipairs(use.reputationFactions) do factions[i] = factionID end
+            reasons[#reasons + 1] = { kind = 'reputation_token', factionIDs = factions, questID = use.questID }
+            return result
+        end
     end
 
     -- Iniciador de mision cuya mision no esta confirmada como hecha (false o nil): es util,

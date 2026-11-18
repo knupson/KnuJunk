@@ -1,5 +1,10 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Key: opens a lock; keep it'] = 'Llave: abre una cerradura; conservala',
+    ['Locked box: open it before selling (lockpick or key)'] = 'Caja cerrada: abrila antes de venderla (ganzúa o llave)',
+    ['Turn in for reputation: %s'] = 'Se entrega por reputación: %s',
+    ['unknown faction'] = 'facción desconocida',
+    ['Faction #%d'] = 'Facción #%d',
     ['Junk: sells'] = 'Basura: se vende',
     ['Quest finished: %s'] = 'Misión terminada: %s',
     ['Active quest: %s'] = 'Misión activa: %s',

@@ -24,6 +24,8 @@ local _, ns = ...
 --   requiredClasses     mascara de clases (nil o 0 = sin restriccion). Bits de `Enum.classKeys[TOKEN]`.
 --   specialFlags        bit 1 = REPEATABLE.
 --   questFlags          DAILY 4096, WEEKLY 32768, MONTHLY 65536 (se tratan como repetibles).
+--   reputationReward    {{factionID, valor}, ...}; sólo valor > 0 y objetivos de item [3]
+--                       de una misión repetible generan reputationFactions (R20).
 -- Otros campos de LibQuestieDB: `Quest.GetAllIds()` (lista ascendente, compartida, solo lectura),
 -- `Enum.factionRaceMasks.Alliance/Horde`. Con Questie presente se espera a `Questie.API.isReady`
 -- (API publica estable, Public/RegisterOnReady.lua): hasta entonces Questie aun aplica sus
@@ -199,10 +201,14 @@ local function indexQuest(source, items, questID)
     local sourceItem = get(questID, 'sourceItemId')
     local startedBy = get(questID, 'startedBy')
 
-    local ids = {}
+    local ids, turnIns = {}, {}
     if type(objectives) == 'table' then
         if type(objectives[3]) == 'table' then
-            for _, entry in ipairs(objectives[3]) do ids[#ids + 1] = type(entry) == 'table' and entry[1] or entry end
+            for _, entry in ipairs(objectives[3]) do
+                local itemID = type(entry) == 'table' and entry[1] or entry
+                ids[#ids + 1] = itemID
+                if validID(itemID) then turnIns[itemID] = true end
+            end
         end
         if type(objectives[6]) == 'table' then
             for _, entry in ipairs(objectives[6]) do if type(entry) == 'table' then ids[#ids + 1] = entry[3] end end
@@ -251,11 +257,32 @@ local function indexQuest(source, items, questID)
         return { questID = questID, races = base.races, classes = base.classes, repeatable = base.repeatable,
             starter = starter or nil }
     end
-    local record, starterRecord
+    -- Contrato 4: reputationReward = {{factionID, valor}, ...}. Un campo opcional
+    -- ilegible no invalida el índice de misiones; no se inventa una recompensa.
+    local factions = {}
+    if next(turnIns) and newRecord(false).repeatable == true then
+        local good, rewards = pcall(get, questID, 'reputationReward')
+        if good and type(rewards) == 'table' then
+            local seen = {}
+            for _, reward in ipairs(rewards) do
+                if type(reward) == 'table' and validID(reward[1]) and type(reward[2]) == 'number'
+                    and reward[2] > 0 and not seen[reward[1]] then
+                    factions[#factions + 1], seen[reward[1]] = reward[1], true
+                end
+            end
+        end
+    end
+    local record, turnInRecord, starterRecord
     for _, itemID in ipairs(ids) do
         if validID(itemID) then
-            record = record or newRecord(false)
-            addItem(items, itemID, record)
+            if turnIns[itemID] and #factions > 0 then
+                turnInRecord = turnInRecord or newRecord(false)
+                turnInRecord.reputationFactions = factions
+                addItem(items, itemID, turnInRecord)
+            else
+                record = record or newRecord(false)
+                addItem(items, itemID, record)
+            end
         end
     end
     for _, itemID in ipairs(starterIds) do
@@ -354,13 +381,20 @@ local function usesFor(itemID)
     for _, record in ipairs(records) do
         if canDo(record, info) then
             uses = uses or {}
-            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable, starter = record.starter }
+            local factions
+            if record.reputationFactions then
+                factions = {}
+                for i, id in ipairs(record.reputationFactions) do factions[i] = id end
+            end
+            uses[#uses + 1] = { questID = record.questID, repeatable = record.repeatable, starter = record.starter,
+                reputationFactions = factions }
         end
     end
     return uses
 end
 
--- { {questID=, repeatable=bool, starter=true|nil}, ... } con las misiones (starter: el item la inicia) que podria hacer este personaje y que usan
+-- { {questID=, repeatable=bool, starter=true|nil, reputationFactions={id,...}|nil}, ... }
+-- con las misiones (starter: el item la inicia) que podria hacer este personaje y que usan
 -- el item, o nil (sin QuestieDB, indice aun sin terminar, item sin misiones o cualquier error).
 -- Nunca lanza.
 function Questie.Uses(itemID)

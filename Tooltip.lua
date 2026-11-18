@@ -119,8 +119,25 @@ local function byFaction(horde, alliance)
     return horde .. ' / ' .. alliance
 end
 
--- Lineas {text, r, g, b} de un enlace de item; vacio si no hay marca ni override. bound = true si el
--- propio tooltip confirma que el ejemplar esta ligado (ver boundFromTooltip); nil = no se sabe.
+local function reputationNames(ids)
+    local names = {}
+    for _, id in ipairs(ids or {}) do
+        local name
+        if type(C_Reputation) == 'table' and type(C_Reputation.GetFactionDataByID) == 'function' then
+            local good, data = pcall(C_Reputation.GetFactionDataByID, id)
+            if good and type(data) == 'table' then name = data.name end
+        end
+        if (type(name) ~= 'string' or name == '') and type(GetFactionInfoByID) == 'function' then
+            local good, value = pcall(GetFactionInfoByID, id)
+            if good then name = value end
+        end
+        names[#names + 1] = type(name) == 'string' and name ~= '' and name or ns.L['Faction #%d']:format(id)
+    end
+    return #names > 0 and table.concat(names, ', ') or ns.L['unknown faction']
+end
+
+-- Líneas {text, r, g, b}, incluidos motivos de protección sin marca. bound = true si el
+-- propio tooltip confirma que el ejemplar está ligado (ver boundFromTooltip); nil = no se sabe.
 function Tooltip.Lines(link, bound)
     local lines = {}
     if not enabled() or not link then return lines end
@@ -142,6 +159,12 @@ function Tooltip.Lines(link, bound)
             add(L['Marked by hand: keep'], WHITE)
         elseif kind == 'override_sell' then
             add(L['Marked by hand: sell'], WHITE, 'coin')
+        elseif kind == 'key' then
+            add(L['Key: opens a lock; keep it'], WHITE)
+        elseif kind == 'lockbox' then
+            add(L['Locked box: open it before selling (lockpick or key)'], WHITE)
+        elseif kind == 'reputation_token' then
+            add(L['Turn in for reputation: %s']:format(reputationNames(reason.factionIDs)), WHITE)
         elseif kind == 'library_book' then
             add(L['Library book: turn it in to the librarian (%s)']:format(
                 byFaction(L['Owen Thadd in Undercity'], L['Garion Wendell in Stormwind'])), WHITE)
