@@ -17,6 +17,7 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ['GearQuest detected: %s'] = 'GearQuest detectado: %s',
     ['Not useful to you: %s'] = 'No te sirve: %s',
     ['%dg %ds %dc'] = '%do %dp %dc',
+    ['%dg'] = '%do', ['%ds'] = '%dp', ['%dc'] = '%dc',
     ['Legacy widget'] = 'widget anterior',
     ["Protect / unprotect the item under the mouse"] = "Proteger / desproteger el ítem bajo el mouse",
     ["Protected (by hand)"] = "Protegido (a mano)",

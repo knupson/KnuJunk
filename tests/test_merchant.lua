@@ -181,7 +181,8 @@ test('vendedor: sólo abrir y cerrar refrescan las bolsas', function()
     -- Registry también escucha BAG_UPDATE_DELAYED: aislar el manejador de Merchant.
     local merchant
     for _, frame in ipairs(FAKE.frames) do
-        if frame.events.MERCHANT_SHOW and frame.events.BAG_UPDATE_DELAYED then merchant = frame end
+        if frame.events.MERCHANT_SHOW and frame.events.BAG_UPDATE_DELAYED
+            and frame.events.PLAYER_REGEN_DISABLED then merchant = frame end
     end
     ok(merchant)
     local function fire(event) merchant:GetScript('OnEvent')(merchant, event) end

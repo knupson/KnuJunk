@@ -122,6 +122,7 @@ end
 -- cuando solo cambiaron las bolsas: los adaptadores con bagUpdates = false (el addon ya redibuja
 -- sus botones) se saltean salvo que en la misma rafaga haya otro pedido.
 function Bags.RefreshAll(reason)
+    if ns.LootAdvisor then ns.LootAdvisor.Invalidate() end
     if reason ~= 'bags' then contextPending = true end
     if not (C_Timer and C_Timer.After) then return refreshNow() end
     if refreshPending then return end

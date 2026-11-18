@@ -1,6 +1,11 @@
 local _, ns = ...
 local Advisor = {}
 ns.LootAdvisor = Advisor
+local snapshot
+
+function Advisor.Invalidate()
+    snapshot = nil
+end
 
 local function safe(fn, ...)
     if type(fn) ~= 'function' then return end
@@ -9,9 +14,7 @@ local function safe(fn, ...)
 end
 
 local function money(value)
-    local text = safe(GetCoinTextureString, value)
-    if type(text) == 'string' then return text end
-    return ns.L['%dg %ds %dc']:format(math.floor(value / 10000), math.floor(value / 100) % 100, value % 100)
+    return ns.FormatMoney(value)
 end
 
 local function unitValue(item)
@@ -36,52 +39,74 @@ local function accepts(family, itemFamily)
     return false
 end
 
+local function inventory()
+    local context = ns.Player.GetContext()
+    if snapshot and snapshot.context == context then return snapshot end
+    local containers = C_Container or {}
+    local freeAPI = containers.GetContainerNumFreeSlots or GetContainerNumFreeSlots
+    if type(freeAPI) ~= 'function' then return end
+    local data = { context = context, bags = {}, items = {} }
+    for bag = 0, 4 do
+        local free, family = safe(freeAPI, bag)
+        if type(free) ~= 'number' then return end
+        data.bags[bag] = { free = free, family = family }
+        local size = safe(containers.GetContainerNumSlots or GetContainerNumSlots, bag) or 0
+        for slot = 1, size do
+            local item = ns.Player.ReadItem(bag, slot)
+            if item then
+                local info = safe(containers.GetContainerItemInfo, bag, slot)
+                local count = type(info) == 'table' and info.stackCount
+                if not count then local _, legacyCount = safe(GetContainerItemInfo, bag, slot); count = legacyCount end
+                count = type(count) == 'number' and count or 1
+                local verdict = ns.Classify(item, context)
+                local value
+                if verdict and not verdict.pending and not verdict.uncertain and not verdict.quest
+                    and (verdict.mark == 'trash' or verdict.mark == 'coin') then
+                    value = verdict.mark == 'trash' and 0 or unitValue(item) * count
+                end
+                data.items[#data.items + 1] = { item = item, count = count, bag = bag, slot = slot, value = value }
+            end
+        end
+    end
+    snapshot = data
+    return data
+end
+
 local function advice(slot)
     if not ns.DB or ns.DB.enabled == false or not ns.DB.lootAdvisor or ns.DB.lootAdvisor.enabled == false
         or not ns.Loot.IsShown() then return end
     local link = safe(GetLootSlotLink, slot)
     local item = link and ns.Player.ReadLink(link)
     if not item then return end
-    local containers = C_Container or {}
-    local freeAPI = containers.GetContainerNumFreeSlots or GetContainerNumFreeSlots
-    if type(freeAPI) ~= 'function' then return end
+    local data = inventory()
+    if not data then return end
     local family = safe(C_Item and C_Item.GetItemFamily or GetItemFamily, link)
+    local free = 0
     for bag = 0, 4 do
-        local free, bagFamily = safe(freeAPI, bag)
-        if type(free) ~= 'number' then return end -- no afirmar bolsa llena sin datos
-        if free > 0 and accepts(bagFamily, family) then return end
+        if accepts(data.bags[bag].family, family) then free = free + data.bags[bag].free end
     end
     local _, _, quantity = safe(GetLootSlotInfo, slot)
     quantity = type(quantity) == 'number' and quantity > 0 and quantity or 1
     local stackOK, stack = pcall(function() return select(8, GetItemInfo(link)) end)
-    stack = stackOK and type(stack) == 'number' and stack or 1
-    local context = ns.Player.GetContext()
-    local cheapest
-    for bag = 0, 4 do
-        local size = safe(containers.GetContainerNumSlots or GetContainerNumSlots, bag) or 0
-        for index = 1, size do
-            local stock = ns.Player.ReadItem(bag, index)
-            if stock then
-                local info = safe(containers.GetContainerItemInfo, bag, index)
-                local count = type(info) == 'table' and info.stackCount
-                if not count then local _, legacyCount = safe(GetContainerItemInfo, bag, index); count = legacyCount end
-                count = type(count) == 'number' and count or 1
-                if stock.id == item.id and count < stack and stack - count >= quantity then
-                    return { kind = 'stack', good = true, text = ns.L['Fits in a stack'], short = ns.L['Fits in a stack'] }
-                end
-                local verdict = ns.Classify(stock, context)
-                if verdict and not verdict.pending and not verdict.uncertain and not verdict.quest
-                    and (verdict.mark == 'trash' or verdict.mark == 'coin') then
-                    local value = verdict.mark == 'trash' and 0 or unitValue(stock) * count
-                    if not cheapest or value < cheapest.value then
-                        cheapest = { link = stock.link or tostring(stock.id), value = value, bag = bag, slot = index }
-                    end
-                end
+    stack = stackOK and type(stack) == 'number' and stack > 0 and stack or 1
+    local cheapest, capacity = nil, 0
+    for _, entry in ipairs(data.items) do
+        if accepts(data.bags[entry.bag].family, family) then
+            local stock = entry.item
+            if stock.id == item.id then capacity = capacity + math.max(0, stack - entry.count) end
+            if entry.value and (not cheapest or entry.value < cheapest.value) then
+                cheapest = { link = stock.link or tostring(stock.id), value = entry.value, bag = entry.bag, slot = entry.slot }
             end
         end
     end
+    if capacity >= quantity then
+        return { kind = 'stack', good = true, text = ns.L['Fits in a stack'], short = ns.L['Fits in a stack'] }
+    end
+    local needed = math.ceil((quantity - capacity) / stack) - free
+    if needed <= 0 then return end
+    if needed > 1 then cheapest = nil end -- una sola ranura liberada no alcanza
     local value = unitValue(item) * quantity
-    local verdict = ns.Classify(item, context)
+    local verdict = ns.Classify(item, data.context)
     local quest = verdict and (verdict.mark == 'quest' or verdict.quest == true)
     local result = { candidate = cheapest, value = value, good = quest or (cheapest and cheapest.value < value) or false }
     if quest then

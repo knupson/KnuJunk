@@ -41,6 +41,22 @@ ns.Defaults.autoSell = { enabled = true, graysOnly = false, max = 12 }
 ns.Defaults.ui = { tab = 'General' }
 for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
 ns.Print = KL:NewPrinter('Junk')
+
+-- Dinero legible: usa el formato del juego si existe; si no, sólo las unidades distintas de cero
+-- («30p 48c», no «0o 30p 48c»; visto en el juego 2026-11-18).
+function ns.FormatMoney(value)
+    value = math.floor(tonumber(value) or 0)
+    if type(GetCoinTextureString) == 'function' then
+        local ok, text = pcall(GetCoinTextureString, value)
+        if ok and type(text) == 'string' and text ~= '' then return text end
+    end
+    local gold, silver, copper = math.floor(value / 10000), math.floor(value / 100) % 100, value % 100
+    local parts = {}
+    if gold > 0 then parts[#parts + 1] = ns.L['%dg']:format(gold) end
+    if silver > 0 then parts[#parts + 1] = ns.L['%ds']:format(silver) end
+    if copper > 0 or #parts == 0 then parts[#parts + 1] = ns.L['%dc']:format(copper) end
+    return table.concat(parts, ' ')
+end
 ns.Data = ns.Data or {}
 
 -- SkillLine IDs de profesion de WoW Classic: [skillLineID] = true. Debe coincidir con

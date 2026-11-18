@@ -435,6 +435,25 @@ local function gearMissText(item, ctx, result)
     if type(root.Data.GetEntriesByItemId) ~= 'function' then return end
     local okEntries, entries = pcall(root.Data.GetEntriesByItemId, root.Data, item.id)
     if not okEntries or type(entries) ~= 'table' or next(entries) == nil then return end
+    -- Mismo criterio que el tooltip de GearQuest (Data.lua:7279-7281): si EntryForItemLink da una
+    -- fila puntuada para este enlace, el ítem TE SIRVE, aunque GearScoreMissText devuelva un texto
+    -- de diagnóstico. Sin esa API, o si falla, no se decide nada.
+    if type(root.Data.EntryForItemLink) ~= 'function' then return end
+    local okEntry, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
+    if not okEntry or entry ~= nil then return end
+    -- GearQuest puede simular otra clase, especialización o nivel (Preview.lua:929-979,
+    -- Core.lua:621): con simulación activa o perfil distinto al personaje real, no se decide nada.
+    local function gq(method)
+        if type(root[method]) ~= 'function' then return nil, false end
+        local ok, value = pcall(root[method], root)
+        return value, ok
+    end
+    local preview, okPreview = gq('IsPreviewEnabled')
+    if not okPreview or preview ~= false then return end
+    local level, okLevel = gq('GetEffectiveLevel')
+    if not okLevel or type(ctx.level) ~= 'number' or level ~= ctx.level then return end
+    local class, okClass = gq('GetEffectiveClass')
+    if not okClass or type(ctx.class) ~= 'string' or class ~= ctx.class then return end
     local success, text = pcall(root.Data.GearScoreMissText, root.Data, item.link)
     if success and type(text) == 'string' and text ~= '' then return text end
 end
