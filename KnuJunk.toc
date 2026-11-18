@@ -19,6 +19,7 @@ Data\Tools.lua
 Data\Special.lua
 Data\ClassReagents.lua
 Data\Locks.lua
+Data\Recipes.lua
 Data\ClassGear.lua
 Classify.lua
 Player.lua

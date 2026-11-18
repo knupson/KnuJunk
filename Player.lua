@@ -374,12 +374,18 @@ local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
     local professions = readProfessions()
+    local level
+    if type(UnitLevel) == 'function' then
+        local good, value = pcall(UnitLevel, 'player')
+        if good and type(value) == 'number' and value > 0 then level = value end
+    end
     local questItems, incomplete, found = buildQuestItems()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
     -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
     if ns.Questie and type(ns.Questie.Pending) == 'function' and ns.Questie.Pending() then incomplete = true end
     local ctx = {
         class = class,
+        level = level,
         professions = professions,
         isQuestDone = isQuestDone,
         questInLog = questInLogFor(found),
@@ -390,7 +396,7 @@ local function buildContext()
         overrides = ns.DB and ns.DB.overrides or {},
     }
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
-    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
+    signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids) }, '|')
     return ctx
 end
@@ -681,12 +687,13 @@ function Player.ReadLink(link)
     if type(link) == 'number' then id = link
     elseif type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) end
     if not id then return nil end
-    local _, _, quality, _, _, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
+    local _, _, quality, _, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
     local effect = itemEffect(id)
     return {
         id = id,
         quality = quality,
+        reqLevel = type(reqLevel) == 'number' and reqLevel or nil,
         price = price or 0,
         classID = classID,
         subclassID = subclassID,

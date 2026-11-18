@@ -222,6 +222,12 @@ function Tooltip.Lines(link, bound)
             add(L["Starts a quest you haven't done: %s"]:format(questName(reason.questID)), WHITE, 'quest')
         elseif kind == 'quest_starter_done_unknown_repeat' and mark == nil then
             add(L["Quest turned in; unknown if it's repeatable"], WHITE)
+        elseif kind == 'future_level' and mark == nil then
+            add(L['Usable from level %d']:format(reason.level), WHITE)
+        elseif kind == 'recipe' and shows('hammer') then
+            local text = L['Recipe for %s']:format(professionList({ reason.skillLine }))
+            if reason.rank then text = text .. L[', requires %d']:format(reason.rank) end
+            add(text, mark == 'hammer_mine' and GREEN or GRAY, 'hammer')
         elseif kind == 'profession' and shows('hammer') then
             if mark == 'hammer_mine' then
                 add(L['Your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')

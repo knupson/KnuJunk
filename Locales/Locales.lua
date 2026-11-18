@@ -1,5 +1,8 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Recipe for %s'] = 'Receta de %s',
+    [', requires %d'] = ', requiere %d',
+    ['Usable from level %d'] = 'Podés usarlo desde nivel %d',
     ['Key: opens a lock; keep it'] = 'Llave: abre una cerradura; conservala',
     ['Locked box: open it before selling (lockpick or key)'] = 'Caja cerrada: abrila antes de venderla (ganzúa o llave)',
     ['Turn in for reputation: %s'] = 'Se entrega por reputación: %s',

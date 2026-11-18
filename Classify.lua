@@ -1,10 +1,10 @@
 local _, ns = ...
 
 -- Clasificador de marcas: funcion pura. Regla de oro: ante cualquier duda, sin marca.
--- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price, isBound }
+-- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price, isBound, reqLevel }
 --   isBound = true solo si la bolsa confirma que el ejemplar esta ligado; false/nil = no (o no se sabe).
 --   hasUseOrEquipSpell = true tambien cuando no se puede saber (sin API de hechizos).
--- ctx  = { class, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
+-- ctx  = { class, level, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
 --          questInLog(questID)->true|false|nil, questItemsInLog = {[itemID]=true},
 --          questItemTitle(itemID)->titulo|nil,
 --          questieUses(itemID)->{ {questID=, repeatable=, starter=, reputationFactions={factionID,...}} }|nil,
@@ -151,11 +151,12 @@ function ns.Classify(item, ctx)
     if lockReason then reasons[#reasons + 1] = lockReason end
 
     -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
-    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, gris si no; nunca
-    -- monedita automatica, aunque sea gris. Si es las dos cosas, manda el reactivo salvo que solo la
+    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, amarillo si no; nunca
+    -- monedita automatica, aunque el item sea gris. Si es las dos cosas, manda el reactivo salvo que solo la
     -- herramienta sea de una profesion tuya.
     local reagentLines = ns.Data.reagents and ns.Data.reagents[id]
     local toolLines = ns.Data.tools and ns.Data.tools[id]
+    local recipe = ns.Data.recipes and ns.Data.recipes[id]
     -- Las cañas de pescar no figuran en spelltotems de Forever (Pesca no las pide como herramienta),
     -- pero son la herramienta de Pesca: arma (classID 2) de subclase 20.
     if not toolLines and item.classID == 2 and item.subclassID == 20 then toolLines = { 356 } end
@@ -173,7 +174,7 @@ function ns.Classify(item, ctx)
     end
     local mineReagent, mineTool = mineOf(reagentLines), mineOf(toolLines)
     if #questReasons > 0 then
-        if reagentLines or toolLines then result.quest = true else
+        if reagentLines or toolLines or recipe then result.quest = true else
             result.mark = 'quest'
             return result
         end
@@ -185,6 +186,12 @@ function ns.Classify(item, ctx)
     elseif #mineTool > 0 then
         result.mark = 'hammer_mine'
         reasons[#reasons + 1] = { kind = 'profession_tool', professions = mineTool }
+        return result
+    end
+    -- R14: el rango o conocer ya la receta no autoriza venderla. Profesión ajena: amarillo.
+    if recipe then
+        result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
+        reasons[#reasons + 1] = { kind = 'recipe', skillLine = recipe.skillLine, rank = recipe.rank }
         return result
     end
     -- Reactivo o herramienta de un hechizo de clase (Data/ClassReagents.lua: runas del mago, ankh,
@@ -217,6 +224,8 @@ function ns.Classify(item, ctx)
         return result
     end
     if lockReason then return result end
+    -- Una receta sin profesión identificada tampoco es basura confirmada.
+    if item.classID == 9 then return result end
 
     -- R20: excepción del dueño a «fuera del diario = moneda». Sólo objetivos de entregas
     -- repetibles que otorgan reputación; misión activa y profesión conservan su precedencia.
@@ -243,6 +252,15 @@ function ns.Classify(item, ctx)
     -- dato): no se sabe si el item vuelve a servir, asi que ninguna moneda automatica.
     if starterQuest and questDone(ctx, starterQuest) and starterRepeat ~= false then
         reasons[#reasons + 1] = { kind = 'quest_starter_done_unknown_repeat', questID = starterQuest }
+        return result
+    end
+
+    -- R24: sólo subtipos que la clase puede llegar a usar, con ambos niveles conocidos.
+    local gear = ctx.class and ns.ClassGear[ctx.class]
+    local kind = item.classID == 4 and 'armor' or item.classID == 2 and 'weapon' or nil
+    if gear and kind and gear[kind][item.subclassID] == true
+        and type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level then
+        reasons[#reasons + 1] = { kind = 'future_level', level = item.reqLevel }
         return result
     end
 
