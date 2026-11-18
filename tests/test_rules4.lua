@@ -2,11 +2,11 @@ local function reason(r, kind)
     for _, v in ipairs(r.reasons) do if v.kind == kind then return v end end
 end
 local function context(rule)
-    return {level=40, class='HUNTER', professions={}, rules={[rule]=true},
+    return {level=40, class='MAGE', professions={}, rules={[rule]=true},
         bagStock={{id=117, usable=true}, {id=4540, usable=true},
             {id=2512, usable=true, bag=0, slot=1}, {id=2515, usable=true, bag=0, slot=2}}}
 end
-local function food() return {id=117,quality=1,price=5,classID=0,subclassID=5,effect='no'} end
+local function food() return {id=117,quality=1,price=5,classID=0,subclassID=5,effect='no',bag=0,slot=1} end
 local function ammo() return {id=2512,quality=1,price=5,classID=6,subclassID=2,effect='no',bag=0,slot=1} end
 local function recipe() return {id=2406,quality=1,price=5,classID=9,effect='no',knownRecipe=true,isBound=true} end
 
@@ -35,6 +35,97 @@ local function inventory()
         return {lines={{leftText='Recipe'},{leftText=FAKE.knownLine or 'Already known'}}}
     end
 end
+
+test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
+    local real=UnitClass
+    local builds=0
+    UnitClass=function(...) builds=builds+1; return real(...) end
+    local good,err=pcall(function()
+        ns.Player.GetContext(); eq(builds,1)
+        for _,event in ipairs({'BAG_UPDATE_DELAYED','SPELLS_CHANGED','LEARNED_SPELL_IN_TAB',
+            'PLAYER_EQUIPMENT_CHANGED','UNIT_INVENTORY_CHANGED','TOOLTIP_DATA_UPDATE','GET_ITEM_INFO_RECEIVED'}) do
+            FAKE.Fire(event,'player'); FAKE.Advance(0.25); ns.Player.GetContext()
+            eq(builds,1,event)
+        end
+        ns.DB.rules.food=true; ns.Player.Invalidate(); ns.Player.GetContext()
+        local before=builds
+        FAKE.Fire('UNIT_INVENTORY_CHANGED','pet'); FAKE.Advance(0.25); ns.Player.GetContext()
+        eq(builds,before)
+        FAKE.Fire('UNIT_INVENTORY_CHANGED','player'); FAKE.Advance(0.25); ns.Player.GetContext()
+        eq(builds,before+1)
+    end)
+    UnitClass=real
+    if not good then error(err,0) end
+end)
+
+test('Tanda4: cada opción habilita los cinco eventos opcionales', function()
+    for _,rule in ipairs({'food','ammo','knownRecipe'}) do
+        ns.DB.rules={[rule]=true}; ns.Player.Invalidate()
+        for _,event in ipairs({'BAG_UPDATE_DELAYED','SPELLS_CHANGED','LEARNED_SPELL_IN_TAB',
+            'PLAYER_EQUIPMENT_CHANGED','UNIT_INVENTORY_CHANGED'}) do
+            local before=ns.Player.GetContext()
+            FAKE.Fire(event,'player'); FAKE.Advance(0.25)
+            ok(ns.Player.GetContext()~=before,rule..' '..event)
+        end
+    end
+end)
+
+for _,event in ipairs({'TOOLTIP_DATA_UPDATE','GET_ITEM_INFO_RECEIVED'}) do
+    test('Tanda4: '..event..' llega durante el escaneo', function()
+        FAKE.items[990001]={name='Pendiente',quality=1,price=1,classID=0}
+        local ready=false
+        C_TooltipInfo.GetHyperlink=function()
+            return {dataInstanceID=990001,lines={{leftText='Pendiente'}, {leftText=ready and 'Uso: efecto' or nil}}}
+        end
+        eq(ns.Player.ReadLink(990001).effect,'unknown')
+        FAKE.questLog={{title='Zona',isHeader=true,isCollapsed=true}, {title='Misión',questID=7}}
+        local expand=C_QuestLog.ExpandQuestHeader
+        C_QuestLog.ExpandQuestHeader=function(...)
+            ready=true; FAKE.Fire(event,990001); return expand(...)
+        end
+        ns.Player.GetContext(); FAKE.Advance(0.01)
+        eq(ns.Player.ReadLink(990001).effect,'yes')
+    end)
+end
+
+test('R9: cazadores conservan comida y bebida para sus mascotas', function()
+    local i,c=food(),context('food'); c.class='HUNTER'
+    c.bagStock={{id=4541,usable=true}}
+    eq(ns.Classify(i,c).mark,nil)
+    i.id=5350; c.bagStock={{id=1205,usable=true}}
+    eq(ns.Classify(i,c).mark,nil)
+end)
+
+test('R9: sólo ejemplares en bolsas 0 a 4', function()
+    local i,c=food(),context('food'); c.bagStock={{id=4541,usable=true}}
+    for _,bag in ipairs({0,4}) do i.bag=bag; eq(ns.Classify(i,c).mark,'coin') end
+    for _,bag in ipairs({-1,5}) do i.bag=bag; eq(ns.Classify(i,c).mark,nil) end
+    i.bag=nil; eq(ns.Classify(i,c).mark,nil)
+    i.bag=0; i.slot=nil; eq(ns.Classify(i,c).mark,nil)
+end)
+
+test('R12/13: hechizo de enseñar permite moneda y conserva R14 sin condiciones', function()
+    local level,inv,spell=UnitLevel,GetInventoryItemID,GetItemSpell
+    local good,err=pcall(function()
+        inventory(); ns.DB.rules.knownRecipe=true; FAKE.bound['0:3']=true
+        GetItemSpell=function() return 'Teaches: Recipe',1234 end
+        local i=ns.Player.ReadItem(0,3); eq(i.effect,'yes'); eq(i.knownRecipe,true)
+        local c=context('knownRecipe')
+        local r=ns.Classify(i,c); eq(r.mark,'coin'); eq(reason(r,'recipe'),nil)
+        i.isBound=false; eq(ns.Classify(i,c).mark,nil)
+        i.isBound=true; i.price=0; eq(ns.Classify(i,c).mark,'hammer_other')
+        i.price=5; i.effect='unknown'; eq(ns.Classify(i,c).mark,'hammer_other')
+        i.effect='yes'; c.questLogIncomplete=true
+        r=ns.Classify(i,c); eq(r.mark,'hammer_other'); ok(reason(r,'recipe'))
+        c.questLogIncomplete=nil; i.isSetPiece=true; eq(ns.Classify(i,c).mark,'hammer_other')
+        c.professions[ns.Data.recipes[i.id].skillLine]=true
+        eq(ns.Classify(i,c).mark,'hammer_mine')
+        i.isSetPiece=nil; i.knownRecipe=nil; eq(ns.Classify(i,c).mark,'hammer_mine')
+        i.knownRecipe=true; c.rules={}; eq(ns.Classify(i,c).mark,'hammer_mine')
+    end)
+    UnitLevel,GetInventoryItemID,GetItemSpell=level,inv,spell
+    if not good then error(err,0) end
+end)
 
 test('R12/13: conocimiento por bolsa, global localizada, caché y evento de aprendizaje', function()
     local level,inv,global=UnitLevel,GetInventoryItemID,ITEM_SPELL_KNOWN
@@ -263,7 +354,7 @@ test('Tanda4: todas las protecciones prevalecen', function()
             c.bagStock[3]={id=2512,usable=true,bag=0,slot=1}; c.bagStock[4]={id=2515,usable=true,bag=0,slot=2}
             local tables={'reagents','tools','keys','libraryBooks','starters'}; local saved={}
             for _,k in ipairs(tables) do saved[k]=ns.Data[k][i.id] end
-            if protection=='effect' then i.effect='yes'
+            if protection=='effect' then i.effect=i.classID==9 and 'unknown' or 'yes'
             elseif protection=='set' then i.isSetPiece=true
             elseif protection=='quest' then c.questItemsInLog={[i.id]=true}
             elseif protection=='incomplete' then c.questLogIncomplete=true

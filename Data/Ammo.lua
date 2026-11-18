@@ -34,7 +34,6 @@ ns.Data.ammo = {
     [15997] = { dps = 17.7147789002, ilvl = 57, reqLevel = 52, subclass = 3 },
     [18042] = { dps = 17.7147789002, ilvl = 57, reqLevel = 52, subclass = 2 },
     [19082] = { dps = 0.95454597473, ilvl = 1, reqLevel = 1, subclass = 2 },
-    [19286] = { dps = 8.34091663361, ilvl = 45, reqLevel = 1, subclass = 3 },
     [19316] = { dps = 16.7881660461, ilvl = 54, reqLevel = 51, subclass = 2 },
     [19317] = { dps = 16.7881660461, ilvl = 54, reqLevel = 51, subclass = 3 },
     [274387] = { dps = 24.6173839569, ilvl = 65, reqLevel = 60, subclass = 2 },

@@ -37,6 +37,11 @@ class OptionalDataTest(unittest.TestCase):
         row.update(SpellID='433', Effect='6', EffectAura='29')
         self.assertIsNotNone(b.filtered_row('spelleffect', row, b.COLUMNS['spelleffect']))
 
+    def test_test_ammo_is_not_an_ordinary_alternative(self):
+        items = [{'ID': '19286', 'ClassID': '6', 'SubclassID': '3'}]
+        sparse = [{'ID': '19286', 'RequiredLevel': '1', 'ItemLevel': '45', 'OverallQualityID': '0'}]
+        self.assertEqual(b.compute_ammo(items, sparse, [], [{'ItemLevel': '45', 'Quality_0': '8.34'}]), {})
+
     def test_scoped_filter_keeps_all_food_effects_and_recipe_learning(self):
         columns = ['SpellID', 'Effect', 'EffectAura']
         buff = dict(SpellID='433', Effect='6', EffectAura='29')
@@ -67,7 +72,7 @@ class OptionalDataTest(unittest.TestCase):
                               raw('spelleffect'), raw('spellmisc'), raw('spellduration'))
         ammo = b.compute_ammo(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemdamageammo'))
         self.assertEqual(len(food), 131)
-        self.assertEqual(len(ammo), 36)
+        self.assertEqual(len(ammo), 35)
         for data, name in [(food, 'Food'), (ammo, 'Ammo')]:
             self.assertEqual(Path(b.DATA_DIR, name + '.lua').read_text(encoding='utf-8'),
                              b.render_optional_lua(data, name.lower(), build))

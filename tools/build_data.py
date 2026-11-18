@@ -472,6 +472,8 @@ def compute_food(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, mis
 def compute_ammo(item_rows, sparse_rows, link_rows, damage_rows):
     # Cualquier efecto hace que la munición sea especial: se conserva.
     special = {_int(r['ItemID']) for r in link_rows}
+    # Fast Test Ammo: munición de prueba, no una alternativa ordinaria de vendedor.
+    special.add(19286)
     damage = {_int(r['ItemLevel']): r for r in damage_rows}
     result = {}
     for item, subclass, sparse in _optional_items(item_rows, sparse_rows, 6, {2, 3}):

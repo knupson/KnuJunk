@@ -192,10 +192,13 @@ function ns.Classify(item, ctx)
     -- R14 por defecto; R12/R13 sólo difieren la receta conocida para evaluar todas las P.
     local knownRecipe = rules.knownRecipe == true and item.classID == 9 and item.knownRecipe == true
         and #questReasons == 0 and (item.isBound ~= true or (type(item.price) == 'number' and item.price > 0))
-    if recipe and not knownRecipe then
+    local recipeReasonIndex
+    if recipe then
         result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
         reasons[#reasons + 1] = { kind = 'recipe', skillLine = recipe.skillLine, rank = recipe.rank }
-        return result
+        if not knownRecipe then return result end
+        -- R14 queda de respaldo incluso si una protección corta antes del bloque opcional.
+        recipeReasonIndex = #reasons
     end
     -- Reactivo o herramienta de un hechizo de clase (Data/ClassReagents.lua: runas del mago, ankh,
     -- fragmento de alma, venenos...). Sin moneda y sin marca (nunca martillo, que es de profesiones);
@@ -276,7 +279,8 @@ function ns.Classify(item, ctx)
         effect = item.hasUseOrEquipSpell and 'yes' or 'no'
     end
     -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
-    if (effect == 'yes' and not (rules.food == true and item.restorationOnly == true
+    -- En recetas (clase 9), el uso que enseña no protege de R12/R13.
+    if (effect == 'yes' and item.classID ~= 9 and not (rules.food == true and item.restorationOnly == true
         and ns.Data.food and ns.Data.food[id])) or item.isSetPiece then
         reasons[#reasons + 1] = { kind = 'useful' }
         return result
@@ -287,6 +291,8 @@ function ns.Classify(item, ctx)
     -- Opcionales: después de TODAS las protecciones; diario incompleto nunca habilita moneda.
     if not unknownEffect and not ctx.questLogIncomplete and not logUnknown then
         if knownRecipe then
+            result.mark = nil
+            if recipeReasonIndex then table.remove(reasons, recipeReasonIndex) end
             if item.isBound == true then
                 result.mark = 'coin'
                 reasons[#reasons + 1] = { kind = 'recipe_known' }
@@ -295,7 +301,9 @@ function ns.Classify(item, ctx)
             end
             return result
         end
-        local food = rules.food == true and item.classID == 0 and item.subclassID == 5
+        -- Los cazadores conservan toda comida/bebida: sus mascotas comen comida común.
+        local food = rules.food == true and ctx.class ~= 'HUNTER' and item.classID == 0 and item.subclassID == 5
+            and item.bag and item.bag >= 0 and item.bag <= 4 and item.slot
             and ns.Data.food and ns.Data.food[id]
         if food and type(ctx.level) == 'number' and ctx.level >= food.reqLevel + 15 then
             for _, stock in ipairs(ctx.bagStock or {}) do
@@ -311,7 +319,7 @@ function ns.Classify(item, ctx)
         end
         local ammo = rules.ammo == true and item.classID == 6 and ns.Data.ammo and ns.Data.ammo[id]
         -- Sólo ejemplares de bolsas: el botín/banco/enlaces no acreditan la reserva.
-        if ammo and item.subclassID == ammo.subclass and item.bag and item.bag >= 0
+        if ammo and item.subclassID == ammo.subclass and item.bag and item.bag >= 0 and item.bag <= 4
             and item.slot and not item.equippedAmmo and type(ctx.level) == 'number' then
             local current, alternative, reserve = false, false, 0
             for _, stock in ipairs(ctx.bagStock or {}) do
@@ -333,10 +341,6 @@ function ns.Classify(item, ctx)
     end
     -- Conocida pero sin permiso de moneda: conserva la marca habitual de receta.
     if knownRecipe then
-        if recipe then
-            result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
-            reasons[#reasons + 1] = { kind = 'recipe', skillLine = recipe.skillLine, rank = recipe.rank }
-        end
         return result
     end
 

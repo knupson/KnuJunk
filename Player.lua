@@ -882,25 +882,25 @@ pcall(frame.RegisterEvent, frame, 'TOOLTIP_DATA_UPDATE')
 pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
 
 frame:SetScript('OnEvent', function(_, event, arg1)
-    if scanning then return end -- también antes de invalidar las cachés opcionales
     local rules = ns.DB and ns.DB.rules
+    local optionalEnabled = rules and (rules.food or rules.ammo or rules.knownRecipe)
+    -- Los datos pendientes también llegan al expandir/plegar el diario: no perder el reintento.
+    if event == 'TOOLTIP_DATA_UPDATE' or event == 'GET_ITEM_INFO_RECEIVED' then
+        if event == 'TOOLTIP_DATA_UPDATE' then onTooltipDataUpdate(arg1) else onItemInfo(arg1) end
+        if optionalEnabled and not scanning then
+            optionalRevision = optionalRevision + 1
+            markDirty()
+            scheduleCheck()
+        end
+        return
+    end
+    if scanning then return end
     local optionalEvent = event == 'BAG_UPDATE_DELAYED' or event == 'SPELLS_CHANGED'
         or event == 'LEARNED_SPELL_IN_TAB' or event == 'PLAYER_EQUIPMENT_CHANGED'
-        or event == 'UNIT_INVENTORY_CHANGED' or event == 'TOOLTIP_DATA_UPDATE'
-        or event == 'GET_ITEM_INFO_RECEIVED'
-    if optionalEvent and rules and (rules.food or rules.ammo or rules.knownRecipe) then
+        or event == 'UNIT_INVENTORY_CHANGED'
+    if optionalEvent then
+        if not optionalEnabled or (event == 'UNIT_INVENTORY_CHANGED' and arg1 ~= 'player') then return end
         optionalRevision = optionalRevision + 1
-        markDirty()
-        scheduleCheck()
-    end
-    -- Datos de tooltip o de item que llegan: solo adelantan reintentos de efectos pendientes, sin
-    -- ensuciar el contexto.
-    if event == 'TOOLTIP_DATA_UPDATE' then
-        onTooltipDataUpdate(arg1)
-        return
-    elseif event == 'GET_ITEM_INFO_RECEIVED' then
-        onItemInfo(arg1)
-        return
     end
     -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo
     -- total bajo un encabezado plegado): se olvida lo escaneado. QUEST_LOG_UPDATE no, porque es
