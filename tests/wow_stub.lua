@@ -434,6 +434,7 @@ function FAKE.InstallBaganator()
     return state
 end
 function FAKE.Reset()
+    CanMerchantRepair, GetRepairAllCost, RepairAllItems, GetMoney, IsInGuild, CanGuildBankRepair = nil, nil, nil, nil, nil, nil
     hooksecurefunc = secureHook
     C_Timer.NewTicker = newTicker
     LeaPlusDB, debugstack, GetCoinTextureString, UseContainerItem = nil, nil, nil, nil

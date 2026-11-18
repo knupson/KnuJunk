@@ -38,6 +38,7 @@ ns.Defaults.icons = { size = 14, opacity = 1, background = true, corner = 'TOPRI
 ns.Defaults.auction = { factor = 2, minCopper = 100 }
 ns.Defaults.lootAdvisor = { enabled = true }
 ns.Defaults.autoSell = { enabled = true, graysOnly = false, max = 12 }
+ns.Defaults.autoRepair = { enabled = true, guild = false }
 ns.Defaults.ui = { tab = 'General' }
 for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
 ns.Print = KL:NewPrinter('Junk')
