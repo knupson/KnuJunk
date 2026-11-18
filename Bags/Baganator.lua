@@ -190,6 +190,8 @@ end
 local function createWidget(itemButton)
     local texture = itemButton:CreateTexture(nil, 'OVERLAY', nil, 7)
     texture:SetSize(SIZE, SIZE)
+    -- pegada al borde de la esquina, igual que el JunkIcon de Baganator (API/ItemButton.lua:288)
+    texture.padding = 0
     return texture
 end
 
