@@ -106,8 +106,9 @@ local function style(texture, kind, mark)
     -- no lo tiene, la moneda de oro.
     local atlas = kind == 'coin' and texture.SetAtlas and C_Texture and C_Texture.GetAtlasInfo
         and C_Texture.GetAtlasInfo(COIN_ATLAS) and COIN_ATLAS
-    if atlas then texture:SetAtlas(atlas) else texture:SetTexture(TEXTURES[kind]) end
-    if not atlas then texture:SetTexCoord(0, 1, 0, 1) end
+    -- con el tamaño propio del atlas, igual que el JunkIcon de Blizzard que muestra Baganator
+    if atlas then texture:SetAtlas(atlas, true) else texture:SetTexture(TEXTURES[kind]) end
+    if not atlas then texture:SetTexCoord(0, 1, 0, 1); texture:SetSize(SIZE, SIZE) end
     texture:SetVertexColor(1, 1, 1)
     texture:SetAlpha(1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end
