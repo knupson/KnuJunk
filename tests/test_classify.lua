@@ -174,9 +174,9 @@ test('gris iniciador con mision hecha y no repetible -> coin', function()
     end)
 end)
 
-test('placas en MAGE -> coin class_cannot_use', function()
+test('placas en MAGE ligadas -> coin class_cannot_use', function()
     withData({}, {}, function()
-        local result = ns.Classify(item { classID = 4, subclassID = 4, quality = 2, subclassName = 'Placas' }, ctx { class = 'MAGE' })
+        local result = ns.Classify(item { classID = 4, subclassID = 4, quality = 2, subclassName = 'Placas', isBound = true }, ctx { class = 'MAGE' })
         eq(result.mark, 'coin')
         local reason = hasReason(result, 'class_cannot_use')
         eq(reason.classID, 4); eq(reason.subclassID, 4); eq(reason.subclassName, 'Placas')
@@ -306,6 +306,30 @@ test('item de mision: diario incompleto, reactivo o con efecto de uso -> sin mon
     end)
 end)
 
+-- Tanda 1, regla 8: el equipo que tu clase no puede usar da moneda SOLO si el ejemplar esta ligado
+-- (confirmado). Sin ligar o sin saberlo: sin moneda y un motivo neutro para el tooltip.
+test('equipo de otra clase sin ligar o sin saberlo -> sin moneda, motivo class_cannot_use_tradeable', function()
+    withData({}, {}, function()
+        for label, bound in pairs({ libre = false, desconocido = 'nil' }) do
+            local plate = item { classID = 4, subclassID = 4, quality = 2, subclassName = 'Placas' }
+            if bound ~= 'nil' then plate.isBound = bound end
+            local result = ns.Classify(plate, ctx { class = 'MAGE' })
+            eq(result.mark, nil, label)
+            ok(not hasReason(result, 'class_cannot_use'), label .. ': sin motivo de moneda')
+            local reason = hasReason(result, 'class_cannot_use_tradeable')
+            ok(reason, label .. ': motivo neutro')
+            eq(reason.subclassName, 'Placas'); eq(reason.classID, 4); eq(reason.subclassID, 4)
+        end
+        -- Gris sin ligar: la moneda del gris sigue; el motivo neutro tambien queda.
+        local gray = ns.Classify(item { classID = 4, subclassID = 4, quality = 0, price = 5 }, ctx { class = 'MAGE' })
+        eq(gray.mark, 'coin'); ok(hasReason(gray, 'gray'), 'gris')
+        ok(not hasReason(gray, 'class_cannot_use'), 'sin moneda por clase')
+        -- Usable por la clase: ningun motivo de clase.
+        local cloth = ns.Classify(item { classID = 4, subclassID = 1, quality = 2, isBound = true }, ctx { class = 'MAGE' })
+        eq(cloth.mark, nil); eq(#cloth.reasons, 0)
+    end)
+end)
+
 -- Correccion del user (2026-11-17): un iniciador cuya mision no hiciste es util aunque no este en
 -- el diario; con la mision hecha (y no repetible) es basura.
 test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_done', function()
@@ -346,7 +370,7 @@ test('questLogIncomplete: ninguna moneda salvo override_sell', function()
         local gray = ns.Classify(item { quality = 0, price = 5 }, incomplete)
         eq(gray.mark, nil); ok(hasReason(gray, 'quest_log_incomplete'), 'reason')
         ok(not hasReason(gray, 'gray'), 'sin reason gray')
-        local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false }
+        local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false, isBound = true }
         local second = ns.Classify(armor, incomplete)
         eq(second.mark, nil); ok(hasReason(second, 'quest_log_incomplete'), 'class_cannot_use tampoco da moneda')
         -- Sin motivos de moneda no se agrega nada.
@@ -394,7 +418,7 @@ test('iniciador repetible hecho sin moneda; repetible no tomada ya no protege', 
         local repeatable = function() return { { questID = 99001, repeatable = true } } end
         local done = function() return true end
         eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = repeatable, isQuestDone = done }).mark, 'coin', 'gris')
-        local plate = item { classID = 4, subclassID = 4, quality = 2, hasUseOrEquipSpell = false, isSetPiece = false }
+        local plate = item { classID = 4, subclassID = 4, quality = 2, hasUseOrEquipSpell = false, isSetPiece = false, isBound = true }
         eq(ns.Classify(plate, ctx { class = 'MAGE', questieUses = repeatable, isQuestDone = done }).mark, 'coin', 'clase')
         local mixed = function() return { { questID = 1, repeatable = false }, { questID = 2, repeatable = true } } end
         eq(ns.Classify(item { quality = 0, price = 5 }, ctx { questieUses = mixed, isQuestDone = done }).mark, 'coin', 'mezcla')

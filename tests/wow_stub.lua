@@ -112,6 +112,7 @@ local function installClient()
     FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
     FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell= }
     FAKE.bags = {}          -- ['bag:slot'] = itemID
+    FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
     C_AddOns = { IsAddOnLoaded = function(name) return FAKE.addons[name] == true end }
     local function itemOf(key)
@@ -238,7 +239,7 @@ local function installClient()
         GetContainerItemInfo = function(bag, slot)
             local id = FAKE.bags[bag .. ':' .. slot]
             if not id then return nil end
-            return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil }
+            return { itemID = id, hyperlink = FAKE.items[id] and linkOf(id) or nil, isBound = FAKE.bound[bag .. ':' .. slot] }
         end,
     }
 end
@@ -317,7 +318,7 @@ function FAKE.Reset()
         'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS',
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
         'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
-        'BankPanel', 'BankFrame' }) do _G[name] = nil end
+        'BankPanel', 'BankFrame', 'ItemLocation' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()

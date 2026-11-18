@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- Clasificador de marcas: funcion pura. Regla de oro: ante cualquier duda, sin marca.
--- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price }
+-- item = { id, quality, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece, price, isBound }
+--   isBound = true solo si la bolsa confirma que el ejemplar esta ligado; false/nil = no (o no se sabe).
 --   hasUseOrEquipSpell = true tambien cuando no se puede saber (sin API de hechizos).
 -- ctx  = { class, professions = {[skillLineID]=true}, isQuestDone(questID)->true|false|nil,
 --          questInLog(questID)->true|false|nil, questItemsInLog = {[itemID]=true},
@@ -217,16 +218,28 @@ function ns.Classify(item, ctx)
         -- Item de mision (objetivo, fuente o clase Mision) que ninguna mision del diario pide.
         reasons[#reasons + 1] = { kind = 'quest_not_active' }
     end
+    -- Equipo que tu clase nunca puede usar: moneda SOLO si este ejemplar esta ligado (confirmado por
+    -- la bolsa: item.isBound == true). Sin ligar (se puede subastar o pasar) o sin saberlo (botin,
+    -- enlaces): sin moneda; motivo neutro 'class_cannot_use_tradeable' para el tooltip.
+    local tradeable
     if classCannotUse(item, ctx) then
-        reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
+        local reason = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
+        if item.isBound == true then
+            reasons[#reasons + 1] = reason
+        else
+            reason.kind = 'class_cannot_use_tradeable'
+            tradeable = reason
+        end
     end
     -- Diario con misiones sin leer (encabezado plegado en combate, sin API): el item podria ser
     -- un objetivo de mision, asi que no se da NINGUNA moneda (salvo override_sell, ya resuelto arriba).
     -- Lo mismo si el diario no supo decir si una mision que usa el item esta tomada.
     if #reasons > 0 and (ctx.questLogIncomplete or logUnknown) then
         result.reasons = { { kind = 'quest_log_incomplete' } }
-        return result
+        reasons = result.reasons
+    elseif #reasons > 0 then
+        result.mark = 'coin'
     end
-    if #reasons > 0 then result.mark = 'coin' end
+    if tradeable then reasons[#reasons + 1] = tradeable end
     return result
 end

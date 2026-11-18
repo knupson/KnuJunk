@@ -113,6 +113,33 @@ test('ReadItem devuelve la forma item', function()
     eq(item.hasUseOrEquipSpell, false); eq(item.isSetPiece, false)
 end)
 
+-- Tanda 1, regla 8: ReadItem dice si el ejemplar esta ligado; ReadLink (sin ubicacion) nunca lo sabe.
+test('ReadItem: isBound de GetContainerItemInfo; ReadLink sin ubicacion -> nil', function()
+    addItem(720, { quality = 2, classID = 4, subclassID = 4 })
+    FAKE.bags['0:1'] = 720; FAKE.bound['0:1'] = true
+    FAKE.bags['0:2'] = 720; FAKE.bound['0:2'] = false
+    FAKE.bags['0:3'] = 720
+    eq(ns.Player.ReadItem(0, 1).isBound, true)
+    eq(ns.Player.ReadItem(0, 2).isBound, false)
+    eq(ns.Player.ReadItem(0, 3).isBound, nil, 'sin el campo: no se sabe')
+    eq(ns.Player.ReadLink(FAKE.linkOf(720)).isBound, nil)
+end)
+
+test('ReadItem: C_Item.IsBound con ItemLocation gana; si falla, GetContainerItemInfo', function()
+    addItem(721, { quality = 2, classID = 4, subclassID = 4 })
+    FAKE.bags['1:4'] = 721; FAKE.bound['1:4'] = false
+    local asked
+    ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+    C_Item = { IsBound = function(location) asked = location; return true end }
+    eq(ns.Player.ReadItem(1, 4).isBound, true)
+    eq(asked.bag, 1); eq(asked.slot, 4)
+    C_Item = { IsBound = function() error('API rota') end }
+    eq(ns.Player.ReadItem(1, 4).isBound, false, 'error: cae a GetContainerItemInfo')
+    C_Item = { IsBound = function() return nil end }
+    eq(ns.Player.ReadItem(1, 4).isBound, false, 'respuesta no booleana: cae a GetContainerItemInfo')
+    C_Item = nil
+end)
+
 test('ReadItem y ReadLink devuelven subclassName (7mo valor de GetItemInfo)', function()
     addItem(710, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
     FAKE.bags['0:1'] = 710

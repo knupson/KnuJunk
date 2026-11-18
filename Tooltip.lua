@@ -8,7 +8,8 @@ local _, ns = ...
 -- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_starter_done_unknown_repeat'
 -- (sin marca): 'Mision entregada; no se sabe si es repetible'. 'quest_not_active' (moneda):
 -- 'Ninguna mision activa lo pide'. 'library_book' y 'waylaid_crate' (sin marca): linea neutra con el
--- PNJ de entrega de la faccion del jugador (los dos si no se sabe).
+-- PNJ de entrega de la faccion del jugador (los dos si no se sabe). 'class_cannot_use_tradeable' (sin
+-- marca): 'Tu clase no puede usar <subtipo>: podes subastarlo o pasarlo a otro personaje', sin icono.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
 -- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
 -- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
@@ -102,12 +103,14 @@ local function byFaction(horde, alliance)
     return horde .. ' / ' .. alliance
 end
 
--- Lineas {text, r, g, b} de un enlace de item; vacio si no hay marca ni override.
-function Tooltip.Lines(link)
+-- Lineas {text, r, g, b} de un enlace de item; vacio si no hay marca ni override. bound = true si el
+-- propio tooltip confirma que el ejemplar esta ligado (ver boundFromTooltip); nil = no se sabe.
+function Tooltip.Lines(link, bound)
     local lines = {}
     if not enabled() or not link then return lines end
     local item = ns.Player.ReadLink(link)
     if not item then return lines end
+    if bound == true then item.isBound = true end
     local result = ns.Classify(item, ns.Player.GetContext())
     local mark = type(result) == 'table' and result.mark or nil
     local reasons = type(result) == 'table' and result.reasons or {}
@@ -143,6 +146,10 @@ function Tooltip.Lines(link)
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
             end
+        elseif kind == 'class_cannot_use_tradeable' and mark == nil then
+            -- Sin ligar o sin saberlo: no es basura, se puede vender en subasta o pasar (sin icono).
+            add(L["Your class can't use %s: you can auction it or pass it to another character"]:format(
+                subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), WHITE)
         elseif kind == 'quest_active' and (mark == 'quest' or (result.quest == true and shows('hammer'))) then
             -- Lo pide una mision del diario (marca de mision, o martillo si es reactivo/herramienta):
             -- se explica la mision en neutro, con su icono; nunca moneda.
@@ -246,11 +253,46 @@ local function missingLines(tooltip, link, lines)
     return missing
 end
 
+-- Texto de linea sin codigos de color ni espacios de los bordes.
+local function bare(text)
+    if type(text) ~= 'string' then return nil end
+    return (text:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''):gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+-- true si el tooltip muestra la linea "Ligado" (ITEM_SOULBOUND; sin la global, ingles y castellano):
+-- el cliente la pone en los items de la bolsa ya ligados ("Se liga al recogerlo" del botin o de un
+-- enlace NO cuenta). nil si no aparece o no se puede leer (= no se sabe).
+local function boundFromTooltip(tooltip, data)
+    local wanted = {}
+    local global = rawget(_G, 'ITEM_SOULBOUND')
+    if type(global) == 'string' and global ~= '' then wanted[global] = true end
+    wanted['Soulbound'], wanted['Ligado'] = true, true
+    if type(data) == 'table' and type(data.lines) == 'table' then
+        for _, entry in ipairs(data.lines) do
+            if type(entry) == 'table' and wanted[bare(entry.leftText) or ''] then return true end
+        end
+    end
+    if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.GetNumLines, tooltip)
+        local named, name = pcall(tooltip.GetName, tooltip)
+        if success and type(count) == 'number' and named and type(name) == 'string' then
+            for index = 1, count do
+                local region = rawget(_G, name .. 'TextLeft' .. index)
+                if type(region) == 'table' and type(region.GetText) == 'function' then
+                    local got, text = pcall(region.GetText, region)
+                    if got and wanted[bare(text) or ''] then return true end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function decorate(tooltip, data)
     if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' or not supported(tooltip) then return end
     local link = tooltipLink(tooltip, data)
     if not link then return end
-    local lines = Tooltip.Lines(link)
+    local lines = Tooltip.Lines(link, boundFromTooltip(tooltip, data))
     if #lines == 0 then return end
     local missing = missingLines(tooltip, link, lines)
     if #missing == 0 then return end

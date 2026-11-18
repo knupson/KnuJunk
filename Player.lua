@@ -424,7 +424,8 @@ local function hasItemSpell(id)
 end
 
 -- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, hasUseOrEquipSpell, isSetPiece };
--- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED).
+-- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED). Sin ubicacion no
+-- se sabe si esta ligado: isBound queda en nil (ReadItem lo completa).
 function Player.ReadLink(link)
     if link == nil or type(GetItemInfo) ~= 'function' then return nil end
     local id
@@ -447,17 +448,35 @@ function Player.ReadLink(link)
     }
 end
 
+-- true/false si el cliente confirma si el ejemplar de bag/slot esta ligado; nil si no se sabe.
+-- Primero C_Item.IsBound(ItemLocation); si falta, falla o no responde un booleano, el isBound de
+-- C_Container.GetContainerItemInfo (info ya leida).
+local function boundAt(bag, slot, info)
+    if type(C_Item) == 'table' and type(C_Item.IsBound) == 'function'
+        and type(ItemLocation) == 'table' and type(ItemLocation.CreateFromBagAndSlot) == 'function' then
+        local success, answer = pcall(function()
+            return C_Item.IsBound(ItemLocation:CreateFromBagAndSlot(bag, slot))
+        end)
+        if success and (answer == true or answer == false) then return answer end
+    end
+    if type(info) == 'table' and (info.isBound == true or info.isBound == false) then return info.isBound end
+    return nil
+end
+
+-- Como ReadLink, mas isBound (regla 8: equipo de otra clase da moneda solo si esta ligado).
 function Player.ReadItem(bag, slot)
-    local link, itemID
+    local link, itemID, info
     if C_Container and type(C_Container.GetContainerItemInfo) == 'function' then
-        local info = C_Container.GetContainerItemInfo(bag, slot)
+        info = C_Container.GetContainerItemInfo(bag, slot)
         if info then link, itemID = info.hyperlink, info.itemID end
     elseif type(GetContainerItemLink) == 'function' then
         link = GetContainerItemLink(bag, slot)
     end
     local target = link or itemID
     if not target then return nil end
-    return Player.ReadLink(target)
+    local item = Player.ReadLink(target)
+    if item then item.isBound = boundAt(bag, slot, info) end
+    return item
 end
 
 -- ---------------------------------------------------------------------------

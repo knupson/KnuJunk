@@ -313,6 +313,53 @@ test('Tooltip: class_cannot_use usa el subtipo que trae el motivo o el item, ant
     GetItemSubClassInfo = saved
 end)
 
+-- Tanda 1, regla 8: equipo de otra clase sin ligar (o sin saberlo): linea neutra, sin icono, solo si
+-- no hay moneda por otro motivo.
+test('Tooltip: class_cannot_use_tradeable da una linea neutra sin icono', function()
+    addItem(100, { quality = 1, classID = 4, subclassID = 4, subType = 'Placas' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local reason = { kind = 'class_cannot_use_tradeable', classID = 4, subclassID = 4, subclassName = 'Placas' }
+    withClassify(function() return { mark = nil, reasons = { reason } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        eq(#tip.lines, 1)
+        local entry = line(tip, 1, 'Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje', { 1, 1, 1 })
+        ok(not hasIcon(entry), 'sin icono')
+    end)
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'gray' }, reason } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        eq(#tip.lines, 1, 'con moneda gris no se sugiere subastarlo')
+        line(tip, 1, 'Basura: se vende')
+    end)
+end)
+
+-- El tooltip de un item de la bolsa dice "Ligado" (ITEM_SOULBOUND): con eso el clasificador sabe que el
+-- ejemplar esta ligado y da la misma moneda que la bolsa. Sin esa linea: no se sabe, linea neutra.
+test('Tooltip: la linea Ligado del propio tooltip confirma el ejemplar ligado', function()
+    addItem(100, { quality = 2, classID = 4, subclassID = 4, subType = 'Placas' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local bound = newTooltip(100)
+    bound:AddLine('Ligado')
+    run(processor, bound, {})
+    line(bound, 2, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+    local fromData = newTooltip(100)
+    run(processor, fromData, { lines = { { leftText = 'Peto' }, { leftText = 'Ligado' } } })
+    line(fromData, 1, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+    ITEM_SOULBOUND = 'Soulbound'
+    local english = newTooltip(100)
+    english:AddLine('Soulbound')
+    run(processor, english, {})
+    line(english, 2, 'Tu clase no usa Placas')
+    ITEM_SOULBOUND = nil
+    local pickup = newTooltip(100)
+    pickup:AddLine('Se liga al recogerlo')
+    run(processor, pickup, {})
+    line(pickup, 2, 'Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje', { 1, 1, 1 })
+end)
+
 test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
         "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',
