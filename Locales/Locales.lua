@@ -5,6 +5,8 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ["Your class can't use %s"] = 'Tu clase no usa %s',
     ['Your profession: %s'] = 'Tu profesión: %s',
     ["Profession you don't have: %s"] = 'Profesión que no tenés: %s',
+    ['Tool for your profession: %s'] = 'Herramienta de tu profesión: %s',
+    ["Tool for a profession you don't have: %s"] = "Herramienta de profesión que no tenés: %s",
     ['Marked by hand: keep'] = 'Marcado a mano: guardar',
     ['Marked by hand: sell'] = 'Marcado a mano: vender',
     ['on'] = 'activadas', ['off'] = 'desactivadas', ['yes'] = 'sí', ['no'] = 'no', ['none'] = 'ninguno',

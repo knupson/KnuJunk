@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera Data/Reagents.lua, Data/Starters.lua y Data/ClassGear.lua desde las tablas DB2 de wago.tools (producto wowf).
+"""Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua y Data/ClassGear.lua desde las tablas DB2 de wago.tools (producto wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -39,8 +39,12 @@ REAGENT_SLOTS = ['Reagent_%d' % i for i in range(8)]
 COLUMNS = {
     'skilllineability': ['SkillLine', 'Spell', 'ClassMask'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
-    'itemsparse': ['ID', 'StartQuestID'],
+    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID'],
+    'spelltotems': ['SpellID', 'RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1', 'Totem_0', 'Totem_1'],
+    'totemcategory': ['ID', 'Name_lang', 'TotemCategoryType', 'TotemCategoryMask'],
 }
+TOTEM_REQUIRED = ['RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1']
+TOTEM_ITEMS = ['Totem_0', 'Totem_1']
 
 # Hechizo de la habilidad de arma/armadura -> (tipo, subclase de item). Armadura (clase 4):
 # 1 tela, 2 cuero, 3 malla, 4 placas, 6 escudo. Armas (clase 2): 0/1 hacha 1M/2M, 2 arco,
@@ -107,6 +111,59 @@ def compute_starters(item_rows):
     return starters
 
 
+def compute_tools(ability_rows, totem_rows, category_rows, item_rows):
+    """item ID -> lista ordenada de SkillLine de profesion para las que el item es HERRAMIENTA
+    (requerida pero no consumida: martillo, pico, cuchillo de desuello, pedernal...).
+
+    Se une SpellID de spelltotems con SkillLineAbility (solo lineas de PROFESSIONS). Cada hechizo
+    pide hasta dos categorias de totem (RequiredTotemCategoryID_0/1) y/o hasta dos items concretos
+    (Totem_0/1). Un item de ItemSparse con TotemCategoryID C cumple la categoria R pedida si es del
+    mismo tipo (TotemCategoryType) y su mascara cubre todos los bits de la pedida:
+    (mascara(C) & mascara(R)) == mascara(R), como lo resuelve el cliente. Asi la navaja gnomica
+    (mascara 127) sirve de martillo, pico y cuchillo, y un martillo (4) no cumple una categoria 4|1.
+    Una categoria que falte en totemcategory solo se cumple con ella misma."""
+    spell_lines = {}
+    for row in ability_rows:
+        line = _int(row['SkillLine'])
+        if line in PROFESSIONS:
+            spell_lines.setdefault(_int(row['Spell']), set()).add(line)
+    categories = {_int(row['ID']): (_int(row['TotemCategoryType']), _int(row['TotemCategoryMask']))
+                  for row in category_rows}
+    required = {}  # categoria pedida -> lineas que la piden
+    tools = {}
+    for row in totem_rows:
+        lines = spell_lines.get(_int(row['SpellID']))
+        if not lines:
+            continue
+        for slot in TOTEM_REQUIRED:
+            category = _int(row.get(slot))
+            if category > 0:
+                required.setdefault(category, set()).update(lines)
+        for slot in TOTEM_ITEMS:
+            item = _int(row.get(slot))
+            if item > 0:
+                tools.setdefault(item, set()).update(lines)
+
+    def satisfies(have, need):
+        if have == need:
+            return True
+        if have not in categories or need not in categories:
+            return False
+        have_type, have_mask = categories[have]
+        need_type, need_mask = categories[need]
+        return have_type == need_type and (have_mask & need_mask) == need_mask
+
+    for row in item_rows:
+        item = _int(row.get('ID'))
+        have = _int(row.get('TotemCategoryID'))
+        if item <= 0 or have <= 0:
+            continue
+        for need, lines in required.items():
+            if satisfies(have, need):
+                tools.setdefault(item, set()).update(lines)
+    return {item: sorted(lines) for item, lines in tools.items()}
+
+
 def compute_class_gear(ability_rows):
     """Clase -> {'armor': set, 'weapon': set} de subclases que puede llegar a usar, segun la
     ClassMask de SkillLineAbility para el hechizo de cada habilidad de arma/armadura (union de
@@ -148,6 +205,16 @@ def render_starters_lua(starters, build):
     lines = [_header(build), 'ns.Data.starters = {\n']
     for item in sorted(starters):
         lines.append('    [%d] = %d,\n' % (item, starters[item]))
+    lines.append('}\n')
+    return ''.join(lines)
+
+
+def render_tools_lua(tools, build):
+    lines = [_header(build),
+             '-- Herramientas de profesion (requeridas, no consumidas): item -> SkillLines.\n',
+             'ns.Data.tools = {\n']
+    for item in sorted(tools):
+        lines.append('    [%d] = { %s },\n' % (item, ', '.join(str(n) for n in tools[item])))
     lines.append('}\n')
     return ''.join(lines)
 
@@ -243,9 +310,11 @@ def download_filtered(table, build):
                 writer.writerow(columns)
                 count = 0
                 for row in reader:
-                    if table == 'itemsparse' and _int(row['StartQuestID']) == 0:
+                    if table == 'itemsparse' and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0:
                         continue
                     if table == 'spellreagents' and not any(_int(row[c]) for c in REAGENT_SLOTS):
+                        continue
+                    if table == 'spelltotems' and not any(_int(row[c]) for c in TOTEM_REQUIRED + TOTEM_ITEMS):
                         continue
                     writer.writerow([row[c] for c in columns])
                     count += 1
@@ -294,14 +363,16 @@ def main(argv=None):
 
     reagents = compute_reagents(raw('skilllineability'), raw('spellreagents'))
     starters = compute_starters(raw('itemsparse'))
+    tools = compute_tools(raw('skilllineability'), raw('spelltotems'), raw('totemcategory'), raw('itemsparse'))
     gear, missing = compute_class_gear(raw('skilllineability'))
     if missing:
         sys.exit('skilllineability: faltan los hechizos de arma/armadura %s; no se genera ClassGear' % missing)
     write_lua('Reagents.lua', render_reagents_lua(reagents, build))
     write_lua('Starters.lua', render_starters_lua(starters, build))
+    write_lua('Tools.lua', render_tools_lua(tools, build))
     write_lua('ClassGear.lua', render_class_gear_lua(gear, build))
-    print('build %s: %d reactivos, %d iniciadores de mision, %d clases con equipo'
-          % (build, len(reagents), len(starters), len(gear)))
+    print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo'
+          % (build, len(reagents), len(starters), len(tools), len(gear)))
 
 
 if __name__ == '__main__':

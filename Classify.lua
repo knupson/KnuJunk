@@ -81,22 +81,40 @@ function ns.Classify(item, ctx)
         end
     end
 
-    -- 3. Reactivo de profesion.
-    local lines = ns.Data.reagents and ns.Data.reagents[id]
-    if lines then
+    -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
+    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, gris si no; nunca
+    -- monedita automatica, aunque sea gris. Si es las dos cosas, manda el reactivo salvo que solo la
+    -- herramienta sea de una profesion tuya.
+    local reagentLines = ns.Data.reagents and ns.Data.reagents[id]
+    local toolLines = ns.Data.tools and ns.Data.tools[id]
+    local function mineOf(list)
         local mine = {}
-        for _, line in ipairs(lines) do
+        for _, line in ipairs(list or {}) do
             if ctx.professions and ctx.professions[line] then mine[#mine + 1] = line end
         end
-        if #mine > 0 then
-            result.mark = 'hammer_mine'
-            reasons[#reasons + 1] = { kind = 'profession', professions = mine }
-        else
-            result.mark = 'hammer_other'
-            local all = {}
-            for i, line in ipairs(lines) do all[i] = line end
-            reasons[#reasons + 1] = { kind = 'profession', professions = all }
-        end
+        return mine
+    end
+    local function copy(list)
+        local all = {}
+        for i, line in ipairs(list) do all[i] = line end
+        return all
+    end
+    local mineReagent, mineTool = mineOf(reagentLines), mineOf(toolLines)
+    if #mineReagent > 0 then
+        result.mark = 'hammer_mine'
+        reasons[#reasons + 1] = { kind = 'profession', professions = mineReagent }
+        return result
+    elseif #mineTool > 0 then
+        result.mark = 'hammer_mine'
+        reasons[#reasons + 1] = { kind = 'profession_tool', professions = mineTool }
+        return result
+    elseif reagentLines then
+        result.mark = 'hammer_other'
+        reasons[#reasons + 1] = { kind = 'profession', professions = copy(reagentLines) }
+        return result
+    elseif toolLines then
+        result.mark = 'hammer_other'
+        reasons[#reasons + 1] = { kind = 'profession_tool', professions = copy(toolLines) }
         return result
     end
 

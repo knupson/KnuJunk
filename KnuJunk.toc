@@ -15,6 +15,7 @@ Locales\Locales.lua
 Core.lua
 Data\Reagents.lua
 Data\Starters.lua
+Data\Tools.lua
 Data\ClassGear.lua
 Classify.lua
 Player.lua

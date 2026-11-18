@@ -111,6 +111,12 @@ function Tooltip.Lines(link)
             elseif mark == 'hammer_other' then
                 add(L["Profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
             end
+        elseif kind == 'profession_tool' and shows('hammer') then
+            if mark == 'hammer_mine' then
+                add(L['Tool for your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')
+            elseif mark == 'hammer_other' then
+                add(L["Tool for a profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
+            end
         end
     end
     return lines

@@ -1,9 +1,9 @@
 -- Clasificador: cada prueba fija sus propios datos (reactivos/iniciadores) y los restaura.
-local function withData(reagents, starters, fn)
-    local savedR, savedS = ns.Data.reagents, ns.Data.starters
-    ns.Data.reagents, ns.Data.starters = reagents or {}, starters or {}
+local function withData(reagents, starters, fn, tools)
+    local savedR, savedS, savedT = ns.Data.reagents, ns.Data.starters, ns.Data.tools
+    ns.Data.reagents, ns.Data.starters, ns.Data.tools = reagents or {}, starters or {}, tools or {}
     local success, err = pcall(fn)
-    ns.Data.reagents, ns.Data.starters = savedR, savedS
+    ns.Data.reagents, ns.Data.starters, ns.Data.tools = savedR, savedS, savedT
     if not success then error(err, 0) end
 end
 
@@ -57,6 +57,53 @@ test('reactivo de Herreria sin profesiones -> hammer_other', function()
         eq(result.mark, 'hammer_other')
         eq(hasReason(result, 'profession').professions[1], 164)
     end)
+end)
+
+test('herramienta de tu profesion -> hammer_mine con profession_tool', function()
+    withData({}, {}, function()
+        local result = ns.Classify(item(), ctx { professions = { [164] = true } })
+        eq(result.mark, 'hammer_mine')
+        local reason = hasReason(result, 'profession_tool')
+        ok(reason, 'reason profession_tool')
+        eq(#reason.professions, 1); eq(reason.professions[1], 164)
+    end, { [9000] = { 164, 202 } })
+end)
+
+test('herramienta de otra profesion -> hammer_other con todas sus profesiones', function()
+    withData({}, {}, function()
+        local result = ns.Classify(item(), ctx { professions = { [171] = true } })
+        eq(result.mark, 'hammer_other')
+        local reason = hasReason(result, 'profession_tool')
+        eq(#reason.professions, 2); eq(reason.professions[1], 164); eq(reason.professions[2], 202)
+    end, { [9000] = { 164, 202 } })
+end)
+
+test('herramienta gris con precio -> nunca monedita', function()
+    withData({}, {}, function()
+        local gray = item { quality = 0, price = 50 }
+        local mine = ns.Classify(gray, ctx { professions = { [186] = true } })
+        eq(mine.mark, 'hammer_mine'); ok(not hasReason(mine, 'gray'), 'sin motivo gris')
+        local other = ns.Classify(gray, ctx())
+        eq(other.mark, 'hammer_other'); ok(not hasReason(other, 'gray'), 'sin motivo gris')
+    end, { [9000] = { 186 } })
+end)
+
+test('herramienta: override sell da monedita, keep ninguna, mision activa gana', function()
+    withData({}, {}, function()
+        eq(ns.Classify(item(), ctx { overrides = { [9000] = 'sell' } }).mark, 'coin')
+        eq(ns.Classify(item(), ctx { overrides = { [9000] = 'keep' } }).mark, nil)
+        eq(ns.Classify(item(), ctx { questItemsInLog = { [9000] = true } }).mark, 'quest')
+    end, { [9000] = { 164 } })
+end)
+
+test('item que es reactivo y herramienta: manda el reactivo; la herramienta cubre lo que el reactivo no', function()
+    withData({ [9000] = { 171 } }, {}, function()
+        local result = ns.Classify(item(), ctx { professions = { [171] = true } })
+        eq(result.mark, 'hammer_mine'); ok(hasReason(result, 'profession'), 'reactivo')
+        local viaTool = ns.Classify(item(), ctx { professions = { [164] = true } })
+        eq(viaTool.mark, 'hammer_mine'); ok(hasReason(viaTool, 'profession_tool'), 'herramienta')
+        eq(hasReason(viaTool, 'profession_tool').professions[1], 164)
+    end, { [9000] = { 164 } })
 end)
 
 test('iniciador con mision hecha -> coin quest_done', function()

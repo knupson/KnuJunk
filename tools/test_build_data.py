@@ -49,6 +49,66 @@ class StartersTest(unittest.TestCase):
         self.assertNotIn(3000, starters)
 
 
+class ToolsTest(unittest.TestCase):
+    def setUp(self):
+        self.tools = build_data.compute_tools(
+            rows('skilllineability.csv'), rows('spelltotems.csv'),
+            rows('totemcategory.csv'), rows('itemsparse.csv'))
+
+    def test_hammer_is_tool_of_blacksmithing_and_engineering(self):
+        # Categoria 162 la piden el hechizo de Herreria (2663) y el de Ingenieria (3955).
+        self.assertEqual(self.tools[5956], [164, 202])
+
+    def test_gathering_tools(self):
+        self.assertEqual(self.tools[2901], [186])
+        self.assertEqual(self.tools[7005], [393])
+
+    def test_second_required_category_counts(self):
+        # 3955 pide 162 y 14: la llave (14) tambien es herramienta de Ingenieria.
+        self.assertEqual(self.tools[6219], [202])
+
+    def test_direct_totem_item(self):
+        # Totem_0 es un item concreto (pedernal para Cocina).
+        self.assertEqual(self.tools[4471], [185])
+
+    def test_mask_superset_satisfies_each_requirement(self):
+        # Navaja (mascara 127) cubre 4, 8, 16, 1 y 5: sirve de martillo, pico, cuchillo, llave y 380.
+        self.assertEqual(self.tools[7000], [164, 171, 186, 202, 393])
+
+    def test_mask_must_cover_every_required_bit(self):
+        # 380 (mascara 5 = 4|1): un martillo solo (4) no la cumple, asi que 171 no esta en 5956.
+        self.assertNotIn(171, self.tools[5956])
+        # Un item de categoria 380 si cubre 162 (mascara 4) y a si misma.
+        self.assertEqual(self.tools[7003], [164, 171, 202])
+
+    def test_category_type_must_match(self):
+        # Las varas (tipo 3, mascara 1) no cumplen la llave (tipo 24, mascara 1).
+        self.assertNotIn(7001, self.tools)
+        self.assertNotIn(7002, self.tools)
+
+    def test_unknown_category_and_non_profession_spells_are_ignored(self):
+        self.assertNotIn(7004, self.tools)
+        for lines in self.tools.values():
+            self.assertNotIn(6, lines)
+
+    def test_fishing_without_totem_has_no_tool(self):
+        for lines in self.tools.values():
+            self.assertNotIn(356, lines)
+
+    def test_no_item_zero_and_sorted_unique(self):
+        self.assertNotIn(0, self.tools)
+        for lines in self.tools.values():
+            self.assertEqual(lines, sorted(set(lines)))
+
+    def test_tools_lua_body(self):
+        text = build_data.render_tools_lua({6219: [202], 5956: [164, 202]}, 'x')
+        self.assertIn('ns.Data.tools = {', text)
+        self.assertIn('[5956] = { 164, 202 },', text)
+        self.assertLess(text.index('[5956]'), text.index('[6219]'))
+        self.assertEqual(text.splitlines()[0],
+                         '-- Generado por tools/build_data.py desde wago.tools wowf x. No editar.')
+
+
 class LuaOutputTest(unittest.TestCase):
     def test_lua_output_header_has_build(self):
         build = '1.60.1.70959'

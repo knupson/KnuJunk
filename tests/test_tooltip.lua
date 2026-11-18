@@ -138,6 +138,43 @@ test('Tooltip: hammer_mine muestra tu profesion en verde', function()
     end)
 end)
 
+local function withTools(map, fn)
+    local saved = ns.Data.tools
+    ns.Data.tools = map
+    local success, err = pcall(fn)
+    ns.Data.tools = saved
+    if not success then error(err, 0) end
+end
+
+test('Tooltip: herramienta de tu profesion en verde con martillo', function()
+    addItem(100, { quality = 1 })
+    FAKE.professions = { { name = 'Herrería', skillLine = 164 } }
+    ns.Player.Invalidate()
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withTools({ [100] = { 164, 202 } }, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Herramienta de tu profesión: Herrería', { 0.25, 0.85, 0.35 })
+        ok(hasIcon(entry), 'icono')
+    end)
+end)
+
+test('Tooltip: herramienta de una profesion que no tenes en gris con martillo', function()
+    addItem(100, { quality = 1 })
+    ns.Player.Invalidate()
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withTools({ [100] = { 186 } }, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Herramienta de profesión que no tenés: Minería', { 0.6, 0.6, 0.6 })
+        ok(hasIcon(entry), 'icono')
+    end)
+end)
+
 test('Tooltip: override visible (keep y sell), en blanco', function()
     addItem(100, { quality = 1 }); addItem(101, { quality = 1 })
     ns.DB.overrides[100] = 'keep'; ns.DB.overrides[101] = 'sell'
@@ -230,9 +267,10 @@ test('Tooltip: class_cannot_use usa el subtipo que trae el motivo o el item, ant
     GetItemSubClassInfo = saved
 end)
 
-test('Tooltip: las siete claves en ingles tienen traduccion al castellano', function()
+test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
-        "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell' }
+        "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',
+        'Tool for your profession: %s', "Tool for a profession you don't have: %s" }
     for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'traduccion de ' .. key) end
 end)
 
