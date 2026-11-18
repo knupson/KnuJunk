@@ -68,13 +68,13 @@ end)
 test('venta: sólo grises opcional', function()
     item(0, 1, 1001, 1); item(0, 2, 1002, 0)
     ns.DB.autoSell.graysOnly = true
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.used, 1); eq(FAKE.used[1][2], 2)
 end)
 
 test('venta: sin sólo grises vende moneditas de otra calidad', function()
     item(0, 1, 1001, 2)
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 1)
 end)
 
 test('venta: excluye keep, bloqueos y precio cero', function()
@@ -90,7 +90,7 @@ for _, mark in ipairs({ 'protected', 'auction', 'useful', 'quest', 'hammer_mine'
     test('venta: no vende marca ' .. kind, function()
         item(0, 1)
         withVerdict(function() return kind, false, {}, { id=1001, price=10, quality=0 } end, function()
-            FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 0)
+            FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
         end)
     end)
 end
@@ -98,11 +98,11 @@ end
 test('venta: datos pendientes y precios desconocidos se omiten', function()
     item(0, 1)
     withVerdict(function() return 'coin', true, {}, { id=1001, price=10 } end, function()
-        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 0)
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
     end)
     FAKE.Fire('MERCHANT_CLOSED')
     withVerdict(function() return 'coin', false, {}, { id=1001 } end, function()
-        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 0)
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
     end)
 end)
 
@@ -114,7 +114,7 @@ end)
 
 test('venta: GUID cambiado entre apertura y tick se omite', function()
     item(0, 1); FAKE.Fire('MERCHANT_SHOW')
-    FAKE.guids['0:1'] = 'reemplazo'; FAKE.Advance(1)
+    FAKE.guids['0:1'] = 'reemplazo'; FAKE.Advance(2)
     eq(#FAKE.used, 0); eq(#FAKE.messages, 0)
 end)
 
@@ -122,12 +122,12 @@ test('venta: revalida la monedita y bloqueos antes de vender', function()
     local id = item(0, 1); item(0, 2)
     FAKE.Fire('MERCHANT_SHOW')
     ns.DB.overrides[id] = 'keep'; FAKE.itemLocks['guid:0:2:1002'] = true
-    FAKE.Advance(1); eq(#FAKE.used, 0)
+    FAKE.Advance(2); eq(#FAKE.used, 0)
 end)
 
 test('venta: combate al abrir espera hasta salir', function()
     item(0, 1); FAKE.inCombat = true
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 0)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
     FAKE.inCombat = false; FAKE.Fire('PLAYER_REGEN_ENABLED')
     FAKE.Advance(.21); eq(#FAKE.used, 1)
 end)
@@ -155,13 +155,13 @@ test('venta: resumen usa dinero del juego y cantidad de la pila', function()
         return info
     end
     GetCoinTextureString = function(money) eq(money, 37035); return 'monedas del juego' end
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por monedas del juego', 1, true))
     FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 1)
 end)
 
 test('venta: nada vendido no imprime resumen', function()
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); FAKE.Fire('MERCHANT_CLOSED')
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); FAKE.Fire('MERCHANT_CLOSED')
     eq(#FAKE.used, 0); eq(#FAKE.messages, 0)
 end)
 
@@ -169,7 +169,7 @@ for _, path in ipairs({ 'autoSell.enabled', 'enabled' }) do
     local setting = path
     test('venta: apagar ' .. setting .. ' interrumpe la cola', function()
         item(0, 1); item(0, 2); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
-        ns.Options.Set(setting, false); FAKE.Advance(1); eq(#FAKE.used, 1)
+        ns.Options.Set(setting, false); FAKE.Advance(2); eq(#FAKE.used, 1)
     end)
 end
 
@@ -195,7 +195,7 @@ test('venta: advertencias estáticas en General se actualizan sin cambiar ajuste
 end)
 
 test('venta: llamadas propias nunca denuncian al addon en la pila', function()
-    stack('Scrap'); item(0, 1); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    stack('Scrap'); item(0, 1); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('KnuJunk vendió', 1, true))
 end)
 
@@ -248,7 +248,7 @@ for _, path in ipairs({ 'C_Item', 'C_Item.GetItemGUID', 'ItemLocation', 'ItemLoc
     local missing = path
     test('venta: sin API ' .. missing .. ' no propaga errores', function()
         item(0, 1); FAKE.Remove(missing)
-        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); FAKE.Fire('MERCHANT_CLOSED')
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); FAKE.Fire('MERCHANT_CLOSED')
         if missing ~= 'hooksecurefunc' and missing ~= 'debugstack' then eq(#FAKE.used, 0) end
     end)
 end
@@ -256,14 +256,14 @@ end
 test('venta: fallback global y error de venta no cuenta como vendido', function()
     item(0, 1); C_Container.UseContainerItem = nil
     UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot}; error('rechazado') end
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.used, 1); eq(#FAKE.messages, 0)
 end)
 
 test('venta: fallback global vende sin C_Container.UseContainerItem', function()
     item(0, 1); C_Container.UseContainerItem = nil
     UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot}; FAKE.bags[bag .. ':' .. slot] = nil end
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.used, 1); eq(#FAKE.messages, 1)
 end)
 
@@ -275,7 +275,7 @@ test('venta: bloqueo propio prevalece aunque IsLocked diga falso', function()
     ns.DB.overrides[id] = 'sell'; C_Item.IsLocked = function() return false end
     -- La cola ya existe, pero el bloqueo propio todavía protege el ejemplar.
     withVerdict(function() return 'coin', false, {}, { id=id, price=10, quality=0 } end, function()
-        FAKE.Advance(1); eq(#FAKE.used, 0)
+        FAKE.Advance(2); eq(#FAKE.used, 0)
     end)
 end)
 
@@ -285,17 +285,17 @@ test('venta: revalida calidad, precio y pending antes de cada tick', function()
     withVerdict(function(_, slot)
         return 'coin', slot == 3, {}, { id=1000+slot, quality=slot == 1 and 1 or 0, price=slot == 2 and 0 or 10 }
     end, function()
-        FAKE.Advance(1); eq(#FAKE.used, 0); eq(#FAKE.messages, 0)
+        FAKE.Advance(2); eq(#FAKE.used, 0); eq(#FAKE.messages, 0)
     end)
 end)
 
 test('venta: API de bloqueo o GUID que falla impide vender', function()
     item(0, 1); FAKE.Fire('MERCHANT_SHOW')
     C_Item.IsLocked = function() error('sin datos') end
-    FAKE.Advance(1); eq(#FAKE.used, 0)
+    FAKE.Advance(2); eq(#FAKE.used, 0)
     FAKE.Fire('MERCHANT_CLOSED')
     C_Item.GetItemGUID = function() error('sin identidad') end
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1); eq(#FAKE.used, 0)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
 end)
 
 test('venta: textos enUS y resumen sin texturas de moneda', function()
@@ -305,7 +305,7 @@ test('venta: textos enUS y resumen sin texturas de moneda', function()
         eq(ns.L['Automatic selling'], 'Automatic selling')
         eq(ns.L['Maximum per visit'], 'Maximum per visit')
         item(0, 1, 1001, 0, 12345)
-        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
         ok(FAKE.messages[1]:find('KnuJunk sold 1 items for 1g 23s 45c', 1, true))
     end)
     ns.L, FAKE.locale = original, locale
@@ -325,7 +325,7 @@ end)
 test('regresión 5: incluso true necesita confirmación de inventario', function()
     item(0, 1)
     C_Container.UseContainerItem = function() return true end
-    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
     eq(#FAKE.messages, 0); ok(FAKE.bags['0:1'])
 end)
 
@@ -333,7 +333,7 @@ test('regresión 5: confirma GUID desaparecido al tick siguiente, sin resumen an
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     eq(FAKE.bags['0:1'], nil); eq(#FAKE.messages, 0)
-    FAKE.Advance(.2); eq(#FAKE.messages, 1)
+    FAKE.Advance(2); eq(#FAKE.messages, 1)
     ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
@@ -342,7 +342,7 @@ test('regresión 5: BAG_UPDATE_DELAYED confirma GUID cambiado antes del cierre',
     C_Container.UseContainerItem = function() FAKE.guids['0:1'] = 'reemplazo' end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Fire('BAG_UPDATE_DELAYED')
-    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 1)
+    FAKE.Fire("MERCHANT_CLOSED"); FAKE.Advance(2); eq(#FAKE.messages, 1)
     ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
@@ -356,7 +356,7 @@ test('regresión 5: una reducción parcial sólo suma el precio de las unidades 
     end
     C_Container.UseContainerItem = function() count = 3 end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
-    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
     eq(#FAKE.messages, 1)
     ok(FAKE.messages[1]:find('1 ítems por 14c', 1, true))
 end)
@@ -378,16 +378,16 @@ test('regresión 5: confirmación ilegible y cierre con intento pendiente no inv
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     C_Item.GetItemGUID = function() error('sin datos') end
-    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
     eq(#FAKE.messages, 0)
     FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 0)
 end)
 
-test('regresión 5: cerrar antes de confirmar descarta el intento pendiente', function()
+test('cerrar justo después de pedir la venta: si el ítem desapareció, se cuenta (se vendió)', function()
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
-    FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
-    eq(#FAKE.messages, 0)
+    FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
+    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
 test('dinero: sólo unidades distintas de cero (en el juego salía «0o 30p 48c»)', function()
@@ -395,4 +395,14 @@ test('dinero: sólo unidades distintas de cero (en el juego salía «0o 30p 48c�
     eq(ns.FormatMoney(3048), '30p 48c'); eq(ns.FormatMoney(10), '10c'); eq(ns.FormatMoney(0), '0c')
     eq(ns.FormatMoney(10000), '1o'); eq(ns.FormatMoney(12345), '1o 23p 45c')
     GetCoinTextureString = previous
+end)
+
+test('venta lenta del servidor: el ítem sigue en la bolsa varios ticks y igual se cuenta (visto en el juego)', function()
+    item(0, 1)
+    C_Container.UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot} end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.6)
+    eq(#FAKE.used, 1); ok(FAKE.bags['0:1']); eq(#FAKE.messages, 0)
+    FAKE.bags['0:1'] = nil; FAKE.guids['0:1'] = nil
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
+    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)

@@ -50,43 +50,85 @@ local function candidate(bag, slot)
     return guid, item.price, count
 end
 
--- Sólo una lectura posterior al pedido puede confirmar lo vendido.
-local function confirm()
-    if not pending then return end
-    local entry = pending
-    local loc = safe(ItemLocation and ItemLocation.CreateFromBagAndSlot, ItemLocation, entry.bag, entry.slot)
-    if not loc or not (C_Item and type(C_Item.GetItemGUID) == 'function') then return end
+-- Cada pedido de venta queda anotado y se cuenta recién cuando el ítem ya no está en las bolsas.
+-- El servidor tarda más que un tick en sacarlo: confirmar al tick siguiente descartaba ventas
+-- reales y el resumen no salía (visto en el juego 2026-11-18).
+local attempted, reportToken = {}, 0
+local REPORT_DELAY = 1.5
+
+local function guidAt(bag, slot)
+    local loc = safe(ItemLocation and ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
+    if not loc or not (C_Item and type(C_Item.GetItemGUID) == 'function') then return nil, false end
     local ok, guid = pcall(C_Item.GetItemGUID, loc)
-    if not ok then return end
-    local count
-    if guid == nil or (type(guid) == 'string' and guid ~= '' and guid ~= entry.guid) then
-        count = entry.count
-    elseif guid == entry.guid then
-        local info = safe(api('GetContainerItemInfo'), entry.bag, entry.slot)
-        local remaining = type(info) == 'table' and info.stackCount
-        if type(remaining) == 'number' and remaining >= 0 and remaining < entry.count then
-            count = entry.count - remaining
+    if not ok then return nil, false end
+    return guid, true
+end
+
+local function inBags(guid)
+    for bag = 0, 4 do
+        local slots = safe(api('GetContainerNumSlots'), bag)
+        if type(slots) == 'number' then
+            for slot = 1, slots do
+                local value = guidAt(bag, slot)
+                if value == guid then return true end
+            end
         end
     end
-    if count then
-        sold, total = sold + 1, total + entry.price * count
-        pending = nil
+    return false
+end
+
+local function confirm()
+    for _, entry in ipairs(attempted) do
+        if not entry.counted then
+            local guid, readable = guidAt(entry.bag, entry.slot)
+            if readable then
+                local count
+                if guid == entry.guid then
+                    local info = safe(api('GetContainerItemInfo'), entry.bag, entry.slot)
+                    local remaining = type(info) == 'table' and info.stackCount
+                    if type(remaining) == 'number' and remaining >= 0 and remaining < entry.count then
+                        count = entry.count - remaining
+                    end
+                elseif not inBags(entry.guid) then
+                    count = entry.count
+                end
+                if count then
+                    entry.counted = true
+                    sold, total = sold + 1, total + entry.price * count
+                end
+            end
+        end
+    end
+end
+
+local function report()
+    confirm()
+    attempted = {}
+    if sold > 0 then
+        ns.Print(ns.L['KnuJunk sold %d items for %s']:format(sold, ns.FormatMoney(total)))
+    end
+    sold, total = 0, 0
+end
+
+-- Un solo resumen por visita, un rato después del último pedido.
+local function scheduleReport()
+    reportToken = reportToken + 1
+    local token = reportToken
+    if #attempted == 0 then sold, total = 0, 0; return end
+    if C_Timer and type(C_Timer.After) == 'function' then
+        C_Timer.After(REPORT_DELAY, function() if token == reportToken then report() end end)
+    else
+        report()
     end
 end
 
 local function finish()
     if ticker then ticker:Cancel(); ticker = nil end
     pending = nil
-    if sold > 0 then
-        local money = ns.FormatMoney(total)
-        ns.Print(ns.L['KnuJunk sold %d items for %s']:format(sold, money))
-        sold, total = 0, 0
-    end
+    scheduleReport()
 end
 
 local function tick()
-    confirm()
-    pending = nil -- sin cambio al siguiente tick: intento no confirmado, sin reintento
     if not opened or not enabled() then deferred = false; finish(); return end
     if combat() then
         deferred = true
@@ -94,7 +136,7 @@ local function tick()
         return
     end
     local entry = queue[cursor]
-    if not entry or sold >= maximum() or attempts >= maximum() then finish(); return end
+    if not entry or attempts >= maximum() then finish(); return end
     cursor = cursor + 1
     local guid, price, count = candidate(entry.bag, entry.slot)
     if guid == entry.guid then
@@ -105,11 +147,11 @@ local function tick()
             local ok, value = pcall(use, entry.bag, entry.slot)
             ownCall = false
             if ok and value ~= false then
-                pending = { bag = entry.bag, slot = entry.slot, guid = guid, price = price, count = count }
+                attempted[#attempted + 1] = { bag = entry.bag, slot = entry.slot, guid = guid, price = price, count = count }
             end
         end
     end
-    if not pending and (cursor > #queue or attempts >= maximum() or sold >= maximum()) then finish() end
+    if cursor > #queue or attempts >= maximum() then finish() end
 end
 
 local function start()
@@ -187,13 +229,14 @@ frame:SetScript('OnEvent', function(_, event)
         opened, deferred = true, false
         queue, cursor = {}, 1
         sold, total, reported, bursts, attempts, pending = 0, 0, {}, {}, 0, nil
+        attempted, reportToken = {}, reportToken + 1
         installHook()
         start()
     elseif event == 'BAG_UPDATE_DELAYED' then
-        if opened then confirm() end
+        if #attempted > 0 then confirm() end
     elseif event == 'MERCHANT_CLOSED' or event == 'PLAYER_LEAVING_WORLD' then
         opened, deferred = false, false
-        finish()
+        if ticker then finish() end
     elseif deferred and opened then
         -- Retomar la cola original sin volver a vender ranuras ya procesadas.
         deferred = false
@@ -208,5 +251,6 @@ function AutoSell.ResetState()
     opened, ownCall, deferred, ticker = false, false, false, nil
     queue, cursor, sold, total, reported, bursts = {}, 1, 0, 0, {}, {}
     attempts, pending = 0, nil
+    attempted, reportToken = {}, reportToken + 1
     installHook()
 end
