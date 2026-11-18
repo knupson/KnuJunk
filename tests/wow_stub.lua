@@ -110,7 +110,7 @@ local function installClient()
     FAKE.skillLines = {}    -- GetSkillLineInfo: { {name=, isHeader=}, ... }
     FAKE.completed = {}     -- [questID] = true
     FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
-    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell=, tooltip={textos} }
+    FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell=, tooltip={textos} (sin tooltip: nombre + "Tipo") }
     FAKE.bags = {}          -- ['bag:slot'] = itemID
     FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
@@ -243,7 +243,7 @@ local function installClient()
             local _, d = itemOf(link)
             if not d then return nil end
             local lines = { { leftText = d.name } }
-            for _, text in ipairs(d.tooltip or {}) do lines[#lines + 1] = { leftText = text } end
+            for _, text in ipairs(d.tooltip or { d.typeLine or "Tipo" }) do lines[#lines + 1] = { leftText = text } end
             return { lines = lines }
         end,
     }

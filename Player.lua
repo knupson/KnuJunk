@@ -40,6 +40,7 @@ function Player.ResetState()
     cache, previous, lastQuestFound, scanning, pending = nil, nil, nil, false, false
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
     effectState, scanTip, retryAt, effectRevision = {}, nil, nil, 0
+    eventQueue, eventScheduled = {}, false
 end
 
 local MIN_EXPAND_INTERVAL = 1 -- sin huella, no se expande mas de una vez por segundo
@@ -448,10 +449,14 @@ local function retrieving(text)
 end
 
 -- Lee el tooltip del item. Devuelve texts, how, instance:
---   how = 'complete' (todas las lineas con su texto), 'partial' (alguna linea sin texto todavia, o
---   "Recuperando informacion"), 'unavailable' (no hay forma de leerlo en este cliente).
+--   how = 'complete', 'partial' o 'unavailable' (no hay forma de leerlo en este cliente).
+--   Completo = el titulo (nombre) y al menos otra linea con texto, y ninguna linea pendiente. Una
+--   lectura con solo el titulo es 'partial': no prueba que no haya efectos.
 --   instance = dataInstanceID de C_TooltipInfo, para cruzar con TOOLTIP_DATA_UPDATE.
--- C_TooltipInfo.GetHyperlink (leftText, o args sin "surface"); si no existe, un GameTooltip oculto.
+-- C_TooltipInfo.GetHyperlink: una linea sin texto es espaciador solo si su tipo es Blank o Separator;
+-- si no, esta pendiente. GameTooltip oculto (sin C_TooltipInfo): solo se llama con el item ya en la
+-- cache del cliente (ReadLink exige GetItemInfo antes); con el titulo presente, una region con texto
+-- vacio ('') es un espaciador de diseno, y una sin texto (nil) o "Recuperando..." esta pendiente.
 local function tooltipTexts(id)
     local link = 'item:' .. id
     if type(C_TooltipInfo) == 'table' and type(C_TooltipInfo.GetHyperlink) == 'function' then
@@ -460,7 +465,7 @@ local function tooltipTexts(id)
             return nil, 'partial'
         end
         local instance = data.dataInstanceID
-        local texts, complete = {}, true
+        local texts, complete, withText = {}, true, 0
         for index, line in ipairs(data.lines) do
             local text = type(line) == 'table' and line.leftText or nil
             if text == nil and type(line) == 'table' and type(line.args) == 'table' then
@@ -473,10 +478,12 @@ local function tooltipTexts(id)
                 text = ''
             elseif retrieving(text) then
                 complete = false
+            else
+                withText = withText + 1
             end
             texts[index] = text
         end
-        if texts[1] == '' then complete = false end -- sin el nombre: el cliente aun no tiene el item
+        if texts[1] == '' or withText < 2 then complete = false end
         return texts, complete and 'complete' or 'partial', instance
     end
     if type(CreateFrame) ~= 'function' then return nil, 'unavailable' end
@@ -490,14 +497,18 @@ local function tooltipTexts(id)
         scanTip:SetHyperlink(link)
         local count = scanTip:NumLines()
         if type(count) ~= 'number' or count == 0 then return nil, 'partial' end
-        local list, complete = {}, true
+        local list, complete, withText = {}, true, 0
         for index = 1, count do
             local region = rawget(_G, 'KnuJunkScanTooltipTextLeft' .. index)
             local text = type(region) == 'table' and type(region.GetText) == 'function' and region:GetText() or nil
-            -- Sin tipos de linea no se distingue un blanco legitimo: texto ausente o vacio = parcial.
-            if type(text) ~= 'string' or text == '' or retrieving(text) then complete = false; text = '' end
+            if type(text) ~= 'string' or retrieving(text) then
+                complete = false; text = ''
+            elseif text ~= '' then
+                withText = withText + 1
+            end
             list[index] = text
         end
+        if list[1] == '' or withText < 2 then complete = false end
         return list, complete and 'complete' or 'partial'
     end)
     if success then return texts, how end
@@ -505,7 +516,7 @@ local function tooltipTexts(id)
 end
 
 -- Busca una linea de efecto. true si aparece (aunque la lectura sea parcial: es evidencia); false solo
--- con lectura completa sin efecto; nil si no se sabe. second = how, instance.
+-- con lectura completa sin efecto; nil si no se sabe. Devuelve tambien how e instance.
 local function scanEffect(id)
     local texts, how, instance = tooltipTexts(id)
     if texts then
@@ -513,60 +524,71 @@ local function scanEffect(id)
         for index = 2, #texts do
             local text = bare(texts[index]) or ''
             for _, prefix in ipairs(prefixes) do
-                if text ~= '' and text:sub(1, #prefix) == prefix then return true end
+                if text ~= '' and text:sub(1, #prefix) == prefix then return true, how, instance end
             end
         end
-        if how == 'complete' then return false end
+        if how == 'complete' then return false, how, instance end
     end
     return nil, how, instance
 end
 
--- Estado por itemID (regla 30): true / false definitivos, o una tabla pendiente
--- { attempts, nextAt, final, instance }. Un pendiente no se re-escanea en cada repintado: se reintenta
--- con espera creciente (EFFECT_BACKOFF * 2^n), antes si llega TOOLTIP_DATA_UPDATE (mismo
--- dataInstanceID) o GET_ITEM_INFO_RECEIVED del item, y como mucho MAX_EFFECT_ATTEMPTS veces; despues
--- queda "no se sabe" (sin moneda). Al resolverse se avisa una sola vez (agrupado) por OnChanged.
+-- Estado por itemID (regla 30): { value = true|false|nil, instance, attempts, nextAt, final }.
+--   value true/false = resuelto (guarda el dataInstanceID de la lectura); nil = pendiente.
+-- Un pendiente no se re-escanea en cada repintado: el timer lo reintenta con espera creciente
+-- (EFFECT_BACKOFF * 2^n) hasta MAX_EFFECT_ATTEMPTS lecturas y despues queda final. Los eventos de datos
+-- que llegan (TOOLTIP_DATA_UPDATE de su instancia, o sin instancia; GET_ITEM_INFO_RECEIVED del item)
+-- lo releen aunque este final; TOOLTIP_DATA_UPDATE de la instancia de un 'no' guardado lo invalida y
+-- lo relee. Cada cambio resuelto avisa una sola vez (agrupado) por OnChanged.
 local MAX_EFFECT_ATTEMPTS, EFFECT_BACKOFF = 5, 0.5
 local scheduleEffectRetry
 
-local function resolveEffect(id, forced)
+-- mode: nil (lectura normal), 'timer' (reintento programado), 'event' (llego un dato).
+local function resolveEffect(id, mode)
     local state = effectState[id]
-    if state == true or state == false then return state end
-    if type(state) == 'table' and (state.final or (not forced and now() < state.nextAt)) then return nil end
+    if state and state.value ~= nil then return state.value end
+    if state and mode == nil and (state.final or now() < state.nextAt) then return nil end
+    if state and mode == 'timer' and state.final then return nil end
     local answer, how, instance = scanEffect(id)
     if answer ~= nil then
-        effectState[id] = answer
+        effectState[id] = { value = answer, instance = instance }
         return answer
     end
-    state = type(state) == 'table' and state or { attempts = 0 }
-    state.attempts = state.attempts + 1
-    state.instance = instance
-    if how == 'unavailable' or state.attempts >= MAX_EFFECT_ATTEMPTS then
+    state = state or { attempts = 0, nextAt = 0 }
+    state.instance = instance or state.instance
+    if how == 'unavailable' then
         state.final = true
-    else
-        state.nextAt = now() + EFFECT_BACKOFF * 2 ^ (state.attempts - 1)
-        scheduleEffectRetry(state.nextAt)
+    elseif mode ~= 'event' then
+        -- Las relecturas por evento no gastan intentos del timer.
+        state.attempts = state.attempts + 1
+        if state.attempts >= MAX_EFFECT_ATTEMPTS then
+            state.final = true
+        else
+            state.nextAt = now() + EFFECT_BACKOFF * 2 ^ (state.attempts - 1)
+            scheduleEffectRetry(state.nextAt)
+        end
     end
     effectState[id] = state
     return nil
 end
 
+local function announceEffects()
+    effectRevision = effectRevision + 1
+    markDirty()
+    if #changedCallbacks > 0 then Player.GetContext() end
+end
+
 local function retryEffects()
     local resolved, earliest = false, nil
     for id, state in pairs(effectState) do
-        if type(state) == 'table' and not state.final and now() >= state.nextAt then
-            if resolveEffect(id, true) ~= nil then resolved = true end
+        if state.value == nil and not state.final and now() >= state.nextAt then
+            if resolveEffect(id, 'timer') ~= nil then resolved = true end
         end
     end
     for _, state in pairs(effectState) do
-        if type(state) == 'table' and not state.final and (not earliest or state.nextAt < earliest) then earliest = state.nextAt end
+        if state.value == nil and not state.final and (not earliest or state.nextAt < earliest) then earliest = state.nextAt end
     end
     if earliest then scheduleEffectRetry(earliest) end
-    if resolved then
-        effectRevision = effectRevision + 1
-        markDirty()
-        if #changedCallbacks > 0 then Player.GetContext() end
-    end
+    if resolved then announceEffects() end
 end
 
 -- Un solo timer, para el reintento mas proximo.
@@ -581,37 +603,65 @@ scheduleEffectRetry = function(at)
     end)
 end
 
--- Adelanta el reintento de los pendientes que cumplan match(id, state).
-local function hurryEffects(match)
-    local any = false
-    for id, state in pairs(effectState) do
-        if type(state) == 'table' and not state.final and match(id, state) then
-            state.nextAt = now()
-            any = true
-        end
+-- Relecturas por evento, agrupadas: [id] = valor anterior (o false si era pendiente).
+local eventQueue, eventScheduled = {}, false
+local function flushEventQueue()
+    eventScheduled = false
+    local queue = eventQueue
+    eventQueue = {}
+    local changed = false
+    for id, before in pairs(queue) do
+        local after = resolveEffect(id, 'event')
+        if after ~= nil and after ~= before then changed = true end
     end
-    if any then scheduleEffectRetry(now()) end
+    if changed then announceEffects() end
 end
 
--- true si el item tiene (o puede tener) efecto de uso/equipar; false solo si GetItemSpell respondio
--- sin nombre NI id Y el tooltip del item se leyo sin ninguna linea "Equipar:"/"Uso:"/"Probabilidad
--- al acertar:" (regla 30: los efectos pasivos de equipar no siempre los informa GetItemSpell). Se
--- conservan los dos retornos: el nombre puede llegar tarde y el id solo ya es evidencia. Sin API, si
--- la API falla o si el tooltip no se puede leer, no se sabe: true (conservador, ninguna moneda).
-local function hasItemSpell(id)
+local function queueEffect(id, before)
+    if eventQueue[id] == nil then eventQueue[id] = before end
+    if eventScheduled then return end
+    if C_Timer and C_Timer.After then
+        eventScheduled = true
+        C_Timer.After(0, flushEventQueue)
+    else
+        flushEventQueue()
+    end
+end
+
+local function onTooltipDataUpdate(instance)
+    for id, state in pairs(effectState) do
+        if state.value == nil then
+            if instance == nil or state.instance == nil or state.instance == instance then queueEffect(id, 'pending') end
+        elseif state.value == false and instance ~= nil and state.instance == instance then
+            state.value = nil -- invalidado: se relee
+            queueEffect(id, false)
+        end
+    end
+end
+
+local function onItemInfo(id)
+    local state = effectState[id]
+    if state and state.value == nil then queueEffect(id, 'pending') end
+end
+
+-- Efecto de uso/equipar: 'yes' (GetItemSpell con nombre o id, o una linea "Equipar:"/"Uso:"/
+-- "Probabilidad al acertar:" en el tooltip), 'no' (GetItemSpell sin nada Y tooltip completo sin esas
+-- lineas) o 'unknown' (sin API, error, o tooltip pendiente/ilegible). Ver Classify: 'unknown' no
+-- bloquea la moneda del gris pero si las demas.
+local function itemEffect(id)
     local api
     if C_Item and type(C_Item.GetItemSpell) == 'function' then api = C_Item.GetItemSpell
     elseif type(GetItemSpell) == 'function' then api = GetItemSpell end
-    if not api then return true end
+    if not api then return 'unknown' end
     local success, name, spellID = pcall(api, id)
-    if not success then return true end
-    if name ~= nil or spellID ~= nil then return true end
-    local effect = resolveEffect(id, false)
-    if effect == nil then return true end
-    return effect
+    if not success then return 'unknown' end
+    if name ~= nil or spellID ~= nil then return 'yes' end
+    local seen = resolveEffect(id, nil)
+    if seen == true then return 'yes' elseif seen == false then return 'no' end
+    return 'unknown'
 end
 
--- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, hasUseOrEquipSpell, isSetPiece };
+-- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, effect, hasUseOrEquipSpell, isSetPiece };
 -- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED). Sin ubicacion no
 -- se sabe si esta ligado: isBound queda en nil (ReadItem lo completa).
 function Player.ReadLink(link)
@@ -622,7 +672,7 @@ function Player.ReadLink(link)
     if not id then return nil end
     local _, _, quality, _, _, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
-    local hasSpell = hasItemSpell(id)
+    local effect = itemEffect(id)
     return {
         id = id,
         quality = quality,
@@ -631,7 +681,8 @@ function Player.ReadLink(link)
         subclassID = subclassID,
         subclassName = subclassName,
         equipLoc = equipLoc,
-        hasUseOrEquipSpell = hasSpell,
+        effect = effect,
+        hasUseOrEquipSpell = effect ~= 'no', -- compatibilidad: true = con efecto o sin saberlo
         isSetPiece = setID ~= nil and setID ~= 0,
     }
 end
@@ -698,10 +749,10 @@ frame:SetScript('OnEvent', function(_, event, arg1)
     -- Datos de tooltip o de item que llegan: solo adelantan reintentos de efectos pendientes, sin
     -- ensuciar el contexto.
     if event == 'TOOLTIP_DATA_UPDATE' then
-        hurryEffects(function(_, state) return arg1 == nil or state.instance == nil or state.instance == arg1 end)
+        onTooltipDataUpdate(arg1)
         return
     elseif event == 'GET_ITEM_INFO_RECEIVED' then
-        hurryEffects(function(id) return id == arg1 end)
+        onItemInfo(arg1)
         return
     end
     if scanning then return end -- eco sincronico de nuestra propia expansion

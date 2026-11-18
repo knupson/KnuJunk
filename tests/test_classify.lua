@@ -384,6 +384,32 @@ test('Data: reactivos de clase de ejemplo generados', function()
     end
 end)
 
+-- Ronda de arreglos 2 (A): efecto en tres estados. 'yes' bloquea toda moneda; 'unknown' no bloquea la
+-- del gris pero si las demas (clase exige ligado Y 'no'; mision tambien queda sin moneda).
+test('effect: yes bloquea todo, unknown solo deja el gris, no deja todo', function()
+    withData({}, {}, function()
+        local gray = function(effect) return item { quality = 0, price = 5, effect = effect, hasUseOrEquipSpell = effect ~= 'no' } end
+        eq(ns.Classify(gray('yes'), ctx()).mark, nil, 'gris con efecto')
+        local unknown = ns.Classify(gray('unknown'), ctx())
+        eq(unknown.mark, 'coin', 'gris con efecto desconocido'); ok(hasReason(unknown, 'gray'), 'gray')
+        eq(ns.Classify(gray('no'), ctx()).mark, 'coin')
+        local plate = function(effect) return item { classID = 4, subclassID = 4, quality = 2, isBound = true,
+            effect = effect, hasUseOrEquipSpell = effect ~= 'no' } end
+        eq(ns.Classify(plate('no'), ctx { class = 'MAGE' }).mark, 'coin', 'ligado y sin efecto')
+        local plateUnknown = ns.Classify(plate('unknown'), ctx { class = 'MAGE' })
+        eq(plateUnknown.mark, nil, 'ligado con efecto desconocido')
+        ok(not hasReason(plateUnknown, 'class_cannot_use'), 'sin motivo de moneda')
+        eq(ns.Classify(plate('yes'), ctx { class = 'MAGE' }).mark, nil)
+        -- Gris de otra clase, ligado, efecto desconocido: moneda solo por gris.
+        local grayPlate = ns.Classify(item { classID = 4, subclassID = 4, quality = 0, price = 5, isBound = true,
+            effect = 'unknown', hasUseOrEquipSpell = true }, ctx { class = 'MAGE' })
+        eq(grayPlate.mark, 'coin'); ok(hasReason(grayPlate, 'gray'), 'gray')
+        ok(not hasReason(grayPlate, 'class_cannot_use'), 'sin moneda por clase')
+        -- Item de mision con efecto desconocido: sin moneda.
+        eq(ns.Classify(item { classID = 12, effect = 'unknown', hasUseOrEquipSpell = true }, ctx()).mark, nil, 'mision')
+    end)
+end)
+
 -- Correccion del user (2026-11-17): un iniciador cuya mision no hiciste es util aunque no este en
 -- el diario; con la mision hecha (y no repetible) es basura.
 test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_done', function()

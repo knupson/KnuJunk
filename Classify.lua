@@ -222,18 +222,28 @@ function ns.Classify(item, ctx)
         return result
     end
 
-    -- Protecciones previas a TODA moneda automatica (gris, mision, clase): un item con efecto de
-    -- uso/equipar (o sin poder saberlo: ver Player.ReadLink) o pieza de set conserva utilidad.
-    if item.hasUseOrEquipSpell or item.isSetPiece then
+    -- Efecto de uso/equipar en tres estados (Player.ReadLink): 'yes' (evidencia: GetItemSpell o una
+    -- linea del tooltip), 'no' (tooltip completo sin efecto) o 'unknown'. Sin item.effect (items armados
+    -- a mano) se deriva de hasUseOrEquipSpell: true = 'yes', false/nil = 'no'.
+    local effect = item.effect
+    if effect ~= 'yes' and effect ~= 'no' and effect ~= 'unknown' then
+        effect = item.hasUseOrEquipSpell and 'yes' or 'no'
+    end
+    -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
+    if effect == 'yes' or item.isSetPiece then
         reasons[#reasons + 1] = { kind = 'useful' }
         return result
     end
+    -- Efecto desconocido (ronda de arreglos 2): solo la moneda del gris sigue valiendo; mision y clase no.
+    local unknownEffect = effect == 'unknown'
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then
         reasons[#reasons + 1] = { kind = 'gray' }
     end
-    if starterQuest and questDone(ctx, starterQuest) then
+    if unknownEffect then
+        -- nada: las monedas de mision quedan bloqueadas mientras no se sepa el efecto
+    elseif starterQuest and questDone(ctx, starterQuest) then
         reasons[#reasons + 1] = { kind = 'quest_done', questID = starterQuest }
     elseif #questUses > 0 or item.classID == ITEM_CLASS_QUEST then
         -- Item de mision (objetivo, fuente o clase Mision) que ninguna mision del diario pide.
@@ -246,7 +256,8 @@ function ns.Classify(item, ctx)
     if classCannotUse(item, ctx) then
         local reason = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
         if item.isBound == true then
-            reasons[#reasons + 1] = reason
+            -- Ligado: moneda solo si ademas se sabe que no tiene efecto.
+            if not unknownEffect then reasons[#reasons + 1] = reason end
         else
             reason.kind = 'class_cannot_use_tradeable'
             tradeable = reason

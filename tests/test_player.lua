@@ -336,6 +336,145 @@ test('sin C_TooltipInfo: GameTooltip oculto; si tampoco se puede leer -> conserv
     if not success then error(err, 0) end
 end)
 
+-- Ronda de arreglos 2. GameTooltip oculto falso: regiones TextLeftN con los textos de `texts(id)`
+-- (nil = region sin texto todavia). Devuelve una funcion para restaurar CreateFrame.
+local function hiddenTooltip(texts)
+    FAKE.Remove('C_TooltipInfo')
+    local realCreate = CreateFrame
+    CreateFrame = function(kind, name, parent, template)
+        local frame = realCreate(kind, name, parent, template)
+        if kind == 'GameTooltip' then
+            frame.count = 0
+            function frame:ClearLines() self.count = 0 end
+            function frame:NumLines() return self.count end
+            function frame:SetHyperlink(link)
+                local id = tonumber(link:match('item:(%d+)'))
+                local list = texts(id)
+                for index = 1, list.n or #list do
+                    local region = realCreate('FontString', name .. 'TextLeft' .. index)
+                    region.value = list[index]
+                    region.GetText = function(self) return self.value end
+                end
+                self.count = list.n or #list
+            end
+        end
+        return frame
+    end
+    return function() CreateFrame = realCreate end
+end
+
+local function classifyCtx(fields)
+    local base = { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {},
+        isQuestDone = function() return false end, questInLog = function() return false end }
+    for key, value in pairs(fields or {}) do base[key] = value end
+    return base
+end
+
+test('item.effect: yes / no / unknown segun GetItemSpell y el tooltip', function()
+    addItem(780, { spell = true })
+    addItem(781, {})
+    addItem(782, { tooltip = {} }) -- solo el titulo
+    eq(ns.Player.ReadLink(FAKE.linkOf(780)).effect, 'yes')
+    local none = ns.Player.ReadLink(FAKE.linkOf(781))
+    eq(none.effect, 'no'); eq(none.hasUseOrEquipSpell, false)
+    local titleOnly = ns.Player.ReadLink(FAKE.linkOf(782))
+    eq(titleOnly.effect, 'unknown', 'solo el titulo no prueba nada'); eq(titleOnly.hasUseOrEquipSpell, true)
+    FAKE.Remove('GetItemSpell')
+    eq(ns.Player.ReadLink(FAKE.linkOf(781)).effect, 'unknown', 'sin API')
+end)
+
+-- A: en el tooltip oculto una region vacia ('') con el titulo presente es un espaciador, no un dato
+-- pendiente. Gris con una linea en blanco -> moneda; placas ligadas -> moneda solo con efecto 'no'.
+test('tooltip oculto con linea en blanco: lectura completa (gris y clase con moneda)', function()
+    addItem(99783, { quality = 0, price = 5 })
+    addItem(99784, { quality = 2, classID = 4, subclassID = 4 })
+    local restore = hiddenTooltip(function(id) return { 'Item' .. id, '', 'Durabilidad 30 / 30' } end)
+    local success, err = pcall(function()
+        local gray = ns.Player.ReadLink(FAKE.linkOf(99783))
+        eq(gray.effect, 'no')
+        eq(ns.Classify(gray, classifyCtx()).mark, 'coin', 'gris')
+        FAKE.bags['0:1'] = 99784; FAKE.bound['0:1'] = true
+        local plate = ns.Player.ReadItem(0, 1)
+        eq(plate.effect, 'no')
+        eq(ns.Classify(plate, classifyCtx()).mark, 'coin', 'placas ligadas sin efecto')
+    end)
+    restore()
+    if not success then error(err, 0) end
+end)
+
+test('tooltip oculto con region sin texto (nil): pendiente; el gris igual lleva moneda, la clase no', function()
+    addItem(99785, { quality = 0, price = 5 })
+    addItem(99786, { quality = 2, classID = 4, subclassID = 4 })
+    local restore = hiddenTooltip(function(id) return { n = 3, 'Item' .. id, nil, 'Durabilidad' } end)
+    local success, err = pcall(function()
+        local gray = ns.Player.ReadLink(FAKE.linkOf(99785))
+        eq(gray.effect, 'unknown')
+        eq(ns.Classify(gray, classifyCtx()).mark, 'coin', 'el desconocido no bloquea el gris')
+        FAKE.bags['0:2'] = 99786; FAKE.bound['0:2'] = true
+        local plate = ns.Player.ReadItem(0, 2)
+        eq(plate.effect, 'unknown')
+        eq(ns.Classify(plate, classifyCtx()).mark, nil, 'clase exige efecto no')
+    end)
+    restore()
+    if not success then error(err, 0) end
+end)
+
+-- B: un pendiente agotado (5 lecturas) se reabre con TOOLTIP_DATA_UPDATE o GET_ITEM_INFO_RECEIVED.
+test('pendiente agotado: los eventos lo reabren y se resuelve', function()
+    addItem(787, { quality = 2, classID = 4, subclassID = 4 })
+    addItem(788, { quality = 2, classID = 4, subclassID = 4 })
+    local real = C_TooltipInfo.GetHyperlink
+    local ready = {}
+    C_TooltipInfo.GetHyperlink = function(link)
+        local id = tonumber(link:match('item:(%d+)'))
+        FAKE.tooltipCalls = FAKE.tooltipCalls + 1
+        if ready[id] then return { dataInstanceID = id, lines = { { leftText = 'X' }, { leftText = 'Durabilidad' } } } end
+        return { dataInstanceID = id, lines = { { leftText = 'X' }, {} } }
+    end
+    local changed = 0
+    ns.Player.GetContext()
+    ns.Player.OnChanged(function() changed = changed + 1 end)
+    eq(ns.Player.ReadLink(FAKE.linkOf(787)).effect, 'unknown')
+    eq(ns.Player.ReadLink(FAKE.linkOf(788)).effect, 'unknown')
+    FAKE.Advance(60)
+    eq(ns.Player.ReadLink(FAKE.linkOf(787)).effect, 'unknown', 'agotado')
+    FAKE.tooltipCalls = 0
+    FAKE.Advance(60)
+    eq(FAKE.tooltipCalls, 0, 'el timer no sigue reintentando')
+    ready[787], ready[788] = true, true
+    FAKE.Fire('TOOLTIP_DATA_UPDATE', 787)
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 788, true)
+    FAKE.Advance(0.1)
+    eq(ns.Player.ReadLink(FAKE.linkOf(787)).effect, 'no', 'reabierto por TOOLTIP_DATA_UPDATE')
+    eq(ns.Player.ReadLink(FAKE.linkOf(788)).effect, 'no', 'reabierto por GET_ITEM_INFO_RECEIVED')
+    eq(changed, 1, 'un solo aviso agrupado')
+    C_TooltipInfo.GetHyperlink = real
+end)
+
+-- C: un 'no' guardado con su dataInstanceID se invalida con TOOLTIP_DATA_UPDATE de ese id y se relee.
+test('no guardado: TOOLTIP_DATA_UPDATE de su instancia lo relee; efecto tardio quita la moneda', function()
+    addItem(789, { quality = 2, classID = 4, subclassID = 4 })
+    local real = C_TooltipInfo.GetHyperlink
+    local late = false
+    C_TooltipInfo.GetHyperlink = function()
+        local lines = { { leftText = 'Peto' }, { leftText = 'Placas' } }
+        if late then lines[3] = { leftText = 'Equip: Useful effect' } end
+        return { dataInstanceID = 99, lines = lines }
+    end
+    FAKE.bags['0:3'] = 789; FAKE.bound['0:3'] = true
+    eq(ns.Classify(ns.Player.ReadItem(0, 3), classifyCtx()).mark, 'coin', 'sin efecto: moneda')
+    late = true
+    FAKE.Fire('TOOLTIP_DATA_UPDATE', 98) -- otra instancia: no toca nada
+    FAKE.Advance(0.1)
+    eq(ns.Player.ReadItem(0, 3).effect, 'no')
+    FAKE.Fire('TOOLTIP_DATA_UPDATE', 99)
+    FAKE.Advance(0.1)
+    local item = ns.Player.ReadItem(0, 3)
+    eq(item.effect, 'yes')
+    eq(ns.Classify(item, classifyCtx()).mark, nil, 'efecto tardio: sin moneda')
+    C_TooltipInfo.GetHyperlink = real
+end)
+
 test('ReadItem y ReadLink devuelven subclassName (7mo valor de GetItemInfo)', function()
     addItem(710, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
     FAKE.bags['0:1'] = 710
