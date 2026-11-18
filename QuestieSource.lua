@@ -344,3 +344,14 @@ function Questie.Uses(itemID)
     if good then return result end
     return nil
 end
+
+-- Titulo de la mision segun QuestieDB (campo 'name' de Quest.Get), o nil. Nunca lanza.
+function Questie.QuestName(questID)
+    if type(questID) ~= 'number' then return nil end
+    local good, name = pcall(function()
+        local source = getLib()
+        return source and source.Quest.Get(questID, 'name') or nil
+    end)
+    if good and type(name) == 'string' and name ~= '' then return name end
+    return nil
+end

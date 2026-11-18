@@ -494,3 +494,23 @@ test('combate: Clear olvida lo diferido', function()
     FAKE.Fire('PLAYER_REGEN_ENABLED')
     ok(not visible(button))
 end)
+
+-- Reactivo/herramienta util para una mision (quest = true): bolsas -> martillo, botin -> mision.
+test('martillo con quest = true: martillo en bolsas, signo de mision en el botin', function()
+    addItem(100); FAKE.bags['0:1'] = 100
+    local saved = ns.Classify
+    ns.Classify = function() return { mark = 'hammer_other', quest = true, reasons = {} } end
+    local success, err = pcall(function()
+        local bag = newButton()
+        ns.Marks.Update(bag, 0, 1)
+        ok(visible(bag), 'martillo en bolsas')
+        eq(bag.KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\martillo')
+        eq(ns.Marks.Verdict(0, 1, 100), 'hammer_other')
+        local loot = newButton()
+        ns.Marks.UpdateLink(loot, FAKE.linkOf(100), 'loot')
+        ok(visible(loot), 'mision en botin')
+        eq(loot.KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    end)
+    ns.Classify = saved
+    if not success then error(err, 0) end
+end)

@@ -454,3 +454,19 @@ test('Loot: rafaga de LOOT_SLOT_CHANGED -> un solo repintado diferido', function
     FAKE.Fire('LOOT_SLOT_CHANGED', 1)
     eq(#FAKE.timers, 1)
 end)
+
+test('Loot clasico: reactivo que pide una mision activa -> quest (no martillo)', function()
+    installLoot()
+    local buttons = classicWindow(4)
+    local saved = ns.Data.reagents
+    ns.Data.reagents = { [500] = { 164 } }
+    addItem(500, { name = 'Garra de lobo', quality = 1, price = 5 }); FAKE.loot[1] = 500
+    FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra de lobo: 2/8', type = 'item' } } } }
+    local success, err = pcall(function()
+        open()
+        ok(visible(buttons[1]))
+        eq(buttons[1].KnuJunkMark.texture, 'Interface\\GossipFrame\\AvailableQuestIcon')
+    end)
+    ns.Data.reagents = saved
+    if not success then error(err, 0) end
+end)

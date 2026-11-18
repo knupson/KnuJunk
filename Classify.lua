@@ -7,6 +7,8 @@ local _, ns = ...
 --          questItemsInLog = {[itemID]=true}, questieUses(itemID)->{ {questID=, repeatable=} }|nil,
 --          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
 -- result = { mark = 'coin'|'hammer_mine'|'hammer_other'|'quest'|nil, reasons = { {kind=...} } }
+--   quest = true cuando el item es util para una mision pendiente Y es reactivo o herramienta: la marca
+--   es el martillo (las bolsas lo dibujan) y el botin dibuja el signo de mision.
 
 local ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR = 2, 4
 
@@ -62,24 +64,24 @@ function ns.Classify(item, ctx)
     -- Datos del item sin cargar: no se decide nada.
     if item.quality == nil then return result end
 
-    -- 2. Util para una mision: sin monedita.
+    -- 2. Util para una mision: sin monedita. Si ademas es reactivo o herramienta, manda el martillo
+    -- (paso 3) con quest = true; si no, la marca es 'quest'.
+    local questReasons = {}
     if ctx.questItemsInLog and ctx.questItemsInLog[id] then
-        result.mark = 'quest'
-        reasons[#reasons + 1] = { kind = 'quest_active' }
-        return result
+        questReasons[1] = { kind = 'quest_active' }
     end
     local uses = type(ctx.questieUses) == 'function' and ctx.questieUses(id) or nil
     local repeatable
-    if uses then
+    if uses and #questReasons == 0 then
         for _, use in ipairs(uses) do
             if not questDone(ctx, use.questID) then
-                result.mark = 'quest'
-                reasons[#reasons + 1] = { kind = 'quest_active', questID = use.questID }
-                return result
+                questReasons[1] = { kind = 'quest_active', questID = use.questID }
+                break
             end
             if use.repeatable then repeatable = repeatable or use.questID end
         end
     end
+    for _, reason in ipairs(questReasons) do reasons[#reasons + 1] = reason end
 
     -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
     -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, gris si no; nunca
@@ -103,6 +105,12 @@ function ns.Classify(item, ctx)
         return all
     end
     local mineReagent, mineTool = mineOf(reagentLines), mineOf(toolLines)
+    if #questReasons > 0 then
+        if reagentLines or toolLines then result.quest = true else
+            result.mark = 'quest'
+            return result
+        end
+    end
     if #mineReagent > 0 then
         result.mark = 'hammer_mine'
         reasons[#reasons + 1] = { kind = 'profession', professions = mineReagent }

@@ -520,6 +520,62 @@ test('Tooltip: aislamiento - Reset deja GameTooltip limpio, sin hooks ni lineas'
     eq(ItemRefTooltip, nil)
 end)
 
+-- Reactivo util para una mision pendiente: martillo + linea neutra de la mision (con su icono).
+test('Tooltip: reactivo con mision pendiente de Questie -> linea de mision y martillo', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withReagents({ [100] = { 164 } }, function()
+        local saved = ns.Questie.Uses
+        ns.Questie.Uses = function(id) if id == 100 then return { { questID = 77, repeatable = false } } end end
+        local success, err = pcall(function()
+            local plain = newTooltip(100)
+            run(processor, plain, {})
+            eq(#plain.lines, 2)
+            local entry = line(plain, 1, 'Misión pendiente: #77', { 1, 1, 1 })
+            ok(entry.text:find('GossipFrame\\AvailableQuestIcon', 1, true), 'icono de mision: ' .. entry.text)
+            line(plain, 2, 'Profesión que no tenés: Herrería', { 1, 0.85, 0.2 })
+            for _, l in ipairs(plain.lines) do ok(not l.text:find('UI-GoldIcon', 1, true), 'nunca moneda') end
+            C_QuestLog.GetTitleForQuestID = function(id) return 'La caza ' .. id end
+            local named = newTooltip(100)
+            run(processor, named, {})
+            line(named, 1, 'Misión pendiente: La caza 77')
+        end)
+        ns.Questie.Uses = saved
+        C_QuestLog.GetTitleForQuestID = nil
+        if not success then error(err, 0) end
+    end)
+end)
+
+test('Tooltip: titulo de QuestieDB si el cliente no lo da', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    FAKE.InstallQuestie({ [78] = { name = 'Garras para el herrero' } })
+    withClassify(function()
+        return { mark = 'hammer_other', quest = true, reasons = { { kind = 'quest_active', questID = 78 }, { kind = 'profession', professions = { 164 } } } }
+    end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        line(tooltip, 1, 'Misión pendiente: Garras para el herrero')
+    end)
+    LibQuestieDB = nil
+end)
+
+test('Tooltip: reactivo del diario de misiones -> "Lo pide una misión activa"', function()
+    addItem(500, { name = 'Garra afilada', quality = 1 })
+    FAKE.questLog = { { questID = 2, objectives = { { text = 'Garra afilada: 2/8', type = 'item' } } } }
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withReagents({ [500] = { 164, 171 } }, function()
+        local tooltip = newTooltip(500)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 2)
+        line(tooltip, 1, 'Lo pide una misión activa', { 1, 1, 1 })
+        line(tooltip, 2, 'Profesión que no tenés: Herrería, Alquimia')
+    end)
+end)
+
 test('Tooltip: aislamiento - el caso siguiente ve el GameTooltip limpio', function()
     ok(next(GameTooltip.scripts) == nil, 'sin scripts enganchados')
     eq(GameTooltip.lines, nil)

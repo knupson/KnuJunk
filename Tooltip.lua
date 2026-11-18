@@ -2,7 +2,9 @@ local _, ns = ...
 
 -- Motivo de la marca en el tooltip de un item. Solo hay lineas si el item tiene marca (moneda o
 -- martillo) o un override del usuario; un item sin marca no recibe nada (cero ruido). Los motivos
--- 'quest_starter', 'quest_active' y 'quest_log_incomplete' tampoco agregan lineas.
+-- 'quest_starter' y 'quest_log_incomplete' no agregan lineas; 'quest_active' solo cuando el item lleva
+-- martillo por ser reactivo/herramienta (result.quest): 'Mision pendiente: <titulo>' o, si viene del
+-- diario sin questID, 'Lo pide una mision activa'.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
 -- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
 -- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
@@ -52,6 +54,10 @@ local function questName(questID)
     end
     if type(QuestUtils_GetQuestName) == 'function' then
         local success, title = pcall(QuestUtils_GetQuestName, questID)
+        if success and type(title) == 'string' and title ~= '' then return title end
+    end
+    if ns.Questie and type(ns.Questie.QuestName) == 'function' then
+        local success, title = pcall(ns.Questie.QuestName, questID)
         if success and type(title) == 'string' and title ~= '' then return title end
     end
     return '#' .. questID
@@ -104,6 +110,14 @@ function Tooltip.Lines(link)
                 add(L['Quest finished: %s']:format(questName(reason.questID)), GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
+            end
+        elseif kind == 'quest_active' and result.quest == true and shows('hammer') then
+            -- Reactivo/herramienta util para una mision pendiente (marca: martillo): se explica la
+            -- mision en neutro, con su icono; nunca moneda.
+            if reason.questID ~= nil then
+                add(L['Pending quest: %s']:format(questName(reason.questID)), WHITE, 'quest')
+            else
+                add(L['Needed by an active quest'], WHITE, 'quest')
             end
         elseif kind == 'profession' and shows('hammer') then
             if mark == 'hammer_mine' then

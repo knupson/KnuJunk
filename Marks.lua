@@ -121,9 +121,18 @@ local function paint(button, mark, allowQuest)
     texture:Show()
 end
 
-local function verdict(item)
+-- Resultado completo del clasificador (tabla) o nil si fallo.
+local function classify(item)
     local success, result = pcall(function() return ns.Classify(item, ns.Player.GetContext()) end)
-    if success and type(result) == 'table' then return result.mark end
+    if success and type(result) == 'table' then return result end
+end
+
+-- Marca a dibujar. En el botin (forLoot) un reactivo/herramienta util para una mision pendiente
+-- (quest = true) lleva el signo de mision: ahi la mision tiene prioridad; en bolsas, el martillo.
+local function markOf(result, forLoot)
+    if not result then return nil end
+    if forLoot and result.quest == true then return 'quest' end
+    return result.mark
 end
 
 function Marks.Clear(button)
@@ -143,7 +152,7 @@ local function updateSlot(button, bag, slot, owner)
         pending[button] = { id = id, bag = bag, slot = slot, owner = owner }
         return
     end
-    paint(button, verdict(item), false)
+    paint(button, markOf(classify(item), false), false)
 end
 
 local function updateLinkBody(button, link, owner)
@@ -154,7 +163,7 @@ local function updateLinkBody(button, link, owner)
         pending[button] = { id = id, link = link, owner = owner }
         return
     end
-    paint(button, verdict(item), true)
+    paint(button, markOf(classify(item), true), true)
 end
 
 -- Los botones se reciclan: la marca vieja se oculta ANTES de cualquier lectura, y si la lectura
@@ -213,19 +222,22 @@ end
 -- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (0-4, o el
 -- banco vivo: el que llama tiene que haber probado que su vista es la viva). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
 -- nil si no; el 2.o valor es true cuando el cliente aun no tiene los datos del item (reintentar con
--- GET_ITEM_INFO_RECEIVED). Si expectedID viene, el slot tiene que contener ese item. Nunca lanza.
+-- GET_ITEM_INFO_RECEIVED). Con marca, el 3.o valor es el resultado completo del clasificador (motivos)
+-- y el 4.o el item leido (calidad, precio). Si expectedID viene, el slot tiene que contener ese item.
+-- Nunca lanza.
 function Marks.Verdict(bag, slot, expectedID)
-    local success, mark, waiting = pcall(function()
+    local success, mark, waiting, result, info = pcall(function()
         if not enabled() or not allowedBag(bag) or type(slot) ~= 'number' then return nil end
         local id = slotItemID(bag, slot)
         if not id or (expectedID ~= nil and id ~= expectedID) then return nil end
         local item = ns.Player.ReadItem(bag, slot)
         if not item then return nil, true end
-        local found = verdict(item)
+        local result = classify(item)
+        local found = markOf(result, false)
         local kind = kindOf(found, false)
-        if kind and shows(kind) then return found end
+        if kind and shows(kind) then return found, false, result, item end
     end)
-    if success then return mark, waiting == true end
+    if success then return mark, waiting == true, mark and result or nil, mark and info or nil end
     return nil, false
 end
 

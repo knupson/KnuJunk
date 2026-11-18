@@ -88,11 +88,12 @@ test('herramienta gris con precio -> nunca monedita', function()
     end, { [9000] = { 186 } })
 end)
 
-test('herramienta: override sell da monedita, keep ninguna, mision activa gana', function()
+test('herramienta: override sell da monedita, keep ninguna, mision activa -> martillo con quest', function()
     withData({}, {}, function()
         eq(ns.Classify(item(), ctx { overrides = { [9000] = 'sell' } }).mark, 'coin')
         eq(ns.Classify(item(), ctx { overrides = { [9000] = 'keep' } }).mark, nil)
-        eq(ns.Classify(item(), ctx { questItemsInLog = { [9000] = true } }).mark, 'quest')
+        local quest = ns.Classify(item(), ctx { questItemsInLog = { [9000] = true } })
+        eq(quest.mark, 'hammer_other'); eq(quest.quest, true)
     end, { [9000] = { 164 } })
 end)
 
@@ -337,5 +338,41 @@ test('caña de pescar: martillito de Pesca aunque no figure en spelltotems', fun
         local mine = ns.Classify(cana, ctx { professions = { [356] = true } })
         eq(mine.mark, 'hammer_mine'); eq(hasReason(mine, 'profession_tool').professions[1], 356)
         eq(ns.Classify(cana, ctx()).mark, 'hammer_other', 'sin Pesca: martillo gris, nunca moneda')
+    end)
+end)
+
+-- Util para una mision pendiente Y reactivo/herramienta: martillo (las bolsas lo dibujan), con
+-- quest = true y los motivos de mision; el botin dibuja el signo de mision.
+test('reactivo con mision pendiente de questie -> hammer_other con quest', function()
+    withData({ [9000] = { 164, 171 } }, {}, function()
+        local result = ns.Classify(item(), ctx {
+            questieUses = function() return { { questID = 77, repeatable = false } } end,
+        })
+        eq(result.mark, 'hammer_other'); eq(result.quest, true)
+        eq(hasReason(result, 'quest_active').questID, 77)
+        eq(hasReason(result, 'profession').professions[2], 171)
+    end)
+end)
+
+test('reactivo propio en el diario de misiones -> hammer_mine con quest', function()
+    withData({ [9000] = { 164 } }, {}, function()
+        local result = ns.Classify(item(), ctx { professions = { [164] = true }, questItemsInLog = { [9000] = true } })
+        eq(result.mark, 'hammer_mine'); eq(result.quest, true)
+        ok(hasReason(result, 'quest_active'), 'quest_active')
+        eq(hasReason(result, 'quest_active').questID, nil)
+    end)
+end)
+
+test('herramienta con mision pendiente -> hammer con quest', function()
+    withData({}, {}, function()
+        local result = ns.Classify(item(), ctx { questItemsInLog = { [9000] = true } })
+        eq(result.mark, 'hammer_other'); eq(result.quest, true)
+    end, { [9000] = { 186 } })
+end)
+
+test('item de mision que no es reactivo ni herramienta -> quest sin quest=true', function()
+    withData({}, {}, function()
+        local result = ns.Classify(item(), ctx { questItemsInLog = { [9000] = true } })
+        eq(result.mark, 'quest'); eq(result.quest, nil)
     end)
 end)
