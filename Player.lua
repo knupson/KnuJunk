@@ -67,7 +67,8 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
             if title then collapsedTitles[title] = true end
         end
     end
-    if not any then scan(); return true end
+    -- scan() devuelve false si alguna fila u objetivo todavía no tiene datos: ese escaneo no es completo.
+    if not any then return scan() ~= false end
     -- La huella de la ultima expansion completa certifica lo escaneado aunque ahora no se
     -- pueda expandir (combate): mismo diario visible y mismo total. Aceptar, abandonar o
     -- entregar una mision borra memo.fp, asi que despues de esos eventos no certifica.
@@ -95,8 +96,8 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
             local _, isHeader, isCollapsed = entry(index)
             if isHeader and isCollapsed then stillCollapsed = true; break end
         end
-        scan()
-        complete = not stillCollapsed
+        local full = scan() ~= false
+        complete = not stillCollapsed and full
     end)
     pcall(function()
         for index = count(), 1, -1 do
@@ -238,17 +239,29 @@ local function scanQuestLog()
             restore = function(questID) if questID and questID ~= 0 then C_QuestLog.SetSelectedQuest(questID) end end
         end
         local complete, how = scanExpanded(count, entry, expand, collapse, function()
+            local full = true
             for index = 1, count() do
                 local info = C_QuestLog.GetInfo(index)
-                if info and not info.isHeader then
+                if not info then
+                    full = false -- fila sin datos: podría ser una misión con objetos
+                elseif not info.isHeader then
                     quest(info.questID)
                     if info.questID then
-                        for _, objective in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do
+                        local objectives = C_QuestLog.GetQuestObjectives(info.questID)
+                        if objectives == nil then
+                            -- Datos de la misión sin cargar: pedirlos y no dar el diario por leído.
+                            full = false
+                            if type(C_QuestLog.RequestLoadQuestByID) == 'function' then
+                                pcall(C_QuestLog.RequestLoadQuestByID, info.questID)
+                            end
+                        end
+                        for _, objective in ipairs(objectives or {}) do
                             add(objective.text, objective.type, info.title)
                         end
                     end
                 end
             end
+            return full
         end, save, restore, fingerprint, questMemo)
         if how == 'cached' then return questMemo.data, true end
         if how == 'expanded' then questMemo.data = found end
@@ -656,21 +669,29 @@ local function queueEffect(id, before)
     end
 end
 
+-- Ambos devuelven true sólo si el evento tocaba un ítem que KnuJunk estaba esperando.
 local function onTooltipDataUpdate(instance)
+    local touched = false
     for id, state in pairs(effectState) do
         if state.value == nil then
-            if instance == nil or state.instance == nil or state.instance == instance then queueEffect(id, 'pending') end
+            if instance == nil or state.instance == nil or state.instance == instance then
+                queueEffect(id, 'pending'); touched = true
+            end
         elseif state.value == false and instance ~= nil and state.instance == instance then
             -- Invalidado: pasa a pendiente completo (intentos del timer desde cero) y se relee.
             effectState[id] = { attempts = 0, nextAt = 0, instance = state.instance }
-            queueEffect(id, false)
+            queueEffect(id, false); touched = true
         end
     end
+    return touched
 end
 
 local function onItemInfo(id)
     local state = effectState[id]
-    if state and state.value == nil then queueEffect(id, 'pending') end
+    if state and state.value == nil then queueEffect(id, 'pending'); return true end
+    local data = ns.Data or {}
+    return id ~= nil and ((data.food and data.food[id]) or (data.ammo and data.ammo[id])
+        or (data.recipes and data.recipes[id])) and true or false
 end
 
 -- Efecto de uso/equipar: 'yes' (GetItemSpell con nombre o id, o una linea "Equipar:"/"Uso:"/
@@ -809,6 +830,7 @@ function Player.EquippedAmmo()
         local good, link = pcall(GetInventoryItemLink, 'player', 0)
         if good then return link and tonumber(link:match('item:(%d+)')) or false end
     end
+    return nil -- sin API o con error: desconocido (nil explícito para tostring y comparaciones)
 end
 
 -- Inventario vivo, sólo mochila y bolsas del personaje; nunca banco ni cachés de alts.
@@ -861,7 +883,7 @@ local frame = CreateFrame('Frame')
 -- Todo evento que pueda cambiar el contexto lo ensucia; la reconstruccion es perezosa. Un
 -- evento que el cliente no conozca no debe romper la carga.
 for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
-    'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
+    'QUEST_TURNED_IN', 'QUEST_DATA_LOAD_RESULT', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
     'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
@@ -886,8 +908,10 @@ frame:SetScript('OnEvent', function(_, event, arg1)
     local optionalEnabled = rules and (rules.food or rules.ammo or rules.knownRecipe)
     -- Los datos pendientes también llegan al expandir/plegar el diario: no perder el reintento.
     if event == 'TOOLTIP_DATA_UPDATE' or event == 'GET_ITEM_INFO_RECEIVED' then
-        if event == 'TOOLTIP_DATA_UPDATE' then onTooltipDataUpdate(arg1) else onItemInfo(arg1) end
-        if optionalEnabled and not scanning then
+        local relevant
+        if event == 'TOOLTIP_DATA_UPDATE' then relevant = onTooltipDataUpdate(arg1) else relevant = onItemInfo(arg1) end
+        -- Tooltips ajenos (otra instancia, ningún ítem pendiente) no reescanean las bolsas.
+        if relevant and optionalEnabled and not scanning then
             optionalRevision = optionalRevision + 1
             markDirty()
             scheduleCheck()
