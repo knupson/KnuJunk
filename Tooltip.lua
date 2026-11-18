@@ -28,13 +28,18 @@ local function shows(kind)
     return not (type(show) == 'table' and show[kind] == false)
 end
 
--- Icono en linea con la misma textura que dibuja Marks (el martillo con el mismo recorte).
-local function icon(kind)
+-- Icono en linea con la misma textura que dibuja Marks; el martillo lleva el mismo tinte que su
+-- marca (|T ruta:alto:ancho:x:y:tamX:tamY:izq:der:arr:abj:r:g:b|t, con r/g/b en 0-255).
+local function icon(kind, mark)
     local textures = ns.Marks and ns.Marks.TEXTURES
     local path = type(textures) == 'table' and textures[kind]
     if type(path) ~= 'string' then return '' end
     if kind == 'hammer' then
-        return '|T' .. path .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. ':0:0:64:64:5:59:5:59|t '
+        local tints = ns.Marks.TINTS
+        local tint = type(tints) == 'table' and tints[mark] or WHITE
+        return '|T' .. path .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. ':0:0:64:64:0:64:0:64:'
+            .. math.floor(tint[1] * 255 + 0.5) .. ':' .. math.floor(tint[2] * 255 + 0.5) .. ':'
+            .. math.floor(tint[3] * 255 + 0.5) .. '|t '
     end
     return '|T' .. path .. ':' .. ICON_SIZE .. '|t '
 end
@@ -52,7 +57,10 @@ local function questName(questID)
     return '#' .. questID
 end
 
-local function subclassName(classID, subclassID)
+-- El nombre ya localizado que trae el item (7mo valor de GetItemInfo) gana; despues
+-- GetItemSubClassInfo; al final el numero.
+local function subclassName(given, classID, subclassID)
+    if type(given) == 'string' and given ~= '' then return given end
     if type(GetItemSubClassInfo) == 'function' and type(classID) == 'number' and type(subclassID) == 'number' then
         local success, name = pcall(GetItemSubClassInfo, classID, subclassID)
         if success and type(name) == 'string' and name ~= '' then return name end
@@ -80,7 +88,7 @@ function Tooltip.Lines(link)
     local L = ns.L
 
     local function add(text, color, kind)
-        lines[#lines + 1] = { text = (kind and icon(kind) or '') .. text, r = color[1], g = color[2], b = color[3] }
+        lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
 
     for _, reason in ipairs(reasons) do
@@ -95,7 +103,7 @@ function Tooltip.Lines(link)
             elseif kind == 'quest_done' then
                 add(L['Quest finished: %s']:format(questName(reason.questID)), GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
-                add(L["Your class can't use %s"]:format(subclassName(reason.classID, reason.subclassID)), GOLD, 'coin')
+                add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
             end
         elseif kind == 'profession' and shows('hammer') then
             if mark == 'hammer_mine' then

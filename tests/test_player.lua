@@ -113,6 +113,13 @@ test('ReadItem devuelve la forma item', function()
     eq(item.hasUseOrEquipSpell, false); eq(item.isSetPiece, false)
 end)
 
+test('ReadItem y ReadLink devuelven subclassName (7mo valor de GetItemInfo)', function()
+    addItem(710, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
+    FAKE.bags['0:1'] = 710
+    eq(ns.Player.ReadItem(0, 1).subclassName, 'Varita')
+    eq(ns.Player.ReadLink(FAKE.linkOf(710)).subclassName, 'Varita')
+end)
+
 test('hasUseOrEquipSpell e isSetPiece nunca son nil con datos cargados', function()
     addItem(701, { spell = true, setID = 55 })
     local item = ns.Player.ReadLink(FAKE.linkOf(701))

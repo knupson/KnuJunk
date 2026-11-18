@@ -3,10 +3,10 @@ local _, ns = ...
 -- Dibuja (o esconde) la marca de un boton de item: moneda, martillo o signo de mision.
 -- Regla de oro: ante cualquier duda, sin marca. Nada se marca fuera de las bolsas 0-4 ni con el
 -- addon apagado, y un item cuyos datos el cliente aun no tiene queda sin marca hasta que lleguen.
--- Texturas: iconos del propio juego (no hace falta media binaria). Decision documentada:
+-- Texturas: iconos del juego, salvo el martillo (media\martillo.tga, propio). Decision documentada:
 --   coin   -> Interface\MoneyFrame\UI-GoldIcon           (la moneda de oro de la interfaz)
---   hammer -> Interface\Icons\Trade_BlackSmithing        (martillo de herreria; propio: tinte verde,
---                                                          ajeno: desaturado con alpha 0.7)
+--   hammer -> Interface\AddOns\KnuJunk\media\martillo   (silueta blanca con borde negro, propia del addon;
+--                                                          propio: tinte verde, ajeno: gris claro; sin recorte)
 --   quest  -> Interface\GossipFrame\AvailableQuestIcon   (signo de mision; solo en el botin)
 -- Si el arte final cambia, basta con tocar TEXTURES.
 local Marks = {}
@@ -15,12 +15,14 @@ ns.Marks = Marks
 local SIZE = 14
 local TEXTURES = {
     coin = 'Interface\\MoneyFrame\\UI-GoldIcon',
-    hammer = 'Interface\\Icons\\Trade_BlackSmithing',
+    hammer = 'Interface\\AddOns\\KnuJunk\\media\\martillo',
     quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
 }
 Marks.TEXTURES = TEXTURES -- las usa el tooltip para el icono en linea de cada motivo
 local MINE_TINT = { 0.25, 0.85, 0.35 }
-local OTHER_ALPHA = 0.7
+local OTHER_TINT = { 0.75, 0.75, 0.75 }
+-- Color de cada martillo (el tooltip lo usa para teñir su icono en linea igual que la marca).
+Marks.TINTS = { hammer_mine = MINE_TINT, hammer_other = OTHER_TINT }
 
 -- [boton] = { id = itemID, bag =, slot = | link =, owner = }: botones esperando datos del item.
 local pending = setmetatable({}, { __mode = 'k' })
@@ -74,20 +76,19 @@ local function kindOf(mark, allowQuest)
     if mark == 'quest' and allowQuest then return 'quest' end
 end
 
--- Deja `texture` con el aspecto de la marca (textura, tinte, desaturado). Los botones se reciclan:
+-- Deja `texture` con el aspecto de la marca (textura, tinte). Los botones se reciclan:
 -- cada dibujo parte de un estado limpio. Tambien lo usan los adaptadores que dibujan en sus propias
 -- esquinas (Baganator).
 local function style(texture, kind, mark)
     texture:SetTexture(TEXTURES[kind])
-    if kind == 'hammer' then texture:SetTexCoord(0.08, 0.92, 0.08, 0.92) else texture:SetTexCoord(0, 1, 0, 1) end
+    texture:SetTexCoord(0, 1, 0, 1)
     texture:SetVertexColor(1, 1, 1)
     texture:SetAlpha(1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end
     if mark == 'hammer_mine' then
         texture:SetVertexColor(MINE_TINT[1], MINE_TINT[2], MINE_TINT[3])
     elseif mark == 'hammer_other' then
-        if texture.SetDesaturated then texture:SetDesaturated(true) end
-        texture:SetAlpha(OTHER_ALPHA)
+        texture:SetVertexColor(OTHER_TINT[1], OTHER_TINT[2], OTHER_TINT[3])
     end
 end
 

@@ -34,6 +34,7 @@ function methods:SetBackdrop(value) self.backdrop = value end
 function methods:SetBackdropColor(...) self.bg = {...} end
 function methods:SetBackdropBorderColor(...) self.border = {...} end
 function methods:SetVertexColor(...) self.vertex = {...} end
+function methods:SetTexCoord(...) self.texCoord = {...} end
 function methods:SetTextColor(...) self.textColor = {...} end
 function methods:SetTexture(value) self.texture = value end
 function methods:SetDesaturated(value) self.desaturated = value end
@@ -48,7 +49,7 @@ function methods:GetCheckedTexture() return self.checkedTexture end
 for _, part in ipairs({'Normal','Pushed','Highlight','Disabled'}) do
     methods['Get' .. part .. 'Texture'] = function(self) return self[part] end
 end
-for _, method in ipairs({'SetPoint','SetSize','SetWidth','SetHeight','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetTexCoord','SetDrawLayer'}) do methods[method] = function() end end
+for _, method in ipairs({'SetPoint','SetSize','SetWidth','SetHeight','RegisterForClicks','EnableMouse','SetOwner','AddLine','SetHyperlink','HighlightText','SetCursorPosition','SetAutoFocus','ClearAllPoints','SetNormalTexture','SetHighlightTexture','SetDrawLayer'}) do methods[method] = function() end end
 function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
         name = name, enabled = true, alpha = 1 }, {__index = methods})
@@ -225,7 +226,7 @@ local function installClient()
     GetItemInfo = function(key)
         local id, d = itemOf(key)
         if not d then return nil end
-        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', 'Subtipo', 1, d.equipLoc or '', 'icon',
+        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
     end
     GetItemSpell = function(key)

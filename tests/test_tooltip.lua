@@ -120,7 +120,7 @@ test('Tooltip: hammer_other lista dos profesiones en el orden del clasificador, 
         run(processor, tooltip, {})
         eq(#tooltip.lines, 1)
         local entry = line(tooltip, 1, 'Profesión que no tenés: Herrería, Minería', { 0.6, 0.6, 0.6 })
-        ok(hasIcon(entry), 'icono'); ok(entry.text:find('Trade_BlackSmithing', 1, true), 'martillo')
+        ok(hasIcon(entry), 'icono'); ok(entry.text:find('media\\martillo:14:14:0:0:64:64:0:64:0:64:191:191:191|t ', 1, true), 'martillo ajeno gris: ' .. entry.text)
     end)
 end)
 
@@ -203,6 +203,31 @@ test('Tooltip: class_cannot_use usa el nombre de la subclase o el numero', funct
         run(processor, named, {})
         line(named, 1, 'Tu clase no usa Placas')
     end)
+end)
+
+test('Tooltip: class_cannot_use usa el subtipo que trae el motivo o el item, antes que GetItemSubClassInfo', function()
+    addItem(100, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local saved = GetItemSubClassInfo
+    GetItemSubClassInfo = nil
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19, subclassName = 'Varita' } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19 } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    GetItemSubClassInfo = function() return 'Placas' end
+    withClassify(function() return { mark = 'coin', reasons = { { kind = 'class_cannot_use', classID = 2, subclassID = 19, subclassName = 'Varita' } } } end, function()
+        local tip = newTooltip(100)
+        run(processor, tip, {})
+        line(tip, 1, 'Tu clase no usa Varita')
+    end)
+    GetItemSubClassInfo = saved
 end)
 
 test('Tooltip: las siete claves en ingles tienen traduccion al castellano', function()

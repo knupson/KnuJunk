@@ -135,7 +135,7 @@ function ns.Classify(item, ctx)
         if allDone then reasons[#reasons + 1] = { kind = 'quest_done', questID = uses[1].questID } end
     end
     if classCannotUse(item, ctx) then
-        reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID }
+        reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
     end
     -- Diario con misiones sin leer (encabezado plegado en combate, sin API): el item podria ser
     -- un objetivo de mision, asi que no se da NINGUNA moneda (salvo override_sell, ya resuelto arriba).

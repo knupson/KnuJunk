@@ -372,7 +372,7 @@ local function hasItemSpell(id)
     return name ~= nil or spellID ~= nil
 end
 
--- item = { id, quality, price, classID, subclassID, equipLoc, hasUseOrEquipSpell, isSetPiece };
+-- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, hasUseOrEquipSpell, isSetPiece };
 -- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED).
 function Player.ReadLink(link)
     if link == nil or type(GetItemInfo) ~= 'function' then return nil end
@@ -380,7 +380,7 @@ function Player.ReadLink(link)
     if type(link) == 'number' then id = link
     elseif type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) end
     if not id then return nil end
-    local _, _, quality, _, _, _, _, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
+    local _, _, quality, _, _, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
     local hasSpell = hasItemSpell(id)
     return {
@@ -389,6 +389,7 @@ function Player.ReadLink(link)
         price = price or 0,
         classID = classID,
         subclassID = subclassID,
+        subclassName = subclassName,
         equipLoc = equipLoc,
         hasUseOrEquipSpell = hasSpell,
         isSetPiece = setID ~= nil and setID ~= 0,

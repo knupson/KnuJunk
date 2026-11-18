@@ -103,10 +103,10 @@ end)
 
 test('placas en MAGE -> coin class_cannot_use', function()
     withData({}, {}, function()
-        local result = ns.Classify(item { classID = 4, subclassID = 4, quality = 2 }, ctx { class = 'MAGE' })
+        local result = ns.Classify(item { classID = 4, subclassID = 4, quality = 2, subclassName = 'Placas' }, ctx { class = 'MAGE' })
         eq(result.mark, 'coin')
         local reason = hasReason(result, 'class_cannot_use')
-        eq(reason.classID, 4); eq(reason.subclassID, 4)
+        eq(reason.classID, 4); eq(reason.subclassID, 4); eq(reason.subclassName, 'Placas')
     end)
 end)
 
