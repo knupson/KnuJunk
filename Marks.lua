@@ -16,6 +16,8 @@ local Marks = {}
 ns.Marks = Marks
 
 local SIZE = 20
+local COIN_ATLAS = 'bags-junkcoin'
+Marks.COIN_ATLAS = COIN_ATLAS
 local TEXTURES = {
     coin = 'Interface\\MoneyFrame\\UI-GoldIcon',
     hammer = 'Interface\\AddOns\\KnuJunk\\media\\martillo',
@@ -100,8 +102,12 @@ end
 -- cada dibujo parte de un estado limpio. Tambien lo usan los adaptadores que dibujan en sus propias
 -- esquinas (Baganator).
 local function style(texture, kind, mark)
-    texture:SetTexture(TEXTURES[kind])
-    texture:SetTexCoord(0, 1, 0, 1)
+    -- Moneda: el mismo atlas de basura de Blizzard que usa Baganator ('bags-junkcoin'); si el cliente
+    -- no lo tiene, la moneda de oro.
+    local atlas = kind == 'coin' and texture.SetAtlas and C_Texture and C_Texture.GetAtlasInfo
+        and C_Texture.GetAtlasInfo(COIN_ATLAS) and COIN_ATLAS
+    if atlas then texture:SetAtlas(atlas) else texture:SetTexture(TEXTURES[kind]) end
+    if not atlas then texture:SetTexCoord(0, 1, 0, 1) end
     texture:SetVertexColor(1, 1, 1)
     texture:SetAlpha(1)
     if texture.SetDesaturated then texture:SetDesaturated(false) end

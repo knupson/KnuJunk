@@ -37,6 +37,7 @@ function methods:SetVertexColor(...) self.vertex = {...} end
 function methods:SetTexCoord(...) self.texCoord = {...} end
 function methods:SetTextColor(...) self.textColor = {...} end
 function methods:SetTexture(value) self.texture = value end
+function methods:SetAtlas(value) self.atlas = value; self.texture = nil end
 function methods:SetDesaturated(value) self.desaturated = value end
 function methods:SetFont(...) self.font = {...} end
 function methods:GetFont() return unpack(self.font or {STANDARD_TEXT_FONT, 12, ''}) end

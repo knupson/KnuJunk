@@ -43,6 +43,10 @@ local function icon(kind, mark)
             .. math.floor(tint[1] * 255 + 0.5) .. ':' .. math.floor(tint[2] * 255 + 0.5) .. ':'
             .. math.floor(tint[3] * 255 + 0.5) .. '|t '
     end
+    local atlas = kind == 'coin' and ns.Marks.COIN_ATLAS
+    if atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
+        return '|A:' .. atlas .. ':' .. ICON_SIZE .. ':' .. ICON_SIZE .. '|a '
+    end
     return '|T' .. path .. ':' .. ICON_SIZE .. '|t '
 end
 

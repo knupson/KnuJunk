@@ -514,3 +514,16 @@ test('martillo con quest = true: martillo en bolsas, signo de mision en el botin
     ns.Classify = saved
     if not success then error(err, 0) end
 end)
+
+test('moneda: atlas de basura de Blizzard (bags-junkcoin) si el cliente lo tiene', function()
+    local saved = C_Texture
+    C_Texture = { GetAtlasInfo = function(name) if name == 'bags-junkcoin' then return { width = 16 } end end }
+    local ok2, err = pcall(function()
+        local button = CreateFrame('Button', nil, UIParent)
+        local texture = button:CreateTexture()
+        ns.Marks.Style(texture, 'coin')
+        eq(texture.atlas, 'bags-junkcoin')
+    end)
+    C_Texture = saved
+    if not ok2 then error(err, 0) end
+end)
