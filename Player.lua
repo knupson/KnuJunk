@@ -689,9 +689,11 @@ end
 local function onItemInfo(id)
     local state = effectState[id]
     if state and state.value == nil then queueEffect(id, 'pending'); return true end
-    local data = ns.Data or {}
-    return id ~= nil and ((data.food and data.food[id]) or (data.ammo and data.ammo[id])
-        or (data.recipes and data.recipes[id])) and true or false
+    -- Sólo cuenta si el ítem es de una regla opcional encendida.
+    local data, rules = ns.Data or {}, (ns.DB and ns.DB.rules) or {}
+    return id ~= nil and ((rules.food and data.food and data.food[id])
+        or (rules.ammo and data.ammo and data.ammo[id])
+        or (rules.knownRecipe and data.recipes and data.recipes[id])) and true or false
 end
 
 -- Efecto de uso/equipar: 'yes' (GetItemSpell con nombre o id, o una linea "Equipar:"/"Uso:"/

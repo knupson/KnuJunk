@@ -89,3 +89,17 @@ test('Opcionales: tooltip ajeno o ítem sin relación no reescanean ni avisan', 
     ns.DB.rules.food = false
     if not good then error(err, 0) end
 end)
+
+test('Opcionales: un ítem de munición no reescanea si sólo está encendida la comida', function()
+    local good, err = pcall(function()
+        ns.DB.rules.food = true; ns.DB.rules.ammo = false; ns.Player.GetContext()
+        local ammoID = next(ns.Data.ammo)
+        ok(ammoID, 'hay munición en los datos')
+        local changed = 0
+        ns.Player.OnChanged(function() changed = changed + 1 end)
+        FAKE.Fire('GET_ITEM_INFO_RECEIVED', ammoID, true); FAKE.Advance(1)
+        eq(changed, 0)
+    end)
+    ns.DB.rules.food = false
+    if not good then error(err, 0) end
+end)
