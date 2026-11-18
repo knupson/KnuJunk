@@ -14,7 +14,9 @@ local _, ns = ...
 -- Misiones (decision del user, 2026-11-17): un item de mision solo es util si lo pide una mision que
 -- esta AHORA en el diario; si no, monedita 'quest_not_active' (futuras, no tomadas, hechas y
 -- repetibles no tomadas no protegen). Los iniciadores siguen su propia regla: mision no hecha (o
--- sin saberlo) -> util ('quest_starter'); hecha y no repetible -> monedita 'quest_done'.
+-- sin saberlo) -> util ('quest_starter'); hecha y no repetible CONFIRMADO por QuestieDB (repeatable =
+-- false) -> monedita 'quest_done'; hecha sin saber si es repetible -> sin moneda
+-- ('quest_starter_done_unknown_repeat').
 -- Libros de biblioteca y cajones arrebatados (Data/Special.lua): sin marca y sin moneda automatica,
 -- motivo 'library_book' o 'waylaid_crate' (sealed = true si el cajon ya esta lleno).
 
@@ -107,9 +109,16 @@ function ns.Classify(item, ctx)
             questUses[#questUses + 1] = use
         end
     end
+    -- Repetibilidad del iniciador segun QuestieDB: true/false solo si alguna entrega de esa mision lo
+    -- dice explicitamente; nil = no se sabe (sin QuestieDB, sin entrada o sin el dato).
+    local starterRepeat
     for _, use in ipairs(uses or {}) do
-        if use.repeatable and starterQuest and use.questID == starterQuest then starterRepeatable = starterQuest end
+        if starterQuest and use.questID == starterQuest then
+            if use.repeatable == true then starterRepeat = true
+            elseif use.repeatable == false and starterRepeat == nil then starterRepeat = false end
+        end
     end
+    if starterRepeat == true then starterRepeatable = starterQuest end
     -- Util para una mision del diario: sin monedita. Si ademas es reactivo o herramienta, manda el
     -- martillo (paso 3) con quest = true; si no, la marca es 'quest'.
     local questReasons = {}
@@ -182,6 +191,12 @@ function ns.Classify(item, ctx)
     end
     if starterRepeatable then
         reasons[#reasons + 1] = { kind = 'quest_repeatable', questID = starterRepeatable }
+        return result
+    end
+    -- Tanda 1, regla 4: mision hecha pero sin confirmar que NO es repetible (sin QuestieDB o sin el
+    -- dato): no se sabe si el item vuelve a servir, asi que ninguna moneda automatica.
+    if starterQuest and questDone(ctx, starterQuest) and starterRepeat ~= false then
+        reasons[#reasons + 1] = { kind = 'quest_starter_done_unknown_repeat', questID = starterQuest }
         return result
     end
 

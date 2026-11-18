@@ -128,6 +128,20 @@ test('Tooltip: lineas de mision activa, iniciador y quest_not_active', function(
     end)
 end)
 
+-- Tanda 1, regla 4: iniciador con la mision hecha sin saber si es repetible: linea neutra, sin icono.
+test('Tooltip: iniciador hecho con repetibilidad desconocida', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    withClassify(function() return { mark = nil, reasons = { { kind = 'quest_starter_done_unknown_repeat', questID = 5 } } } end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        eq(#tooltip.lines, 1)
+        local entry = line(tooltip, 1, 'Misión entregada; no se sabe si es repetible', { 1, 1, 1 })
+        ok(not hasIcon(entry), 'sin icono')
+    end)
+end)
+
 test('Tooltip: diario incompleto sin linea', function()
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()

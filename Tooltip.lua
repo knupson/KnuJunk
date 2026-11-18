@@ -5,7 +5,8 @@ local _, ns = ...
 -- recibe nada (cero ruido). 'quest_log_incomplete' no agrega lineas. 'quest_active' (lo pide una
 -- mision del diario: marca 'quest', o martillo con result.quest) explica por que no hay moneda:
 -- 'Mision activa: <titulo>' o, sin titulo ni questID, 'Lo pide una mision activa'.
--- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_not_active' (moneda):
+-- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_starter_done_unknown_repeat'
+-- (sin marca): 'Mision entregada; no se sabe si es repetible'. 'quest_not_active' (moneda):
 -- 'Ninguna mision activa lo pide'. 'library_book' y 'waylaid_crate' (sin marca): linea neutra con el
 -- PNJ de entrega de la faccion del jugador (los dos si no se sabe).
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
@@ -154,6 +155,8 @@ function Tooltip.Lines(link)
             end
         elseif kind == 'quest_starter' and mark == nil then
             add(L["Starts a quest you haven't done: %s"]:format(questName(reason.questID)), WHITE, 'quest')
+        elseif kind == 'quest_starter_done_unknown_repeat' and mark == nil then
+            add(L["Quest turned in; unknown if it's repeatable"], WHITE)
         elseif kind == 'profession' and shows('hammer') then
             if mark == 'hammer_mine' then
                 add(L['Your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')

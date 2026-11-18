@@ -7,6 +7,7 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ['No active quest needs it'] = 'Ninguna misión activa lo pide',
     ["Starts a quest you haven't done: %s"] = 'Inicia una misión que no hiciste: %s',
     ["Your class can't use %s"] = 'Tu clase no usa %s',
+    ["Quest turned in; unknown if it's repeatable"] = 'Misión entregada; no se sabe si es repetible',
     ['Your profession: %s'] = 'Tu profesión: %s',
     ["Profession you don't have: %s"] = 'Profesión que no tenés: %s',
     ['Tool for your profession: %s'] = 'Herramienta de tu profesión: %s',

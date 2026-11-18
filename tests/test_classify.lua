@@ -108,11 +108,34 @@ test('item que es reactivo y herramienta: manda el reactivo; la herramienta cubr
     end, { [9000] = { 164 } })
 end)
 
-test('iniciador con mision hecha -> coin quest_done', function()
+-- Tanda 1, regla 4: un iniciador con la mision hecha solo da moneda si QuestieDB confirma que NO es
+-- repetible (repeatable == false explicito). Sin QuestieDB o sin saberlo: sin moneda, motivo propio.
+test('iniciador con mision hecha y no repetible confirmada -> coin quest_done', function()
     withData({}, { [9000] = 123 }, function()
-        local result = ns.Classify(item(), ctx { isQuestDone = function(q) return q == 123 end })
+        local result = ns.Classify(item(), ctx { isQuestDone = function(q) return q == 123 end,
+            questieUses = function() return { { questID = 123, repeatable = false } } end })
         eq(result.mark, 'coin')
         eq(hasReason(result, 'quest_done').questID, 123)
+    end)
+end)
+
+test('iniciador con mision hecha y repetibilidad desconocida -> sin moneda', function()
+    withData({}, { [9000] = 123 }, function()
+        local done = function(q) return q == 123 end
+        for label, uses in pairs({
+            sinQuestie = function() return nil end,
+            sinEntrada = function() return { { questID = 5, repeatable = false } } end,
+            repetibleNil = function() return { { questID = 123 } } end,
+        }) do
+            local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = done, questieUses = uses })
+            eq(result.mark, nil, label)
+            eq(hasReason(result, 'quest_starter_done_unknown_repeat').questID, 123, label)
+            ok(not hasReason(result, 'gray'), label .. ': tampoco moneda gris')
+        end
+        local noFn = ctx { isQuestDone = done }; noFn.questieUses = nil
+        eq(ns.Classify(item(), noFn).mark, nil, 'sin questieUses')
+        local sold = ns.Classify(item(), ctx { isQuestDone = done, overrides = { [9000] = 'sell' } })
+        eq(sold.mark, 'coin', 'override_sell sigue valiendo')
     end)
 end)
 
@@ -143,9 +166,10 @@ test('gris iniciador con isQuestDone nil -> nil', function()
     end)
 end)
 
-test('gris iniciador con mision hecha -> coin', function()
+test('gris iniciador con mision hecha y no repetible -> coin', function()
     withData({}, { [9000] = 123 }, function()
-        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = function() return true end })
+        local result = ns.Classify(item { quality = 0, price = 5 }, ctx { isQuestDone = function() return true end,
+            questieUses = function() return { { questID = 123, repeatable = false } } end })
         eq(result.mark, 'coin'); ok(hasReason(result, 'quest_done'), 'quest_done')
     end)
 end)
@@ -291,8 +315,12 @@ test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_don
         eq(pending.mark, nil); eq(hasReason(pending, 'quest_starter').questID, 60)
         local unknown = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return nil end })
         eq(unknown.mark, nil, 'no se sabe si esta hecha: util')
-        local done = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return true end })
+        local done = ns.Classify(item(), ctx { questieUses = function() return { { questID = 60, starter = true, repeatable = false } } end,
+            isQuestDone = function() return true end })
         eq(done.mark, 'coin'); eq(hasReason(done, 'quest_done').questID, 60)
+        local unknownRepeat = ns.Classify(item(), ctx { questieUses = uses, isQuestDone = function() return true end })
+        eq(unknownRepeat.mark, nil, 'hecha sin repeatable: no se sabe')
+        ok(hasReason(unknownRepeat, 'quest_starter_done_unknown_repeat'), 'motivo')
         ok(not hasReason(done, 'quest_not_active'), 'el iniciador no usa la regla del diario')
         local repeatable = ns.Classify(item(), ctx { questieUses = function() return { { questID = 60, starter = true, repeatable = true } } end,
             isQuestDone = function() return true end })
