@@ -14,8 +14,10 @@ local scanning = false -- true mientras se expanden/pliegan encabezados: sus eve
 local pending = false -- hay una reconstruccion diferida programada
 local changedCallbacks = {}
 -- Efectos vistos en el tooltip (regla 30): [itemID] = true|false, solo lecturas completas.
-local effectCache = {}
+local effectState = {} -- [itemID] = true|false|{pendiente}: ver resolveEffect
 local scanTip -- GameTooltip oculto de respaldo (sin C_TooltipInfo), creado al primer uso
+local retryAt -- momento del timer de reintento de efectos programado
+local effectRevision = 0 -- sube cuando se resuelve un efecto pendiente: entra en la firma (OnChanged)
 local signatures = setmetatable({}, { __mode = 'k' }) -- [ctx] = firma de contenido
 -- Sube con cada alta, baja o entrega de mision: isQuestDone puede responder distinto aunque
 -- el resto del contexto sea igual, y eso tiene que avisar por OnChanged. Los ecos de expandir
@@ -37,7 +39,7 @@ function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 function Player.ResetState()
     cache, previous, lastQuestFound, scanning, pending = nil, nil, nil, false, false
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
-    effectCache, scanTip = {}, nil
+    effectState, scanTip, retryAt, effectRevision = {}, nil, nil, 0
 end
 
 local MIN_EXPAND_INTERVAL = 1 -- sin huella, no se expande mas de una vez por segundo
@@ -387,7 +389,7 @@ local function buildContext()
         overrides = ns.DB and ns.DB.overrides or {},
     }
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
-    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), tostring(questRevision), sortedKeys(professions),
+    signatures[ctx] = table.concat({ tostring(class), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids) }, '|')
     return ctx
 end
@@ -431,14 +433,34 @@ local function triggers()
     return list
 end
 
--- Textos de las lineas del tooltip del item, o nil si no se pudieron leer. C_TooltipInfo.GetHyperlink
--- (leftText, o args en clientes que lo traen sin "surface"); si no existe, un GameTooltip oculto.
+-- Tipos de linea de C_TooltipInfo que pueden venir sin texto legitimamente (Blank, Separator).
+local function blankLineType(kind)
+    if type(kind) ~= 'number' then return false end
+    local enum = type(Enum) == 'table' and type(Enum.TooltipDataLineType) == 'table' and Enum.TooltipDataLineType or nil
+    local blank = enum and enum.Blank or 1
+    local separator = enum and enum.Separator or 23
+    return kind == blank or kind == separator
+end
+
+local function retrieving(text)
+    local global = rawget(_G, 'RETRIEVING_ITEM_INFO')
+    return type(global) == 'string' and global ~= '' and text == global
+end
+
+-- Lee el tooltip del item. Devuelve texts, how, instance:
+--   how = 'complete' (todas las lineas con su texto), 'partial' (alguna linea sin texto todavia, o
+--   "Recuperando informacion"), 'unavailable' (no hay forma de leerlo en este cliente).
+--   instance = dataInstanceID de C_TooltipInfo, para cruzar con TOOLTIP_DATA_UPDATE.
+-- C_TooltipInfo.GetHyperlink (leftText, o args sin "surface"); si no existe, un GameTooltip oculto.
 local function tooltipTexts(id)
     local link = 'item:' .. id
     if type(C_TooltipInfo) == 'table' and type(C_TooltipInfo.GetHyperlink) == 'function' then
         local success, data = pcall(C_TooltipInfo.GetHyperlink, link)
-        if not success or type(data) ~= 'table' or type(data.lines) ~= 'table' or #data.lines == 0 then return nil end
-        local texts = {}
+        if not success or type(data) ~= 'table' or type(data.lines) ~= 'table' or #data.lines == 0 then
+            return nil, 'partial'
+        end
+        local instance = data.dataInstanceID
+        local texts, complete = {}, true
         for index, line in ipairs(data.lines) do
             local text = type(line) == 'table' and line.leftText or nil
             if text == nil and type(line) == 'table' and type(line.args) == 'table' then
@@ -446,51 +468,129 @@ local function tooltipTexts(id)
                     if type(arg) == 'table' and arg.field == 'leftText' then text = arg.stringVal end
                 end
             end
-            texts[index] = type(text) == 'string' and text or ''
+            if type(text) ~= 'string' or text == '' then
+                if not (type(line) == 'table' and blankLineType(line.type)) then complete = false end
+                text = ''
+            elseif retrieving(text) then
+                complete = false
+            end
+            texts[index] = text
         end
-        if texts[1] == '' then return nil end -- sin el nombre: el cliente aun no tiene el item
-        return texts
+        if texts[1] == '' then complete = false end -- sin el nombre: el cliente aun no tiene el item
+        return texts, complete and 'complete' or 'partial', instance
     end
-    if type(CreateFrame) ~= 'function' then return nil end
-    local success, texts = pcall(function()
+    if type(CreateFrame) ~= 'function' then return nil, 'unavailable' end
+    local success, texts, how = pcall(function()
         if not scanTip then
             scanTip = CreateFrame('GameTooltip', 'KnuJunkScanTooltip', nil, 'GameTooltipTemplate')
         end
-        if type(scanTip.NumLines) ~= 'function' or type(scanTip.SetHyperlink) ~= 'function' then return nil end
+        if type(scanTip.NumLines) ~= 'function' or type(scanTip.SetHyperlink) ~= 'function' then return nil, 'unavailable' end
         if type(scanTip.SetOwner) == 'function' then scanTip:SetOwner(rawget(_G, 'WorldFrame') or UIParent, 'ANCHOR_NONE') end
         if type(scanTip.ClearLines) == 'function' then scanTip:ClearLines() end
         scanTip:SetHyperlink(link)
         local count = scanTip:NumLines()
-        if type(count) ~= 'number' or count == 0 then return nil end
-        local list = {}
+        if type(count) ~= 'number' or count == 0 then return nil, 'partial' end
+        local list, complete = {}, true
         for index = 1, count do
             local region = rawget(_G, 'KnuJunkScanTooltipTextLeft' .. index)
             local text = type(region) == 'table' and type(region.GetText) == 'function' and region:GetText() or nil
-            list[index] = type(text) == 'string' and text or ''
+            -- Sin tipos de linea no se distingue un blanco legitimo: texto ausente o vacio = parcial.
+            if type(text) ~= 'string' or text == '' or retrieving(text) then complete = false; text = '' end
+            list[index] = text
         end
-        if list[1] == '' then return nil end
-        return list
+        return list, complete and 'complete' or 'partial'
     end)
-    if success then return texts end
+    if success then return texts, how end
+    return nil, 'partial'
+end
+
+-- Busca una linea de efecto. true si aparece (aunque la lectura sea parcial: es evidencia); false solo
+-- con lectura completa sin efecto; nil si no se sabe. second = how, instance.
+local function scanEffect(id)
+    local texts, how, instance = tooltipTexts(id)
+    if texts then
+        local prefixes = triggers()
+        for index = 2, #texts do
+            local text = bare(texts[index]) or ''
+            for _, prefix in ipairs(prefixes) do
+                if text ~= '' and text:sub(1, #prefix) == prefix then return true end
+            end
+        end
+        if how == 'complete' then return false end
+    end
+    return nil, how, instance
+end
+
+-- Estado por itemID (regla 30): true / false definitivos, o una tabla pendiente
+-- { attempts, nextAt, final, instance }. Un pendiente no se re-escanea en cada repintado: se reintenta
+-- con espera creciente (EFFECT_BACKOFF * 2^n), antes si llega TOOLTIP_DATA_UPDATE (mismo
+-- dataInstanceID) o GET_ITEM_INFO_RECEIVED del item, y como mucho MAX_EFFECT_ATTEMPTS veces; despues
+-- queda "no se sabe" (sin moneda). Al resolverse se avisa una sola vez (agrupado) por OnChanged.
+local MAX_EFFECT_ATTEMPTS, EFFECT_BACKOFF = 5, 0.5
+local scheduleEffectRetry
+
+local function resolveEffect(id, forced)
+    local state = effectState[id]
+    if state == true or state == false then return state end
+    if type(state) == 'table' and (state.final or (not forced and now() < state.nextAt)) then return nil end
+    local answer, how, instance = scanEffect(id)
+    if answer ~= nil then
+        effectState[id] = answer
+        return answer
+    end
+    state = type(state) == 'table' and state or { attempts = 0 }
+    state.attempts = state.attempts + 1
+    state.instance = instance
+    if how == 'unavailable' or state.attempts >= MAX_EFFECT_ATTEMPTS then
+        state.final = true
+    else
+        state.nextAt = now() + EFFECT_BACKOFF * 2 ^ (state.attempts - 1)
+        scheduleEffectRetry(state.nextAt)
+    end
+    effectState[id] = state
     return nil
 end
 
--- true/false si el tooltip se pudo leer (con/sin linea de efecto); nil si no.
-local function tooltipEffect(id)
-    if effectCache[id] ~= nil then return effectCache[id] end
-    local texts = tooltipTexts(id)
-    if not texts then return nil end
-    local prefixes = triggers()
-    local found = false
-    for index = 2, #texts do
-        local text = bare(texts[index]) or ''
-        for _, prefix in ipairs(prefixes) do
-            if text:sub(1, #prefix) == prefix then found = true; break end
+local function retryEffects()
+    local resolved, earliest = false, nil
+    for id, state in pairs(effectState) do
+        if type(state) == 'table' and not state.final and now() >= state.nextAt then
+            if resolveEffect(id, true) ~= nil then resolved = true end
         end
-        if found then break end
     end
-    effectCache[id] = found
-    return found
+    for _, state in pairs(effectState) do
+        if type(state) == 'table' and not state.final and (not earliest or state.nextAt < earliest) then earliest = state.nextAt end
+    end
+    if earliest then scheduleEffectRetry(earliest) end
+    if resolved then
+        effectRevision = effectRevision + 1
+        markDirty()
+        if #changedCallbacks > 0 then Player.GetContext() end
+    end
+end
+
+-- Un solo timer, para el reintento mas proximo.
+scheduleEffectRetry = function(at)
+    if not (C_Timer and C_Timer.After) then return end
+    if retryAt and retryAt <= at then return end
+    retryAt = at
+    C_Timer.After(math.max(0, at - now()), function()
+        if retryAt ~= at then return end -- reemplazado por uno mas proximo
+        retryAt = nil
+        retryEffects()
+    end)
+end
+
+-- Adelanta el reintento de los pendientes que cumplan match(id, state).
+local function hurryEffects(match)
+    local any = false
+    for id, state in pairs(effectState) do
+        if type(state) == 'table' and not state.final and match(id, state) then
+            state.nextAt = now()
+            any = true
+        end
+    end
+    if any then scheduleEffectRetry(now()) end
 end
 
 -- true si el item tiene (o puede tener) efecto de uso/equipar; false solo si GetItemSpell respondio
@@ -506,7 +606,7 @@ local function hasItemSpell(id)
     local success, name, spellID = pcall(api, id)
     if not success then return true end
     if name ~= nil or spellID ~= nil then return true end
-    local effect = tooltipEffect(id)
+    local effect = resolveEffect(id, false)
     if effect == nil then return true end
     return effect
 end
@@ -591,7 +691,19 @@ local function scheduleCheck()
     end)
 end
 
-frame:SetScript('OnEvent', function(_, event)
+pcall(frame.RegisterEvent, frame, 'TOOLTIP_DATA_UPDATE')
+pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
+
+frame:SetScript('OnEvent', function(_, event, arg1)
+    -- Datos de tooltip o de item que llegan: solo adelantan reintentos de efectos pendientes, sin
+    -- ensuciar el contexto.
+    if event == 'TOOLTIP_DATA_UPDATE' then
+        hurryEffects(function(_, state) return arg1 == nil or state.instance == nil or state.instance == arg1 end)
+        return
+    elseif event == 'GET_ITEM_INFO_RECEIVED' then
+        hurryEffects(function(id) return id == arg1 end)
+        return
+    end
     if scanning then return end -- eco sincronico de nuestra propia expansion
     -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo
     -- total bajo un encabezado plegado): se olvida lo escaneado. QUEST_LOG_UPDATE no, porque es

@@ -157,23 +157,151 @@ test('efecto solo de equipar visto en el tooltip -> hasUseOrEquipSpell', functio
     eq(ns.Player.ReadLink(FAKE.linkOf(735)).hasUseOrEquipSpell, true, 'global ITEM_SPELL_TRIGGER_ONEQUIP')
 end)
 
-test('tooltip del efecto: cache por itemID solo si se pudo leer; ilegible = no se sabe', function()
+test('tooltip del efecto: ilegible o con error = no se sabe, sin re-escanear en cada lectura', function()
     addItem(740, {})
     local real = C_TooltipInfo.GetHyperlink
     C_TooltipInfo.GetHyperlink = function() FAKE.tooltipCalls = FAKE.tooltipCalls + 1; return nil end
     eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true, 'sin datos del tooltip: conservador')
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true)
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true)
+    eq(FAKE.tooltipCalls, 1, 'pendiente: no se re-escanea en cada repintado')
     C_TooltipInfo.GetHyperlink = function() error('roto') end
+    FAKE.Advance(1)
     eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, true, 'error: conservador')
     C_TooltipInfo.GetHyperlink = real
+    FAKE.Advance(10)
     FAKE.tooltipCalls = 0
-    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, false, 'legible y sin efecto')
+    eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, false, 'legible y sin efecto (reintento)')
     eq(ns.Player.ReadLink(FAKE.linkOf(740)).hasUseOrEquipSpell, false)
-    eq(FAKE.tooltipCalls, 1, 'la segunda lectura sale de la cache')
+    eq(FAKE.tooltipCalls, 0, 'resuelto en el reintento: sale de la cache')
     -- Con hechizo informado no se lee el tooltip.
     addItem(741, { spell = true })
-    FAKE.tooltipCalls = 0
     eq(ns.Player.ReadLink(FAKE.linkOf(741)).hasUseOrEquipSpell, true)
     eq(FAKE.tooltipCalls, 0)
+end)
+
+-- Ronda de arreglos 1 (R30): una lectura parcial (texto pendiente) nunca es "sin efecto". Queda
+-- pendiente, se reintenta (timer acotado, TOOLTIP_DATA_UPDATE o GET_ITEM_INFO_RECEIVED) y al resolverse
+-- avisa por Player.OnChanged para repintar.
+test('C_TooltipInfo parcial y despues con efecto: nunca false, se resuelve y avisa', function()
+    addItem(760, { classID = 4, subclassID = 4, quality = 2 })
+    local real = C_TooltipInfo.GetHyperlink
+    local full = false
+    C_TooltipInfo.GetHyperlink = function()
+        FAKE.tooltipCalls = FAKE.tooltipCalls + 1
+        if full then return { lines = { { leftText = 'Peto' }, { leftText = 'Equip: Useful effect' } } } end
+        return { lines = { { leftText = 'Peto' }, { args = { { field = 'leftText' } } } } }
+    end
+    local changed = 0
+    ns.Player.GetContext()
+    ns.Player.OnChanged(function() changed = changed + 1 end)
+    local item = ns.Player.ReadLink(FAKE.linkOf(760))
+    eq(item.hasUseOrEquipSpell, true, 'parcial: no se sabe')
+    item.isBound = true
+    eq(ns.Classify(item, { class = 'MAGE', professions = {}, overrides = {}, questItemsInLog = {} }).mark, nil, 'sin moneda')
+    full = true
+    FAKE.Advance(5)
+    eq(ns.Player.ReadLink(FAKE.linkOf(760)).hasUseOrEquipSpell, true, 'efecto visto')
+    ok(changed >= 1, 'avisa para repintar')
+    -- Parcial y despues completo SIN efecto: recien ahi false.
+    addItem(761, {})
+    full = false
+    eq(ns.Player.ReadLink(FAKE.linkOf(761)).hasUseOrEquipSpell, true)
+    C_TooltipInfo.GetHyperlink = function() return { lines = { { leftText = 'Item761' }, { leftText = 'Durabilidad' } } } end
+    FAKE.Advance(5)
+    eq(ns.Player.ReadLink(FAKE.linkOf(761)).hasUseOrEquipSpell, false, 'completo sin efecto')
+    C_TooltipInfo.GetHyperlink = real
+end)
+
+test('TOOLTIP_DATA_UPDATE y GET_ITEM_INFO_RECEIVED adelantan el reintento', function()
+    addItem(762, {})
+    addItem(763, {})
+    local ready = {}
+    local real = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function(link)
+        local id = tonumber(link:match('item:(%d+)'))
+        if ready[id] then return { lines = { { leftText = 'X' }, { leftText = 'Uso: algo' } } } end
+        return { dataInstanceID = id * 10, lines = { { leftText = 'X' }, { leftText = nil } } }
+    end
+    eq(ns.Player.ReadLink(FAKE.linkOf(762)).hasUseOrEquipSpell, true)
+    eq(ns.Player.ReadLink(FAKE.linkOf(763)).hasUseOrEquipSpell, true)
+    ready[762], ready[763] = true, true
+    FAKE.Fire('TOOLTIP_DATA_UPDATE', 7620)
+    FAKE.Fire('GET_ITEM_INFO_RECEIVED', 763, true)
+    FAKE.Advance(0.2) -- menos que el primer reintento por tiempo
+    C_TooltipInfo.GetHyperlink = function() error('no deberia volver a leerse') end
+    eq(ns.Player.ReadLink(FAKE.linkOf(762)).hasUseOrEquipSpell, true)
+    eq(ns.Player.ReadLink(FAKE.linkOf(763)).hasUseOrEquipSpell, true)
+    C_TooltipInfo.GetHyperlink = real
+end)
+
+test('lectura siempre parcial: reintentos acotados y queda como no se sabe', function()
+    addItem(764, {})
+    local real = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function()
+        FAKE.tooltipCalls = FAKE.tooltipCalls + 1
+        return { lines = { { leftText = 'X' }, {} } }
+    end
+    FAKE.tooltipCalls = 0
+    eq(ns.Player.ReadLink(FAKE.linkOf(764)).hasUseOrEquipSpell, true)
+    FAKE.Advance(600)
+    for _ = 1, 5 do eq(ns.Player.ReadLink(FAKE.linkOf(764)).hasUseOrEquipSpell, true) end
+    ok(FAKE.tooltipCalls <= 5, 'acotado: ' .. FAKE.tooltipCalls)
+    C_TooltipInfo.GetHyperlink = real
+end)
+
+-- Lineas en blanco o separadores (tipo Blank/Separator) sin texto no hacen parcial la lectura.
+test('C_TooltipInfo: lineas en blanco por tipo no cuentan como pendientes', function()
+    addItem(765, {})
+    local real = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function()
+        return { lines = { { leftText = 'X' }, { type = 1 }, { type = 23, leftText = '' }, { leftText = 'Durabilidad' } } }
+    end
+    eq(ns.Player.ReadLink(FAKE.linkOf(765)).hasUseOrEquipSpell, false)
+    C_TooltipInfo.GetHyperlink = real
+end)
+
+-- Tooltip oculto (sin C_TooltipInfo): una region sin texto todavia es lectura parcial; al completarse se
+-- resuelve por el reintento.
+test('GameTooltip oculto parcial y despues con efecto', function()
+    FAKE.Remove('C_TooltipInfo')
+    addItem(766, { tooltip = { 'Equipar: algo.' } })
+    local partial = true
+    local realCreate = CreateFrame
+    CreateFrame = function(kind, name, parent, template)
+        local frame = realCreate(kind, name, parent, template)
+        if kind == 'GameTooltip' then
+            frame.count = 0
+            function frame:ClearLines() self.count = 0 end
+            function frame:NumLines() return self.count end
+            function frame:SetHyperlink(link)
+                local id = tonumber(link:match('item:(%d+)'))
+                local texts = { FAKE.items[id].name }
+                for _, text in ipairs(FAKE.items[id].tooltip or {}) do texts[#texts + 1] = text end
+                for index, text in ipairs(texts) do
+                    local region = realCreate('FontString', name .. 'TextLeft' .. index)
+                    if partial and index > 1 then region.text = nil else region.text = text end
+                    region.GetText = function(self) return self.text end
+                end
+                self.count = #texts
+            end
+        end
+        return frame
+    end
+    local success, err = pcall(function()
+        eq(ns.Player.ReadLink(FAKE.linkOf(766)).hasUseOrEquipSpell, true, 'parcial: no se sabe')
+        partial = false
+        FAKE.Advance(5)
+        eq(ns.Player.ReadLink(FAKE.linkOf(766)).hasUseOrEquipSpell, true, 'efecto por GameTooltip')
+        addItem(767, { tooltip = { 'Durabilidad 30 / 30' } })
+        partial = true
+        eq(ns.Player.ReadLink(FAKE.linkOf(767)).hasUseOrEquipSpell, true, 'parcial')
+        partial = false
+        FAKE.Advance(5)
+        eq(ns.Player.ReadLink(FAKE.linkOf(767)).hasUseOrEquipSpell, false, 'completo sin efecto')
+    end)
+    CreateFrame = realCreate
+    if not success then error(err, 0) end
 end)
 
 test('sin C_TooltipInfo: GameTooltip oculto; si tampoco se puede leer -> conservador', function()
