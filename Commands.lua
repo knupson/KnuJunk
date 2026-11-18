@@ -66,13 +66,11 @@ local function manual(action, rest)
     local overrides = ns.DB.overrides
     if action == 'clear' then
         if overrides[id] == nil then say('No manual mark on item %d', id) return end
-        overrides[id] = nil
-        changed()
+        ns.Overrides.Set(id, nil)
         say('Manual mark removed from item %d', id)
         return
     end
-    overrides[id] = action
-    changed()
+    ns.Overrides.Set(id, action)
     say('Item %d: %s', id, L(action == 'keep' and 'Marked by hand: keep' or 'Marked by hand: sell'))
 end
 

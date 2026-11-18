@@ -45,6 +45,7 @@ Bags\BaudBag.lua
 Bags\Frames.lua
 Bags\Generic.lua
 Loot.lua
+Overrides.lua
 Tooltip.lua
 Options.lua
 Commands.lua

@@ -16,6 +16,8 @@ It only shows icons. KnuJunk never sells, destroys or moves anything.
 
 ### Features
 
+- **Manual mark key:** assign a key in options, then hover a bag or loot item to cycle automatic → always keep → always sell → automatic. No default key; assignment is out of combat and reports replaced actions.
+
 - **Recetas por profesión (R14):** martillo verde si tenés la profesión y amarillo si no; tooltip «Receta de {profesión}, requiere {rango}» / «Recipe for {profession}, requires {rank}», sin requisito si no se conoce. Por defecto, ninguna moneda automática, incluso si ya la aprendiste o no tenés el rango. Datos de wowf `1.60.1.70959`: 2083 recetas, 2060 con rango; recetas de clase 9 sin profesión identificada quedan sin marca. La detección de conocidas se habilita con la opción `knownrecipe`, apagada por defecto. Reiniciá el cliente para cargar `Data/Recipes.lua`.
 - **Equipo para nivel futuro (R24):** sin moneda automática si tu clase puede llegar a usar el subtipo y el nivel requerido es mayor al tuyo; tooltip «Podés usarlo desde nivel {n}» / «Usable from level {n}». Sin ícono nuevo. Con nivel requerido desconocido no cambia el comportamiento anterior. Misión activa y profesión mantienen sus marcas; venta manual prevalece. Pendiente validar en el juego, junto con bolsas, banco y botín.
 - **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
@@ -105,6 +107,8 @@ If you see a coin on something you needed, please tell us the item and the bag a
 ---
 
 ## Descripción (castellano)
+
+**Tecla para marcas manuales:** asignala en el panel de opciones y apretala sobre un ítem de bolsas o botín: automático → siempre guardar → siempre vender → automático. Sin tecla predeterminada; se asigna fuera de combate y avisa si reemplaza otra acción.
 
 - **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
 - **Entregas repetibles de reputación:** excepción aprobada por el dueño a la regla del diario. Objetivo de ítem de una misión repetible con recompensa positiva según QuestieDB: sin moneda aunque la misión no esté tomada; «Se entrega por reputación: {facción}». Profesión y misión activa mantienen su marca. Sin QuestieDB no hay protección R20 ni lista generada de entregas. La venta manual prevalece.

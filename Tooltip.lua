@@ -368,6 +368,9 @@ end
 local function decorate(tooltip, data, bag, slot)
     if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' or not supported(tooltip) then return end
     local link = tooltipLink(tooltip, data)
+    if tooltip == rawget(_G, 'GameTooltip') then
+        ns.Overrides.hovered = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or nil
+    end
     if not link then return end
     if bag == nil and type(tooltip.GetBagItem) == 'function' then
         local good, b, s = pcall(tooltip.GetBagItem, tooltip)
@@ -395,7 +398,12 @@ end
 
 local function hookTooltip(tooltip, withSetItem)
     if type(tooltip) ~= 'table' or type(tooltip.HookScript) ~= 'function' then return end
-    pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', function(self) guard[self] = nil end)
+    local function clear(self)
+        guard[self] = nil
+        if self == rawget(_G, 'GameTooltip') then ns.Overrides.hovered = nil end
+    end
+    pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', clear)
+    pcall(tooltip.HookScript, tooltip, 'OnHide', clear)
     if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
         pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
     end
@@ -432,6 +440,7 @@ end
 
 -- Solo para pruebas: deja el modulo como recien cargado.
 function Tooltip.ResetState()
+    ns.Overrides.hovered = nil
     hooked = false
     guard = setmetatable({}, { __mode = 'k' })
 end

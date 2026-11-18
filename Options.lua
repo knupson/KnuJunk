@@ -78,8 +78,7 @@ end
 function Options.RemoveOverride(id)
     local overrides = ns.DB.overrides
     if not overrides or overrides[id] == nil then return false end
-    overrides[id] = nil
-    ns.Changed()
+    ns.Overrides.Set(id, nil)
     return true
 end
 
@@ -235,6 +234,89 @@ local function toggleRow(panel, y, toggle, height)
     return y - height
 end
 
+local BINDING = 'KNUJUNK_CYCLE_HOVERED'
+local MODIFIERS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true }
+local function refreshBinding(panel)
+    local key = type(GetBindingKey) == 'function' and GetBindingKey(BINDING)
+    panel.bindingKey:SetText(key and (type(GetBindingText) == 'function' and GetBindingText(key, 'KEY_') or key)
+        or L('No key assigned'))
+end
+
+local function stopCapture(button)
+    button.capturing = false
+    button:EnableKeyboard(false)
+    button:SetText(L('Assign key'))
+end
+
+local function combat()
+    if type(InCombatLockdown) == 'function' and InCombatLockdown() then
+        ns.Print(L('Not in combat'))
+        return true
+    end
+end
+
+local function bindingRow(panel, y)
+    local label = newText(panel, panel, 13, 'text')
+    label:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y)
+    label:SetText(L('Change a mark with a key'))
+    panel.bindingKey = newText(panel, panel, 12, 'accentHi')
+    panel.bindingKey:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y - 22)
+    local button = CreateFrame('Button', nil, panel, 'UIPanelButtonTemplate')
+    panel.bindingButton = button
+    button:SetSize(250, 24)
+    button:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y)
+    style('StyleButton', button)
+    stopCapture(button)
+    button:SetScript('OnClick', function(self)
+        if combat() then stopCapture(self) return end
+        self.capturing = true
+        self:SetText(L('Press a key... (Esc cancels)'))
+        self:EnableKeyboard(true)
+        if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+    end)
+    button:SetScript('OnKeyDown', function(self, key)
+        if not self.capturing then return end
+        if key == 'ESCAPE' then stopCapture(self) return end
+        if combat() then stopCapture(self) return end
+        if MODIFIERS[key] then return end
+        key = (IsShiftKeyDown and IsShiftKeyDown() and 'SHIFT-' or '')
+            .. (IsControlKeyDown and IsControlKeyDown() and 'CTRL-' or '')
+            .. (IsAltKeyDown and IsAltKeyDown() and 'ALT-' or '') .. key
+        local previous = type(GetBindingAction) == 'function' and GetBindingAction(key)
+        stopCapture(self)
+        if type(SetBinding) ~= 'function' or type(SaveBindings) ~= 'function'
+            or type(GetCurrentBindingSet) ~= 'function' then
+            ns.Print(L('Could not assign key'))
+            return
+        end
+        local old = { GetBindingKey(BINDING) }
+        local success, assigned = pcall(SetBinding, key, BINDING)
+        if not success or not assigned then ns.Print(L('Could not assign key')) return end
+        -- La tecla anterior de esta accion queda libre: una sola tecla cambia marcas.
+        for _, oldKey in ipairs(old) do
+            if oldKey ~= key then pcall(SetBinding, oldKey) end
+        end
+        local gotSet, set = pcall(GetCurrentBindingSet)
+        local saved, result
+        if gotSet then saved, result = pcall(SaveBindings, set) end
+        if not saved or result == false then ns.Print(L('Could not save key')) end
+        if previous and previous ~= '' and previous ~= BINDING then
+            local name = _G['BINDING_NAME_' .. previous] or previous
+            ns.Print(string.format(L('%s was bound to %s; now it changes KnuJunk marks'), key, name))
+        end
+        refreshBinding(panel)
+    end)
+    button:SetScript('OnHide', stopCapture)
+    panel:SetScript('OnHide', function() stopCapture(button) end)
+    local help = newText(panel, panel, 11, 'muted')
+    help:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y - 42)
+    help:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y - 42)
+    help:SetWordWrap(true)
+    help:SetText(L('Hover an item in your bags or loot window and press the key: automatic → always keep → always sell → automatic.'))
+    refreshBinding(panel)
+    return y - 82
+end
+
 local refreshList
 
 -- Desplaza la lista (rueda del mouse).
@@ -340,6 +422,7 @@ local function refreshFooter(panel)
 end
 
 local function refresh(panel)
+    refreshBinding(panel)
     refreshChecks(panel)
     refreshList(panel)
     refreshFooter(panel)
@@ -386,6 +469,7 @@ function Options.Build()
         end
         y = toggleRow(panel, y, toggle, toggle.section == 'Marks' and 36 or 52)
     end
+    y = bindingRow(panel, y - 4)
     y = section(panel, y - 4, 'Manual marks')
 
     -- Pie: tres lineas de estado, pegadas abajo.
@@ -409,7 +493,7 @@ function Options.Build()
     panel.empty:SetPoint('TOPRIGHT', list, 'TOPRIGHT', -12, -12)
     panel.empty:SetJustifyV('TOP')
     panel.empty:SetWordWrap(true)
-    panel.empty:SetText(L('You have not marked any item by hand. Use /knu junk keep or sell with the item link.'))
+    panel.empty:SetText(L('No manual marks yet. Assign a key above to change an item mark under the mouse.'))
 
     local scroll = CreateFrame('Slider', nil, panel)
     scroll:SetOrientation('VERTICAL')
@@ -441,6 +525,7 @@ function Options.Build()
     panel.okay, panel.cancel, panel.default = panel.OnCommit, panel.OnCommit, panel.OnDefault
     panel:SetScript('OnShow', function() refresh(panel) end)
     panel:SetScript('OnEvent', function(_, event)
+        if event == 'UPDATE_BINDINGS' then refreshBinding(panel) return end
         if event ~= 'GET_ITEM_INFO_RECEIVED' or not panel.missing or panel.waiting or not panel:IsVisible() then return end
         panel.waiting = true -- varios nombres llegan juntos: se repinta una sola vez
         C_Timer.After(0.2, function()
@@ -449,6 +534,7 @@ function Options.Build()
         end)
     end)
     pcall(panel.RegisterEvent, panel, 'GET_ITEM_INFO_RECEIVED')
+    pcall(panel.RegisterEvent, panel, 'UPDATE_BINDINGS')
     panel:Hide() -- lo muestra la ventana de opciones
 
     paint(panel)

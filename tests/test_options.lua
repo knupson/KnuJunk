@@ -163,8 +163,8 @@ test('sin marcas manuales se ve el texto de lista vacia', function()
     local panel = openPanel()
     eq(#visibleRows(panel), 0)
     eq(panel.empty:IsShown(), true)
-    eq(panel.empty:GetText(), ns.L['You have not marked any item by hand. Use /knu junk keep or sell with the item link.'])
-    eq(panel.empty:GetText(), 'No marcaste ningún item a mano. Usá /knu junk keep o sell con el link del item.')
+    eq(panel.empty:GetText(), ns.L['No manual marks yet. Assign a key above to change an item mark under the mouse.'])
+    eq(panel.empty:GetText(), 'Todavía no hay marcas manuales. Asigná una tecla arriba para cambiar la marca del ítem bajo el mouse.')
 end)
 
 test('Quitar borra esa marca, refresca una vez y actualiza la lista', function()
@@ -270,7 +270,7 @@ end)
 test('todos los textos del panel tienen traduccion al castellano', function()
     withLocale('esES', function()
         local keys = { 'Marks', 'Optional rules (off by default)', 'Manual marks', 'Keep', 'Sell', 'Remove',
-            'Item %d', 'You have not marked any item by hand. Use /knu junk keep or sell with the item link.' }
+            'Item %d', 'No manual marks yet. Assign a key above to change an item mark under the mouse.' }
         for _, toggle in ipairs(ns.Options.TOGGLES) do keys[#keys + 1] = toggle.label; keys[#keys + 1] = toggle.help end
         for _, key in ipairs(keys) do ok(ns.L[key] ~= key, 'sin traducir: ' .. key) end
         eq(ns.L['Marks'], 'Marcas'); eq(ns.L['Remove'], 'Quitar'); eq(ns.L['Keep'], 'Guardar'); eq(ns.L['Sell'], 'Vender')

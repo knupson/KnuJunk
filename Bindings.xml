@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="KNUJUNK_CYCLE_HOVERED" header="KNUJUNK">
+        KnuJunk_CycleHovered()
+    </Binding>
+</Bindings>

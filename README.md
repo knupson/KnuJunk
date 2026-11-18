@@ -26,6 +26,8 @@ QuestieDB es opcional. Baganator: KnuJunk registra un plugin de basura (Baganato
 
 ## Opciones
 
+Asigná una tecla desde «Cambiar la marca con una tecla» en el panel de opciones. Pasá el mouse por un ítem de las bolsas o del botín y apretala para recorrer automático → siempre guardar → siempre vender → automático. No hay tecla predeterminada; la asignación se hace fuera de combate y avisa si reemplazás otra acción.
+
 **Panel de opciones:** Esc > Opciones > AddOns > KnuJunk, o `/knu junk` (sin argumentos). Tiene casillas para activar KnuJunk y para cada marca (monedita, martillito, marcas en el botín), las tres reglas opcionales (comida y bebida superadas, munición superada, recetas ya aprendidas), la lista de marcas manuales con un botón «Quitar» por item y, al pie, el build de datos, si QuestieDB está y su índice listo y los adaptadores de bolsas instalados. Cada cambio refresca las marcas al instante, igual que los comandos. En combate Blizzard no deja abrir la ventana de opciones desde un comando: KnuJunk avisa y hay que abrirlo al salir de combate (o desde Esc > Opciones). Pendiente probar en Forever (ver [CHANGELOG](CHANGELOG.md)).
 
 Las tres reglas opcionales arrancan **apagadas**, también al actualizar una instalación existente. `/knu junk rules` lista sus estados; `/knu junk status` también los muestra. Usá `/knu junk rules food|ammo|knownrecipe on|off` para cambiar una y refrescar las marcas.
@@ -66,6 +68,8 @@ Icons in your bags and loot window showing what you can sell or drop and which m
 QuestieDB is optional. Baganator: KnuJunk registers a junk plugin (Baganator may select it on its own when its current option isn't a plugin) and never writes Baganator's settings nor changes its categories: its junk plugin only flags grey items with a vendor price (the same as Baganator's default), so nothing else ends up in Baganator's junk category. The other coins (finished quest, your class can't use it, by hand) show as KnuJunk's own coin in the top-left corner; the hammer is inserted in the top-right corner.
 
 ### Options
+
+Assign a key from “Change a mark with a key” in the options panel, then hover a bag or loot item and press it to cycle automatic → always keep → always sell → automatic. No default key; assignment requires being out of combat and reports any replaced action.
 
 **Options panel:** Esc > Options > AddOns > KnuJunk, or `/knu junk` with no arguments. It has checkboxes to enable KnuJunk and for each icon (coin, hammer, marks in the loot window), the three optional rules (outleveled food and drink, outdamaged ammunition, recipes already learned; all off by default), the list of items you marked by hand with a "Remove" button per item and, at the bottom, the data build, whether QuestieDB is present with its index ready and the installed bag adapters. Every change refreshes the icons right away, like the commands. In combat Blizzard does not let a command open the options window: KnuJunk says so and you open it after combat (or from Esc > Options). Not tested in Forever yet (see [CHANGELOG](CHANGELOG.md)).
 

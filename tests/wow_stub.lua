@@ -11,7 +11,9 @@ function methods:HookScript(event, fn)
 end
 function methods:RegisterEvent(event) self.events[event] = true end
 function methods:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
-function methods:Hide() self.shown = false end
+function methods:Hide() self.shown = false; if self.scripts.OnHide then self.scripts.OnHide(self) end end
+function methods:EnableKeyboard(value) self.keyboard = value end
+function methods:SetPropagateKeyboardInput(value) self.propagate = value end
 function methods:IsShown() return self.shown end
 function methods:IsVisible()
     if not self.shown then return false end
@@ -354,6 +356,19 @@ function FAKE.InstallBaganator()
 end
 function FAKE.Reset()
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
+    FAKE.bindings = {}; FAKE.savedBindings = {}; FAKE.inCombat = false
+    FAKE.shift, FAKE.ctrl, FAKE.alt = false, false, false
+    IsShiftKeyDown = function() return FAKE.shift end
+    IsControlKeyDown = function() return FAKE.ctrl end
+    IsAltKeyDown = function() return FAKE.alt end
+    GetBindingAction = function(key) return FAKE.bindings[key] or '' end
+    GetBindingKey = function(action)
+        for key, value in pairs(FAKE.bindings) do if value == action then return key end end
+    end
+    GetBindingText = function(key) return key end
+    SetBinding = function(key, action) FAKE.bindings[key] = action; return true end
+    SaveBindings = function(set) FAKE.savedBindings[#FAKE.savedBindings + 1] = set; return true end
+    GetCurrentBindingSet = function() return 2 end
     for name in pairs(_G) do
         if type(name) == 'string' and name:sub(1, 9) == 'Baganator' then _G[name] = nil end
     end
