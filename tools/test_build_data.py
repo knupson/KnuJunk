@@ -176,6 +176,67 @@ class ClassGearTest(unittest.TestCase):
         self.assertIn('    DRUID = { armor = set { 1 }, weapon = set { 6 } },', text)
 
 
+class ClassReagentsTest(unittest.TestCase):
+    """Tanda 1, regla 15: reactivos y herramientas de hechizos de CLASE (SkillLineAbility con ClassMask
+    de una clase y SkillLine que no es profesion)."""
+
+    def setUp(self):
+        abilities = [
+            {'SkillLine': '237', 'Spell': '3561', 'ClassMask': '128'},   # Mago: Teletransporte
+            {'SkillLine': '237', 'Spell': '130', 'ClassMask': '128'},    # Mago: Caida lenta
+            {'SkillLine': '613', 'Spell': '1706', 'ClassMask': '16'},    # Sacerdote: Levitar
+            {'SkillLine': '354', 'Spell': '693', 'ClassMask': '256'},    # Brujo: Piedra de alma
+            {'SkillLine': '373', 'Spell': '8071', 'ClassMask': '64'},    # Chaman: totem de tierra
+            {'SkillLine': '633', 'Spell': '1804', 'ClassMask': '8'},     # Picaro: Abrir cerradura
+            {'SkillLine': '778', 'Spell': '10721', 'ClassMask': '0'},    # Companeros: ninguna clase
+            {'SkillLine': '164', 'Spell': '2663', 'ClassMask': '1'},     # Profesion: se ignora
+            {'SkillLine': '999', 'Spell': '7000', 'ClassMask': '32'},    # Bit sin clase conocida
+            {'SkillLine': '2851', 'Spell': '400080', 'ClassMask': '8'},  # Grabado: excluido
+        ]
+        reagents = [
+            {'SpellID': '3561', 'Reagent_0': '17031'},
+            {'SpellID': '130', 'Reagent_0': '17056'},
+            {'SpellID': '1706', 'Reagent_0': '17056'},
+            {'SpellID': '693', 'Reagent_0': '6265'},
+            {'SpellID': '10721', 'Reagent_0': '8000'},
+            {'SpellID': '2663', 'Reagent_0': '2840'},
+            {'SpellID': '7000', 'Reagent_0': '8001'},
+            {'SpellID': '400080', 'Reagent_0': '6260'},
+        ]
+        totems = [
+            {'SpellID': '8071', 'RequiredTotemCategoryID_0': '2', 'RequiredTotemCategoryID_1': '0', 'Totem_0': '0', 'Totem_1': '0'},
+            {'SpellID': '1804', 'RequiredTotemCategoryID_0': '0', 'RequiredTotemCategoryID_1': '0', 'Totem_0': '5060', 'Totem_1': '0'},
+        ]
+        categories = [{'ID': '2', 'Name_lang': 'Earth Totem', 'TotemCategoryType': '24', 'TotemCategoryMask': '1'}]
+        items = [{'ID': '5175', 'StartQuestID': '0', 'TotemCategoryID': '2'}]
+        self.data = build_data.compute_class_reagents(abilities, reagents, totems, categories, items)
+
+    def test_mage_rune_and_shared_feather(self):
+        self.assertEqual(self.data[17031], {'MAGE': [3561]})
+        self.assertEqual(self.data[17056], {'MAGE': [130], 'PRIEST': [1706]})
+
+    def test_soul_shard_and_tools(self):
+        self.assertEqual(self.data[6265], {'WARLOCK': [693]})
+        self.assertEqual(self.data[5175], {'SHAMAN': [8071]}, 'totem de tierra por categoria')
+        self.assertEqual(self.data[5060], {'ROGUE': [1804]}, 'herramienta directa (Totem_0)')
+
+    def test_non_class_spells_are_ignored(self):
+        self.assertNotIn(8000, self.data, 'ClassMask 0')
+        self.assertNotIn(2840, self.data, 'profesion')
+        self.assertNotIn(8001, self.data, 'bit de una clase que no existe en Forever')
+        self.assertNotIn(6260, self.data, 'Grabado (runas) no cuenta')
+
+    def test_soul_shard_is_forced_if_not_derived(self):
+        data = build_data.compute_class_reagents([], [], [], [], [])
+        self.assertEqual(data[6265], {'WARLOCK': []})
+
+    def test_class_reagents_lua(self):
+        text = build_data.render_class_reagents_lua(self.data, '1.60.1.1')
+        self.assertIn('ns.Data.classReagents = {', text)
+        self.assertIn('[17056] = { "MAGE", "PRIEST", spells = { MAGE = { 130 }, PRIEST = { 1706 } } },', text)
+        self.assertIn('[6265] = { "WARLOCK", spells = { WARLOCK = { 693 } } },', text)
+
+
 class RetryTest(unittest.TestCase):
     def test_retries_then_succeeds(self):
         calls, waits = [], []

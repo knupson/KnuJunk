@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua y Data/Special.lua desde las tablas DB2 de wago.tools (producto wowf).
+"""Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua, Data/Special.lua y
+Data/ClassReagents.lua desde las tablas DB2 de wago.tools (producto wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -149,6 +150,18 @@ def compute_special(item_rows):
     return books, crates
 
 
+def _satisfies(categories, have, need):
+    """La categoria de totem `have` de un item cumple la pedida `need`: la misma, o del mismo tipo y
+    con mascara que cubre todos sus bits. Una categoria que falte solo se cumple con ella misma."""
+    if have == need:
+        return True
+    if have not in categories or need not in categories:
+        return False
+    have_type, have_mask = categories[have]
+    need_type, need_mask = categories[need]
+    return have_type == need_type and (have_mask & need_mask) == need_mask
+
+
 def compute_tools(ability_rows, totem_rows, category_rows, item_rows):
     """item ID -> lista ordenada de SkillLine de profesion para las que el item es HERRAMIENTA
     (requerida pero no consumida: martillo, pico, cuchillo de desuello, pedernal...).
@@ -182,24 +195,89 @@ def compute_tools(ability_rows, totem_rows, category_rows, item_rows):
             if item > 0:
                 tools.setdefault(item, set()).update(lines)
 
-    def satisfies(have, need):
-        if have == need:
-            return True
-        if have not in categories or need not in categories:
-            return False
-        have_type, have_mask = categories[have]
-        need_type, need_mask = categories[need]
-        return have_type == need_type and (have_mask & need_mask) == need_mask
-
     for row in item_rows:
         item = _int(row.get('ID'))
         have = _int(row.get('TotemCategoryID'))
         if item <= 0 or have <= 0:
             continue
         for need, lines in required.items():
-            if satisfies(have, need):
+            if _satisfies(categories, have, need):
                 tools.setdefault(item, set()).update(lines)
     return {item: sorted(lines) for item, lines in tools.items()}
+
+
+# Fragmento de alma: se agrega aunque no salga de los datos (reactivo historico del Brujo).
+SOUL_SHARD = 6265
+# SkillLine que no cuentan como hechizos de clase: 2851 Grabado (runas, solo piden Tinte azul).
+EXCLUDED_CLASS_LINES = {2851}
+
+
+def _class_bits(mask):
+    """Tokens de UnitClass cuyas posiciones estan en la ClassMask (1 << (ID - 1))."""
+    return [name for class_id, name in sorted(GEAR_CLASSES.items()) if mask & (1 << (class_id - 1))]
+
+
+def compute_class_reagents(ability_rows, reagent_rows, totem_rows, category_rows, item_rows):
+    """item ID -> {clase: [hechizos ordenados]} para los reactivos (SpellReagents) y herramientas
+    (SpellTotems: Totem_0/1 o un item cuya categoria de totem cumple la pedida) de hechizos de CLASE.
+
+    Union usada (verificada en la build 1.60.1.70959 de wowf): un hechizo es de clase si tiene una
+    fila de SkillLineAbility con SkillLine fuera de PROFESSIONS y ClassMask con el bit de alguna clase
+    de GEAR_CLASSES. Las lineas de clase (SkillLine.CategoryID 7: Arcano, Demonologia, Mejora...) y las
+    de categoria 9 propias de una clase (Venenos, Abrir cerraduras del picaro) traen esa ClassMask;
+    las de ClassMask 0 (Companeros, Supervivencia, pruebas) no son de ninguna clase y no entran.
+    Se excluye Grabado (SkillLine 2851, "Engraving" en SkillLine): sus hechizos (119 filas de
+    SpellReagents en la build 1.60.1.70959) solo piden
+    Tinte azul (6260) y lo harian "reactivo" de seis clases. El Fragmento de alma (6265) se fuerza
+    para el Brujo aunque no aparezca."""
+    spell_classes = {}
+    for row in ability_rows:
+        if _int(row['SkillLine']) in PROFESSIONS or _int(row['SkillLine']) in EXCLUDED_CLASS_LINES:
+            continue
+        classes = _class_bits(_int(row.get('ClassMask')))
+        if classes:
+            spell_classes.setdefault(_int(row['Spell']), set()).update(classes)
+    result = {}
+
+    def add(item, spell):
+        for name in spell_classes.get(spell, ()):
+            result.setdefault(item, {}).setdefault(name, set()).add(spell)
+
+    for row in reagent_rows:
+        spell = _int(row['SpellID'])
+        if spell not in spell_classes:
+            continue
+        for slot in REAGENT_SLOTS:
+            item = _int(row.get(slot))
+            if item > 0:
+                add(item, spell)
+    categories = {_int(row['ID']): (_int(row['TotemCategoryType']), _int(row['TotemCategoryMask']))
+                  for row in category_rows}
+    required = {}  # categoria pedida -> hechizos de clase que la piden
+    for row in totem_rows:
+        spell = _int(row['SpellID'])
+        if spell not in spell_classes:
+            continue
+        for slot in TOTEM_ITEMS:
+            item = _int(row.get(slot))
+            if item > 0:
+                add(item, spell)
+        for slot in TOTEM_REQUIRED:
+            category = _int(row.get(slot))
+            if category > 0:
+                required.setdefault(category, set()).add(spell)
+    for row in item_rows:
+        item = _int(row.get('ID'))
+        have = _int(row.get('TotemCategoryID'))
+        if item <= 0 or have <= 0:
+            continue
+        for need, spells in required.items():
+            if _satisfies(categories, have, need):
+                for spell in spells:
+                    add(item, spell)
+    result.setdefault(SOUL_SHARD, {}).setdefault('WARLOCK', set())
+    return {item: {name: sorted(spells) for name, spells in by_class.items()}
+            for item, by_class in result.items()}
 
 
 def compute_class_gear(ability_rows):
@@ -275,6 +353,22 @@ def render_class_gear_lua(gear, build):
         name = GEAR_CLASSES[class_id]
         lines.append('    %s = { armor = %s, weapon = %s },\n'
                      % (name, _lua_set(gear[name]['armor']), _lua_set(gear[name]['weapon'])))
+    lines.append('}\n')
+    return ''.join(lines)
+
+
+def render_class_reagents_lua(data, build):
+    lines = [_header(build),
+             '-- Reactivos y herramientas de hechizos de clase:\n'
+             '-- item -> { clases..., spells = { CLASE = { hechizos } } }.\n',
+             'ns.Data.classReagents = {\n']
+    for item in sorted(data):
+        by_class = data[item]
+        names = sorted(by_class)
+        spells = ', '.join('%s = { %s }' % (name, ', '.join(str(n) for n in by_class[name]))
+                           if by_class[name] else '%s = { }' % name for name in names)
+        lines.append('    [%d] = { %s, spells = { %s } },\n'
+                     % (item, ', '.join('"%s"' % name for name in names), spells))
     lines.append('}\n')
     return ''.join(lines)
 
@@ -431,6 +525,8 @@ def main(argv=None):
     tools = compute_tools(raw('skilllineability'), raw('spelltotems'), raw('totemcategory'), raw('itemsparse'))
     gear, missing = compute_class_gear(raw('skilllineability'))
     books, crates = compute_special(raw('itemsparse'))
+    class_reagents = compute_class_reagents(raw('skilllineability'), raw('spellreagents'), raw('spelltotems'),
+                                            raw('totemcategory'), raw('itemsparse'))
     if missing:
         sys.exit('skilllineability: faltan los hechizos de arma/armadura %s; no se genera ClassGear' % missing)
     write_lua('Reagents.lua', render_reagents_lua(reagents, build))
@@ -438,10 +534,11 @@ def main(argv=None):
     write_lua('Tools.lua', render_tools_lua(tools, build))
     write_lua('ClassGear.lua', render_class_gear_lua(gear, build))
     write_lua('Special.lua', render_special_lua(books, crates, build))
+    write_lua('ClassReagents.lua', render_class_reagents_lua(class_reagents, build))
     print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
-          '%d libros de biblioteca, %d cajones arrebatados (%d llenos)'
+          '%d libros de biblioteca, %d cajones arrebatados (%d llenos), %d reactivos de clase'
           % (build, len(reagents), len(starters), len(tools), len(gear), len(books), len(crates),
-             sum(1 for kind in crates.values() if kind == 'sealed')))
+             sum(1 for kind in crates.values() if kind == 'sealed'), len(class_reagents)))
 
 
 if __name__ == '__main__':
