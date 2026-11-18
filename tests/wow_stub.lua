@@ -412,6 +412,7 @@ function FAKE.InstallBaganator()
     return state
 end
 function FAKE.Reset()
+    GQ, C_EquipmentSet, GetEquipmentSetItemIDs, GetNumEquipmentSets, GetEquipmentSetInfo = nil, nil, nil, nil, nil
     Auctionator, ColorPickerFrame = nil, nil
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
     FAKE.bindings = {}; FAKE.savedBindings = {}; FAKE.inCombat = false

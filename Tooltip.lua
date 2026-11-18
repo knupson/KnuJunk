@@ -180,6 +180,8 @@ function Tooltip.Lines(link, bound, bag, slot)
         local kind = reason.kind
         if kind == 'no_sell_price' then
             add(L['Cannot be sold (no vendor price)'], WHITE)
+        elseif kind == 'gear_not_ranked' then
+            add(L['Not useful to you: %s']:format(reason.text), WHITE)
         elseif kind == 'recipe_known_tradeable' and neutral then
             add(L['You already know it; you can pass it on or auction it'], WHITE)
         elseif kind == 'override_keep' then

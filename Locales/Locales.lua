@@ -1,5 +1,9 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Gear not useful to you (GearQuest)'] = 'Equipo que no te sirve (según GearQuest)',
+    ['Coin on weapons and armor GearQuest does not rank for your class, specialization or level. Does nothing without GearQuest.'] = 'Monedita en armas y armaduras que GearQuest no clasifica para tu clase, especialización o nivel. Sin GearQuest no hace nada.',
+    ['GearQuest detected: %s'] = 'GearQuest detectado: %s',
+    ['Not useful to you: %s'] = 'No te sirve: %s',
     ['%dg %ds %dc'] = '%do %dp %dc',
     ['Legacy widget'] = 'widget anterior',
     ["Protect / unprotect the item under the mouse"] = "Proteger / desproteger el ítem bajo el mouse",

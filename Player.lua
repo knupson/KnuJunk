@@ -722,7 +722,7 @@ function Player.ReadLink(link)
     if type(link) == 'number' then id = link
     elseif type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) end
     if not id then return nil end
-    local _, _, quality, _, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
+    local _, itemLink, quality, _, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
     local effect = itemEffect(id)
     -- Sólo el efecto exacto de restauración acreditado por la build queda exceptuado.
@@ -755,6 +755,7 @@ function Player.ReadLink(link)
     end
     return {
         id = id,
+        link = type(link) == 'string' and link or (type(itemLink) == 'string' and itemLink or nil),
         quality = quality,
         reqLevel = type(reqLevel) == 'number' and reqLevel or nil,
         price = price or 0,

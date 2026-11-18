@@ -2,7 +2,7 @@ local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
 ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, loot = true }, overrides = {} }
-ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false }
+ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false, gearNotRanked = true }
 ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful' }
 -- Paleta de 4 colores (decision del user 2026-11-18): el color dice que hacer, la forma por que.
 -- Verde = te sirve, naranja = le sirve a otro, amarillo = plata, rojo = tirar.
