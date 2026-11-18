@@ -7,7 +7,7 @@ local _, ns = ...
 local Options = {}
 ns.Options = Options
 
-local PAD, ROW_H, MAX_ROWS, DEFAULT_ROWS, MIN_ROWS = 16, 24, 14, 6, 3
+local PAD, ROW_H, MAX_ROWS, DEFAULT_ROWS = 16, 24, 14, 6
 
 local function L(key) return ns.L[key] end
 
@@ -86,7 +86,8 @@ end
 -- Cuantas filas entran en un alto dado; sin alto todavia (0 o nil) se usa un valor por defecto.
 function Options.VisibleRows(height)
     if type(height) ~= 'number' or height <= 0 then return DEFAULT_ROWS end
-    return math.max(MIN_ROWS, math.min(MAX_ROWS, math.floor(height / ROW_H)))
+    -- Solo las filas que entran de verdad (al menos una); el resto se recorre con la barra.
+    return math.max(1, math.min(MAX_ROWS, math.floor(height / ROW_H)))
 end
 Options.MAX_ROWS = MAX_ROWS
 
@@ -495,6 +496,10 @@ function Options.Open()
         end
         if type(Settings.OpenToCategory) == 'function' and pcall(Settings.OpenToCategory, id) then return true end
         say('Options panel is not available in this client')
+        return false
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        say('Options open after combat: Esc > Options > AddOns > KnuJunk')
         return false
     end
     if type(InterfaceOptionsFrame_OpenToCategory) ~= 'function' then

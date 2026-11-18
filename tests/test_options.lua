@@ -231,7 +231,8 @@ test('VisibleRows acota el alto a un minimo, un maximo y un valor por defecto', 
     eq(ns.Options.VisibleRows(nil), 6)
     eq(ns.Options.VisibleRows(24 * 5), 5)
     eq(ns.Options.VisibleRows(24 * 5 + 10), 5)
-    eq(ns.Options.VisibleRows(30), 3)
+    eq(ns.Options.VisibleRows(30), 1)
+    eq(ns.Options.VisibleRows(10), 1)
     eq(ns.Options.VisibleRows(24 * 100), ns.Options.MAX_ROWS)
 end)
 
@@ -503,4 +504,28 @@ test('Quitar y el panel siguen andando con una KnuLib vieja sin StyleCheck ni Ge
     end)
     KL.StyleCheck, KL.StyleButton, KL.GetTheme, KL.GetFont = a, b, c, d
     ok(success, tostring(err))
+end)
+
+test('API clasica: en combate no abre opciones y avisa', function()
+    ns.Options.ResetState()
+    FAKE.InstallClassicOptions()
+    FAKE.inCombat = true
+    local good, err = pcall(function()
+        eq(ns.Options.Open(), false)
+        eq(#FAKE.interfaceOptions.opened, 0)
+    end)
+    FAKE.inCombat = false
+    ns.Options.ResetState()
+    if not good then error(err, 0) end
+end)
+
+test('Lista baja: las filas visibles caben en el alto y el resto se recorre', function()
+    ns.DB.overrides = {[1]='keep', [2]='sell', [3]='keep'}
+    local panel = ns.Options.Build()
+    panel.list:SetHeight(30)
+    panel:Show()
+    local count = 0
+    for _, row in ipairs(panel.rows) do if row:IsShown() then count = count + 1 end end
+    ok(count * 24 <= 30, 'filas caben')
+    eq(panel.scroll.max, 2)
 end)
