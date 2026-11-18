@@ -30,11 +30,17 @@ test('R14: receta sin profesión identificada tampoco recibe moneda', function()
     local r=ns.Classify(item(9),ctx()); eq(r.mark,nil)
 end)
 
-test('R24: equipo futuro usable por clase protege gris sin sumar icono', function()
+test('R24: equipo futuro usable por clase (no gris) se protege sin sumar icono', function()
     for _,spec in ipairs({{4,4},{2,8}}) do
-        local r=ns.Classify(item(spec[1],spec[2]),ctx())
+        local i=item(spec[1],spec[2]); i.quality=2; i.effect='no'
+        local r=ns.Classify(i,ctx())
         eq(r.mark,nil); eq(reason(r,'future_level').level,40)
     end
+end)
+
+test('R24: un gris de nivel futuro sigue siendo basura (decisión del dueño: gris = basura)', function()
+    local r=ns.Classify(item(4,4),ctx())
+    eq(r.mark,'coin'); ok(reason(r,'gray'), 'motivo gray')
 end)
 
 test('R24: no protege basura presente, subtipos desconocidos ni otra clase', function()
@@ -58,7 +64,7 @@ test('R24: override y misión activa conservan precedencia', function()
 end)
 
 test('R24: ReadLink y ReadItem leen el quinto retorno de GetItemInfo', function()
-    FAKE.items[ID]={name='Futuro',quality=0,price=10,classID=4,subclassID=4}
+    FAKE.items[ID]={name='Futuro',quality=1,price=10,classID=4,subclassID=4}
     local saved=GetItemInfo
     GetItemInfo=function(key)
         local values={saved(key)}; values[5]=40; return unpack(values,1,17)
@@ -114,7 +120,7 @@ test('R14/R24: tooltip real en inglés y español, protección con martillo ocul
         eq(#ns.Tooltip.Lines(FAKE.linkOf(2406)),0)
         eq(ns.Classify(ns.Player.ReadLink(2406),ns.Player.GetContext()).mark,'hammer_other')
         FAKE.class='MAGE'; UnitLevel=function() return 20 end; ns.Player.Invalidate()
-        FAKE.items[ID]={name='Futuro',quality=0,price=10,classID=4,subclassID=1}
+        FAKE.items[ID]={name='Futuro',quality=1,price=10,classID=4,subclassID=1}
         local info=GetItemInfo
         GetItemInfo=function(key)
             local v={info(key)}; v[5]=40; return unpack(v,1,17)

@@ -258,7 +258,8 @@ function ns.Classify(item, ctx)
     -- R24: sólo subtipos que la clase puede llegar a usar, con ambos niveles conocidos.
     local gear = ctx.class and ns.ClassGear[ctx.class]
     local kind = item.classID == 4 and 'armor' or item.classID == 2 and 'weapon' or nil
-    if gear and kind and gear[kind][item.subclassID] == true
+    -- Los grises quedan afuera: el gris es basura para el dueño aunque sea de nivel futuro.
+    if item.quality ~= 0 and gear and kind and gear[kind][item.subclassID] == true
         and type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level then
         reasons[#reasons + 1] = { kind = 'future_level', level = item.reqLevel }
         return result
