@@ -218,7 +218,7 @@ function Adapter.Install()
 end
 
 -- Repinta: pide a Baganator que vuelva a evaluar sus botones, solo si algo nuestro esta activo.
--- Solo por cambios de veredicto (Registry: bagUpdates = false) y solo los widgets (sin Searches):
+-- Solo por cambios de veredicto (Registry: bagUpdates = false); widgets y busquedas:
 -- Baganator ya redibuja sus botones cuando cambian las bolsas.
 function Adapter.Refresh()
     scanDirty = true
@@ -234,8 +234,9 @@ function Adapter.Refresh()
         local root = rawget(_G, 'Baganator')
         local reasons = type(root) == 'table' and type(root.Constants) == 'table' and root.Constants.RefreshReason
         local widgets = type(reasons) == 'table' and reasons.ItemWidgets
-        if type(widgets) == 'number' then
-            pcall(API.RequestItemButtonsRefresh, { widgets })
+        local searches = type(reasons) == 'table' and reasons.Searches
+        if type(widgets) == 'number' and type(searches) == 'number' then
+            pcall(API.RequestItemButtonsRefresh, { widgets, searches })
         else
             pcall(API.RequestItemButtonsRefresh)
         end

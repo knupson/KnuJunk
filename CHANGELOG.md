@@ -2,6 +2,13 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Opciones: secciones, lista y estado apilados sin superposición, con desplazamiento para ventanas chicas.
+- Textos: flechas y puntos suspensivos reemplazados por caracteres compatibles con la fuente del juego.
+- Tooltip: recalcula el ancho después de agregar líneas, sin duplicarlas al reentrar al hook.
+- Tecla: resuelve el ítem al apretar y refresca widgets y plugin de basura de Baganator.
+- Vendedor: escudo compartido desde el tooltip para confirmar ventas también con Baganator.
+- Moneda automática sólo con precio conocido y positivo; tooltip neutro para ítems sin precio de venta.
+
 - **Protección en el vendedor:** «siempre guardar» bloquea el ítem mientras está abierto; clic derecho pide confirmación para vender ese ejemplar una vez, sin borrar la marca. Activada por defecto y configurable. Sin API de escudos, queda el bloqueo. Requiere reiniciar el cliente por `Merchant.lua` en el `.toc`; pendiente validar en Forever.
 
 - **Tecla para marcas manuales:** asignala desde el panel y apretala sobre un ítem de bolsas o botín: automático → siempre guardar → siempre vender → automático. Sin tecla predeterminada; fuera de combate para asignar, con aviso de conflictos. / **Manual mark key:** assign it in options, then hover a bag or loot item to cycle automatic → always keep → always sell → automatic. No default key; assignment is out of combat and reports conflicts.

@@ -271,7 +271,7 @@ end)
 
 test('item de mision (clase 12) que ninguna mision activa pide -> coin quest_not_active', function()
     withData({}, {}, function()
-        local quest = item { classID = 12, quality = 1, price = 0 }
+        local quest = item { classID = 12, quality = 1, price = 10 }
         -- Sin QuestieDB: decide solo el diario.
         local alone = ns.Classify(quest, ctx { questieUses = nil })
         eq(alone.mark, 'coin'); ok(hasReason(alone, 'quest_not_active'), 'sin QuestieDB')

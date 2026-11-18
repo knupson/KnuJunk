@@ -63,7 +63,7 @@ local function classCannotUse(item, ctx)
     return gear[kind][subclassID] ~= true
 end
 
-function ns.Classify(item, ctx)
+local function classify(item, ctx)
     local result = { mark = nil, reasons = {} }
     local reasons = result.reasons
     if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
@@ -380,5 +380,20 @@ function ns.Classify(item, ctx)
         result.mark = 'coin'
     end
     if tradeable then reasons[#reasons + 1] = tradeable end
+    return result
+end
+
+-- La moneda automatica siempre acredita un precio de venta conocido y positivo.
+-- Se conserva el veredicto de utilidad y sus motivos; la venta manual prevalece.
+function ns.Classify(item, ctx)
+    local result = classify(item, ctx)
+    if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
+    if item.price == 0 then
+        result.reasons[#result.reasons + 1] = { kind = 'no_sell_price' }
+    end
+    local manual = ctx.overrides and ctx.overrides[item.id] == 'sell'
+    if result.mark == 'coin' and not manual and not (type(item.price) == 'number' and item.price > 0) then
+        result.mark = nil
+    end
     return result
 end

@@ -19,6 +19,14 @@ end
 
 function KnuJunk_CycleHovered()
     local id = Overrides.hovered
+    local tooltip = rawget(_G, 'GameTooltip')
+    if tooltip and type(tooltip.IsShown) == 'function' and type(tooltip.GetItem) == 'function' then
+        local shown, visible = pcall(tooltip.IsShown, tooltip)
+        if shown and visible then
+            local success, _, link = pcall(tooltip.GetItem, tooltip)
+            if success and type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) or id end
+        end
+    end
     if not id then
         ns.Print(ns.L['Hover an item first, then press the key'])
         return

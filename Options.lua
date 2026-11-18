@@ -204,35 +204,42 @@ end
 
 -- Encabezado de seccion: titulo en el acento y una linea fina debajo. Devuelve la y siguiente.
 local function section(panel, y, key)
-    local title = newText(panel, panel, 13, 'accent')
-    title:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y)
+    local body = panel.content or panel
+    local previous = panel.flowBottom or panel.title
+    local title = newText(panel, body, 13, 'accent')
+    title:SetPoint('TOPLEFT', previous, 'BOTTOMLEFT', PAD - (panel.flowLeft or PAD), -12)
+    title:SetPoint('TOPRIGHT', previous, 'BOTTOMRIGHT', 0, -12)
     title:SetText(L(key))
-    local line = newLine(panel, panel, 'accentDim', 0.6)
-    line:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y - 18)
-    line:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y - 18)
-    panel.sections[#panel.sections + 1] = { text = title, key = key }
-    return y - 24
+    local line = newLine(panel, body, 'accentDim', 0.6)
+    line:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -6)
+    line:SetPoint('TOPRIGHT', title, 'BOTTOMRIGHT', 0, -6)
+    panel.sections[#panel.sections + 1] = { text = title, key = key, line = line }
+    panel.flowBottom, panel.flowLeft = line, PAD
+    return y - 32
 end
 
 local function toggleRow(panel, y, toggle, height)
-    local check = CreateFrame('CheckButton', nil, panel, 'UICheckButtonTemplate')
+    local body = panel.content or panel
+    local previous, left = panel.flowBottom, panel.flowLeft
+    local check = CreateFrame('CheckButton', nil, body, 'UICheckButtonTemplate')
     check:SetSize(22, 22)
-    check:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y)
+    check:SetPoint('TOPLEFT', previous, 'BOTTOMLEFT', PAD - left, -8)
     check:SetHitRectInsets(0, -420, 0, 0) -- el texto tambien se puede clickear
     style('StyleCheck', check)
-    local label = newText(panel, panel, 13, 'text')
+    local label = newText(panel, body, 13, 'text')
     label:SetPoint('LEFT', check, 'RIGHT', 4, 0)
     label:SetText(L(toggle.label))
     check.label = label
-    local help = newText(panel, panel, 11, 'muted')
-    help:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD + 26, y - 22)
-    help:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y - 22)
+    local help = newText(panel, body, 11, 'muted')
+    help:SetPoint('TOPLEFT', previous, 'BOTTOMLEFT', PAD + 26 - left, -32)
+    help:SetPoint('TOPRIGHT', previous, 'BOTTOMRIGHT', 0, -32)
     help:SetJustifyV('TOP')
     help:SetWordWrap(true)
     help:SetText(L(toggle.help))
     check.help = help
     check:SetScript('OnClick', function(self) Options.Set(toggle.path, self:GetChecked() and true or false) end)
     panel.checks[toggle.path] = check
+    panel.flowBottom, panel.flowLeft = help, PAD + 26
     return y - height
 end
 
@@ -258,15 +265,19 @@ local function combat()
 end
 
 local function bindingRow(panel, y)
-    local label = newText(panel, panel, 13, 'text')
-    label:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y)
+    local body = panel.content or panel
+    local previous = panel.flowBottom
+    local label = newText(panel, body, 13, 'text')
+    label:SetPoint('TOPLEFT', previous, 'BOTTOMLEFT', PAD - panel.flowLeft, -12)
+    label:SetPoint('TOPRIGHT', previous, 'BOTTOMRIGHT', 0, -12)
     label:SetText(L('Change a mark with a key'))
-    panel.bindingKey = newText(panel, panel, 12, 'accentHi')
-    panel.bindingKey:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y - 22)
-    local button = CreateFrame('Button', nil, panel, 'UIPanelButtonTemplate')
+    panel.bindingKey = newText(panel, body, 12, 'accentHi')
+    panel.bindingKey:SetPoint('TOPLEFT', label, 'BOTTOMLEFT', 0, -8)
+    panel.bindingKey:SetPoint('TOPRIGHT', label, 'BOTTOMRIGHT', 0, -8)
+    local button = CreateFrame('Button', nil, body, 'UIPanelButtonTemplate')
     panel.bindingButton = button
     button:SetSize(250, 24)
-    button:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y)
+    button:SetPoint('TOPRIGHT', label, 'TOPRIGHT', 0, 0)
     style('StyleButton', button)
     stopCapture(button)
     button:SetScript('OnClick', function(self)
@@ -310,11 +321,12 @@ local function bindingRow(panel, y)
     end)
     button:SetScript('OnHide', stopCapture)
     panel:SetScript('OnHide', function() stopCapture(button) end)
-    local help = newText(panel, panel, 11, 'muted')
-    help:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y - 42)
-    help:SetPoint('TOPRIGHT', panel, 'TOPRIGHT', -PAD, y - 42)
+    local help = newText(panel, body, 11, 'muted')
+    help:SetPoint('TOPLEFT', panel.bindingKey, 'BOTTOMLEFT', 0, -12)
+    help:SetPoint('TOPRIGHT', panel.bindingKey, 'BOTTOMRIGHT', 0, -12)
     help:SetWordWrap(true)
-    help:SetText(L('Hover an item in your bags or loot window and press the key: automatic → always keep → always sell → automatic.'))
+    help:SetText(L('Hover an item in your bags or loot window and press the key: automatic > always keep > always sell > automatic.'))
+    panel.flowBottom, panel.flowLeft = help, PAD
     refreshBinding(panel)
     return y - 82
 end
@@ -456,10 +468,36 @@ function Options.Build()
     panel.name = 'KnuJunk'
     panel.painted, panel.checks, panel.rows, panel.sections, panel.footer = {}, {}, {}, {}, {}
     panel.offset = 0
+    local viewport = CreateFrame('ScrollFrame', nil, panel)
+    viewport:SetPoint('TOPLEFT', panel, 'TOPLEFT', 0, 0)
+    viewport:SetPoint('BOTTOMRIGHT', panel, 'BOTTOMRIGHT', 0, 0)
+    local body = CreateFrame('Frame', nil, viewport)
+    panel.content, panel.viewport = body, viewport
+    viewport:SetScrollChild(body)
+    local function resizeContent()
+        local footer = panel.footer[3]
+        if footer and body.GetTop and footer.GetBottom then
+            local top, bottom = body:GetTop(), footer:GetBottom()
+            if top and bottom then body:SetHeight(math.max(1, top - bottom + PAD)) end
+        end
+        local limit = math.max(0, body:GetHeight() - viewport:GetHeight())
+        viewport:SetVerticalScroll(math.min(viewport:GetVerticalScroll(), limit))
+    end
+    viewport:SetScript('OnSizeChanged', function(_, width)
+        body:SetWidth(width)
+        C_Timer.After(0, resizeContent)
+    end)
+    body:SetWidth(math.max(1, panel:GetWidth()))
+    viewport:EnableMouseWheel(true)
+    viewport:SetScript('OnMouseWheel', function(_, delta)
+        local limit = math.max(0, body:GetHeight() - viewport:GetHeight())
+        viewport:SetVerticalScroll(math.max(0, math.min(limit, viewport:GetVerticalScroll() - delta * ROW_H * 3)))
+    end)
     style('StylePanel', panel)
 
-    panel.title = newText(panel, panel, 20, 'accent')
-    panel.title:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, -16)
+    panel.title = newText(panel, body, 20, 'accent')
+    panel.title:SetPoint('TOPLEFT', body, 'TOPLEFT', PAD, -16)
+    panel.title:SetPoint('TOPRIGHT', body, 'TOPRIGHT', -PAD, -16)
     panel.title:SetText('KnuJunk')
 
     local y = -52
@@ -474,17 +512,23 @@ function Options.Build()
     y = bindingRow(panel, y - 4)
     y = section(panel, y - 4, 'Manual marks')
 
-    -- Pie: tres lineas de estado, pegadas abajo.
+    -- Alto positivo incluso en ventanas chicas; el panel exterior permite llegar al pie.
+    local list = CreateFrame('Frame', nil, body, template)
+    local divider = panel.sections[#panel.sections].line
+    list:SetPoint('TOPLEFT', divider, 'BOTTOMLEFT', 0, -8)
+    list:SetPoint('TOPRIGHT', divider, 'BOTTOMRIGHT', -16, -8)
+    list:SetHeight(DEFAULT_ROWS * ROW_H)
     for index = 1, 3 do
-        local line = newText(panel, panel, 11, 'muted')
-        line:SetPoint('BOTTOMLEFT', panel, 'BOTTOMLEFT', PAD, PAD + (3 - index) * 14)
+        local line = newText(panel, body, 11, 'muted')
+        if index == 1 then
+            line:SetPoint('TOPLEFT', list, 'BOTTOMLEFT', 0, -16)
+        else
+            line:SetPoint('TOPLEFT', panel.footer[index - 1], 'BOTTOMLEFT', 0, -4)
+        end
         panel.footer[index] = line
     end
+    body:SetHeight(-y + DEFAULT_ROWS * ROW_H + 16 + 3 * 18 + PAD)
 
-    -- Lista con scroll propio (filas reutilizables + barra): el alto la define el espacio que queda.
-    local list = CreateFrame('Frame', nil, panel, template)
-    list:SetPoint('TOPLEFT', panel, 'TOPLEFT', PAD, y)
-    list:SetPoint('BOTTOMRIGHT', panel, 'BOTTOMRIGHT', -PAD - 16, PAD + 3 * 14 + 8)
     style('StylePanel', list)
     list:EnableMouseWheel(true)
     panel.list = list
@@ -497,7 +541,7 @@ function Options.Build()
     panel.empty:SetWordWrap(true)
     panel.empty:SetText(L('No manual marks yet. Assign a key above to change an item mark under the mouse.'))
 
-    local scroll = CreateFrame('Slider', nil, panel)
+    local scroll = CreateFrame('Slider', nil, body)
     scroll:SetOrientation('VERTICAL')
     scroll:SetWidth(10)
     scroll:SetPoint('TOPLEFT', list, 'TOPRIGHT', 4, 0)
@@ -525,7 +569,7 @@ function Options.Build()
     panel.OnRefresh = panel.refresh
     panel.OnCommit, panel.OnDefault = function() end, function() end
     panel.okay, panel.cancel, panel.default = panel.OnCommit, panel.OnCommit, panel.OnDefault
-    panel:SetScript('OnShow', function() refresh(panel) end)
+    panel:SetScript('OnShow', function() refresh(panel); C_Timer.After(0, resizeContent) end)
     panel:SetScript('OnEvent', function(_, event)
         if event == 'UPDATE_BINDINGS' then refreshBinding(panel) return end
         if event ~= 'GET_ITEM_INFO_RECEIVED' or not panel.missing or panel.waiting or not panel:IsVisible() then return end

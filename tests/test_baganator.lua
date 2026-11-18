@@ -278,8 +278,8 @@ test('un error de Baganator al pedir el refresco no se propaga', function()
 end)
 
 -- Item 9 de la ola final: Baganator ya redibuja sus botones con cada cambio de bolsas; solo se le
--- pide refresco cuando cambia NUESTRO veredicto (contexto, Questie, opciones) y solo ItemWidgets.
-test('BAG_UPDATE_DELAYED no pide refresco a Baganator; un cambio de contexto si, con ItemWidgets', function()
+-- pide refresco cuando cambia NUESTRO veredicto (contexto, Questie, opciones) con widgets y busquedas.
+test('BAG_UPDATE_DELAYED no pide refresco a Baganator; un cambio de contexto si, con widgets y busquedas', function()
     local state = installed()
     state.activeJunk = 'knujunk'
     FAKE.Advance(1)
@@ -288,8 +288,8 @@ test('BAG_UPDATE_DELAYED no pide refresco a Baganator; un cambio de contexto si,
     eq(state.refreshes, base, 'cambio de bolsas: Baganator se arregla solo')
     ns.Bags.RefreshAll(); FAKE.Advance(1)
     eq(state.refreshes, base + 1, 'cambio de contexto')
-    ok(type(state.lastReason) == 'table' and #state.lastReason == 1 and state.lastReason[1] == 4,
-        'solo RefreshReason.ItemWidgets')
+    ok(type(state.lastReason) == 'table' and #state.lastReason == 2 and state.lastReason[1] == 4 and state.lastReason[2] == 16,
+        'RefreshReason.ItemWidgets y Searches')
 end)
 
 test('una rafaga con BAG_UPDATE_DELAYED y un cambio de contexto si refresca Baganator', function()

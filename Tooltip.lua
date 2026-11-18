@@ -154,7 +154,11 @@ function Tooltip.Lines(link, bound, bag, slot)
     local reasons = type(result) == 'table' and result.reasons or {}
     local L = ns.L
 
+    local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
+        recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true }
+    local noPrice = not (type(item.price) == 'number' and item.price > 0)
     local function add(text, color, kind)
+        if kind == 'coin' and mark == nil and noPrice then color, kind = WHITE, nil end
         lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
 
@@ -165,7 +169,9 @@ function Tooltip.Lines(link, bound, bag, slot)
 
     for _, reason in ipairs(reasons) do
         local kind = reason.kind
-        if kind == 'recipe_known_tradeable' and mark == nil then
+        if kind == 'no_sell_price' then
+            add(L['Cannot be sold (no vendor price)'], WHITE)
+        elseif kind == 'recipe_known_tradeable' and mark == nil then
             add(L['You already know it; you can pass it on or auction it'], WHITE)
         elseif kind == 'override_keep' then
             add(L['Marked by hand: keep'], WHITE)
@@ -187,7 +193,7 @@ function Tooltip.Lines(link, bound, bag, slot)
             else
                 add(L['Waylaid crate: fill it with one option from the list and turn it in to %s']:format(npc), WHITE)
             end
-        elseif mark == 'coin' and shows('coin') then
+        elseif (mark == 'coin' and shows('coin')) or (mark == nil and noPrice and saleReasons[kind]) then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')
             elseif kind == 'food_outgrown' then
@@ -376,13 +382,24 @@ local function decorate(tooltip, data, bag, slot)
     if tooltip == rawget(_G, 'GameTooltip') then
         ns.Overrides.hovered = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or nil
     end
-    if not link then return end
+    if not link then
+        if tooltip == rawget(_G, 'GameTooltip') and ns.Merchant then ns.Merchant.HideHoveredShield() end
+        return
+    end
     if bag == nil and type(tooltip.GetBagItem) == 'function' then
         local good, b, s = pcall(tooltip.GetBagItem, tooltip)
         if good and type(b) == 'number' and type(s) == 'number' then bag, slot = b, s end
     end
+    local previous = guard[tooltip]
+    if bag == nil and previous and previous.link == link then bag, slot = previous.bag, previous.slot end
     local lines = Tooltip.Lines(link, boundFromTooltip(tooltip, data), bag, slot)
-    if #lines == 0 then return end
+    if #lines == 0 then
+        if tooltip == rawget(_G, 'GameTooltip') and ns.Merchant then ns.Merchant.HideHoveredShield() end
+        return
+    end
+    if tooltip == rawget(_G, 'GameTooltip') and ns.Merchant then
+        ns.Merchant.ShowHoveredShield(bag, slot)
+    end
     local missing = missingLines(tooltip, link, lines)
     if #missing == 0 then return end
     local record = guard[tooltip]
@@ -390,9 +407,19 @@ local function decorate(tooltip, data, bag, slot)
         record = { link = link, done = {} }
         guard[tooltip] = record
     end
+    record.bag, record.slot = bag, slot
     for _, line in ipairs(missing) do
         tooltip:AddLine(line.text, line.r, line.g, line.b)
         record.done[line.text] = true -- solo tras agregar: lo que falla se reintenta
+    end
+    -- El registro ya esta completo antes de Show, que puede volver a disparar el hook.
+    if type(tooltip.Show) == 'function' then
+        local visible = true
+        if type(tooltip.IsShown) == 'function' then
+            local success, shown = pcall(tooltip.IsShown, tooltip)
+            visible = success and shown
+        end
+        if visible then pcall(tooltip.Show, tooltip) end
     end
 end
 
@@ -408,7 +435,10 @@ local function hookTooltip(tooltip, withSetItem)
         if self == rawget(_G, 'GameTooltip') then ns.Overrides.hovered = nil end
     end
     pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', clear)
-    pcall(tooltip.HookScript, tooltip, 'OnHide', clear)
+    pcall(tooltip.HookScript, tooltip, 'OnHide', function(self)
+        clear(self)
+        if self == rawget(_G, 'GameTooltip') and ns.Merchant then ns.Merchant.HideHoveredShield() end
+    end)
     if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
         pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
     end

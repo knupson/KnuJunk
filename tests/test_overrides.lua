@@ -197,7 +197,7 @@ test('traducciones nuevas cubren esES esMX y enUS', function()
             eq(ns.L['Hover an item first, then press the key'], locale == 'enUS'
                 and 'Hover an item first, then press the key' or 'Pasá el mouse por un ítem y apretá la tecla')
             eq(ns.L['Press a key... (Esc cancels)'], locale == 'enUS'
-                and 'Press a key... (Esc cancels)' or 'Apretá una tecla… (Esc cancela)')
+                and 'Press a key... (Esc cancels)' or 'Apretá una tecla... (Esc cancela)')
         end
     end)
     ns.L, FAKE.locale = realL, nil

@@ -69,6 +69,14 @@ function methods:SetThumbTexture(value) self.thumbPath = value end
 function methods:GetThumbTexture() self.thumb = self.thumb or CreateFrame('Texture'); return self.thumb end
 for _, method in ipairs({'SetHitRectInsets','SetValueStep','SetObeyStepOnDrag','SetOrientation','EnableMouseWheel','SetJustifyH',
     'SetJustifyV','SetWordWrap','SetMaxLines','SetFrameLevel','SetAllPoints','SetClipsChildren','SetFontObject'}) do methods[method] = function() end end
+function methods:SetPoint(...) self.points = self.points or {}; self.points[#self.points + 1] = {...} end
+function methods:ClearAllPoints() self.points = {} end
+function methods:SetAllPoints(target) self.allPoints = target end
+function methods:SetFrameLevel(level) self.level = level end
+function methods:SetParent(parent) self.parent = parent end
+function methods:SetScrollChild(child) self.scrollChild = child end
+function methods:SetVerticalScroll(value) self.verticalScroll = value end
+function methods:GetVerticalScroll() return self.verticalScroll or 0 end
 function CreateFrame(kind, name, parent, template)
     local frame = setmetatable({ scripts = {}, events = {}, shown = true, parent = parent,
         name = name, enabled = true, alpha = 1 }, {__index = methods})
@@ -411,7 +419,7 @@ function FAKE.Reset()
         'BankPanel', 'BankFrame', 'ItemLocation', 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE',
         'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND', 'GetSpellInfo', 'C_Spell', 'LOCALIZED_CLASS_NAMES_MALE',
         'Settings', 'InterfaceOptions_AddCategory', 'InterfaceOptionsFrame_OpenToCategory', 'ForeverSettings',
-        'ITEM_QUALITY_COLORS' }) do _G[name] = nil end
+        'ITEM_QUALITY_COLORS', 'GetMouseFoci', 'GetMouseFocus' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
