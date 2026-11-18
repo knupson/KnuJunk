@@ -39,6 +39,10 @@ Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.
     help = 'Opening a merchant sells only items with a coin icon. Never protected items.' }
 Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.graysOnly', label = 'Grays only',
     help = 'Automatically sell only poor-quality items with a coin icon.' }
+Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoRepair.enabled', label = 'Automatic repairs',
+    help = 'Opening a repair merchant repairs all your gear. Hold Shift when opening to skip repairs.' }
+Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoRepair.guild', label = 'Use guild funds',
+    help = 'Use the guild bank first if allowed; pay the rest with your own money.' }
 
 Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'lootAdvisor.enabled', label = 'Loot advisor when bags are full',
     help = 'When bags are full, hold Shift in the loot window to see what to drop or whether looting is worth it.' }
@@ -674,6 +678,9 @@ local function refresh(panel)
     local sellers = ns.AutoSell.OtherSellers()
     panel.autoSellWarnings.Leatrix_Plus:SetText(sellers.Leatrix_Plus and L('Leatrix Plus also sells junk automatically: turn it off in its options so only KnuJunk coin items are sold.') or '')
     panel.autoSellWarnings.ElvUI:SetText(sellers.ElvUI and L('ElvUI also sells junk automatically: turn it off in Bags > Vendor Grays so only KnuJunk coin items are sold.') or '')
+    local repairers = ns.AutoSell.OtherRepairers()
+    panel.autoRepairWarnings.Leatrix_Plus:SetText(repairers.Leatrix_Plus and L('Leatrix Plus also repairs automatically: turn it off in its options so only KnuJunk repairs.') or '')
+    panel.autoRepairWarnings.ElvUI:SetText(repairers.ElvUI and L('ElvUI also repairs automatically: turn it off in General > Auto Repair so only KnuJunk repairs.') or '')
     for _, control in pairs(panel.controls) do control.refresh() end
     for kind, swatch in pairs(panel.swatches) do
         local color = ns.Marks.Color(kind)
@@ -815,6 +822,10 @@ function Options.Build()
     for _, toggle in ipairs(Options.TOGGLES) do toggleRow(panel, toggle) end
     sliderRow(panel, 'General', 'autoSell.max', 'Maximum per visit', 1, 12, 1, 1)
     panel.autoSellWarnings = {
+        Leatrix_Plus = controlLine(panel, 'General', '', 'muted'),
+        ElvUI = controlLine(panel, 'General', '', 'muted'),
+    }
+    panel.autoRepairWarnings = {
         Leatrix_Plus = controlLine(panel, 'General', '', 'muted'),
         ElvUI = controlLine(panel, 'General', '', 'muted'),
     }

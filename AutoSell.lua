@@ -7,11 +7,12 @@ local ticker, queue, cursor, sold, total = nil, {}, 1, 0, 0
 local reported, bursts = {}, {}
 local hookedContainer
 local attempts, pending = 0, nil
+local repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
 
 local function safe(fn, ...)
     if type(fn) ~= 'function' then return nil end
-    local ok, value = pcall(fn, ...)
-    if ok then return value end
+    local ok, value, second = pcall(fn, ...)
+    if ok then return value, second end
 end
 
 local function api(name) return (C_Container and C_Container[name]) or _G[name] end
@@ -27,6 +28,52 @@ local function maximum()
     local value = ns.DB and ns.DB.autoSell and ns.DB.autoSell.max
     if type(value) ~= 'number' or value ~= value then value = 12 end
     return math.max(1, math.min(12, math.floor(value)))
+end
+
+local function repairCost()
+    local cost, canRepair = safe(GetRepairAllCost)
+    if type(cost) == 'number' and cost >= 0 and cost < math.huge then return cost, canRepair end
+end
+
+local function repair()
+    local options = ns.DB and ns.DB.autoRepair
+    if not opened or repairSkipped or not options or options.enabled ~= true or ns.DB.enabled == false then return end
+    if safe(IsShiftKeyDown) ~= false then return end
+    if type(InCombatLockdown) ~= 'function' then return end
+    if combat() then repairDeferred = true; return end
+    repairDeferred = false
+    if safe(CanMerchantRepair) ~= true or type(RepairAllItems) ~= 'function' then return end
+    local cost, canRepair = repairCost()
+    if not cost or cost <= 0 or canRepair ~= true then return end
+    local guildPaid, ownPaid = 0, 0
+    if options.guild == true and safe(IsInGuild) == true and safe(CanGuildBankRepair) == true then
+        safe(RepairAllItems, true)
+        local remaining = repairCost()
+        if not remaining or remaining > cost then return end
+        guildPaid, cost = cost - remaining, remaining
+    end
+    if cost > 0 then
+        local money = safe(GetMoney)
+        if type(money) == 'number' then
+            if money >= cost then
+                safe(RepairAllItems)
+                local remaining = repairCost()
+                if remaining and remaining < cost then ownPaid = cost - remaining end
+            else
+                ns.Print(ns.L['Not enough money to repair everything: it costs %s']:format(ns.FormatMoney(cost)))
+                repairAfterSales = not repairRetried
+            end
+        end
+    end
+    if guildPaid + ownPaid > 0 then
+        local amount = ns.FormatMoney(guildPaid + ownPaid)
+        if guildPaid > 0 and ownPaid > 0 then
+            amount = ns.L['%s from the guild and %s of your own']:format(ns.FormatMoney(guildPaid), ns.FormatMoney(ownPaid))
+        elseif guildPaid > 0 then
+            amount = amount .. ns.L[' (guild funds)']
+        end
+        ns.Print(ns.L['KnuJunk repaired everything for %s']:format(amount))
+    end
 end
 
 local function candidate(bag, slot)
@@ -108,6 +155,10 @@ local function report()
         ns.Print(ns.L['KnuJunk sold %d items for %s']:format(sold, ns.FormatMoney(total)))
     end
     sold, total = 0, 0
+    if repairAfterSales then
+        repairAfterSales, repairRetried = false, true
+        repair()
+    end
 end
 
 -- Un solo resumen por visita, un rato después del último pedido.
@@ -187,6 +238,18 @@ function AutoSell.OtherSellers()
     return found
 end
 
+function AutoSell.OtherRepairers()
+    local found = {}
+    local lea = rawget(_G, 'LeaPlusDB')
+    if type(lea) == 'table' and lea.AutoRepairGear == 'On' then found.Leatrix_Plus = true end
+    local e = type(ElvUI) == 'table' and ElvUI[1]
+    local db = type(e) == 'table' and e.db
+    local general = type(db) == 'table' and db.general
+    local mode = type(general) == 'table' and general.autoRepair
+    if type(mode) == 'string' and mode ~= 'NONE' then found.ElvUI = true end
+    return found
+end
+
 local known = { Leatrix_Plus=true, ElvUI=true, Scrap=true, Peddler=true, Dejunk=true,
     Vendor=true, SellJunk=true, AutoVendor=true }
 local function observe()
@@ -230,14 +293,20 @@ frame:SetScript('OnEvent', function(_, event)
         queue, cursor = {}, 1
         sold, total, reported, bursts, attempts, pending = 0, 0, {}, {}, 0, nil
         attempted, reportToken = {}, reportToken + 1
+        repairDeferred, repairAfterSales, repairRetried = false, false, false
+        repairSkipped = safe(IsShiftKeyDown) ~= false
         installHook()
+        repair()
         start()
     elseif event == 'BAG_UPDATE_DELAYED' then
         if #attempted > 0 then confirm() end
     elseif event == 'MERCHANT_CLOSED' or event == 'PLAYER_LEAVING_WORLD' then
         opened, deferred = false, false
+        repairDeferred, repairAfterSales = false, false
         if ticker then finish() end
-    elseif deferred and opened then
+    elseif event == 'PLAYER_REGEN_ENABLED' and opened then
+        if repairDeferred then repair() end
+        if not deferred then return end
         -- Retomar la cola original sin volver a vender ranuras ya procesadas.
         deferred = false
         if #queue == 0 then start()
@@ -252,5 +321,6 @@ function AutoSell.ResetState()
     queue, cursor, sold, total, reported, bursts = {}, 1, 0, 0, {}, {}
     attempts, pending = 0, nil
     attempted, reportToken = {}, reportToken + 1
+    repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
     installHook()
 end

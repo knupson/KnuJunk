@@ -1,5 +1,15 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['Automatic repairs'] = 'Reparación automática',
+    ['Opening a repair merchant repairs all your gear. Hold Shift when opening to skip repairs.'] = 'Al abrir un vendedor que repara, arregla todo tu equipo. Mantené Shift al abrirlo para saltearla.',
+    ['Use guild funds'] = 'Usar fondos de la hermandad',
+    ['Use the guild bank first if allowed; pay the rest with your own money.'] = 'Primero con el banco de la hermandad si podés; lo que falte, con tu plata.',
+    ['Not enough money to repair everything: it costs %s'] = 'No te alcanza para reparar todo: cuesta %s',
+    ['KnuJunk repaired everything for %s'] = 'KnuJunk reparó todo por %s',
+    [' (guild funds)'] = ' (fondos de la hermandad)',
+    ['%s from the guild and %s of your own'] = '%s de la hermandad y %s tuyos',
+    ['Leatrix Plus also repairs automatically: turn it off in its options so only KnuJunk repairs.'] = 'Leatrix Plus también repara automáticamente: apagalo en sus opciones para que repare sólo KnuJunk.',
+    ['ElvUI also repairs automatically: turn it off in General > Auto Repair so only KnuJunk repairs.'] = 'ElvUI también repara automáticamente: apagalo en General > Reparación automática para que repare sólo KnuJunk.',
     ['Loot advisor when bags are full'] = 'Asesor de botín con la bolsa llena',
     ['When bags are full, hold Shift in the loot window to see what to drop or whether looting is worth it.'] = 'Con la bolsa llena, mantené Shift en la ventana de botín para ver qué tirar o si no conviene lootear.',
     ['Fits in a stack'] = 'Entra en una pila',
