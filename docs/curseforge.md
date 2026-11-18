@@ -16,7 +16,7 @@ It only shows icons. KnuJunk never sells, destroys or moves anything.
 
 ### Features
 
-- **Recetas por profesión (R14):** martillo verde si tenés la profesión y amarillo si no; tooltip «Receta de {profesión}, requiere {rango}» / «Recipe for {profession}, requires {rank}», sin requisito si no se conoce. Nunca moneda automática, incluso si ya la aprendiste o no tenés el rango. Datos de wowf `1.60.1.70959`: 2083 recetas, 2060 con rango; recetas de clase 9 sin profesión identificada quedan sin marca. La detección de recetas ya conocidas queda para otra etapa. Reiniciá el cliente para cargar `Data/Recipes.lua`.
+- **Recetas por profesión (R14):** martillo verde si tenés la profesión y amarillo si no; tooltip «Receta de {profesión}, requiere {rango}» / «Recipe for {profession}, requires {rank}», sin requisito si no se conoce. Por defecto, ninguna moneda automática, incluso si ya la aprendiste o no tenés el rango. Datos de wowf `1.60.1.70959`: 2083 recetas, 2060 con rango; recetas de clase 9 sin profesión identificada quedan sin marca. La detección de conocidas se habilita con la opción `knownrecipe`, apagada por defecto. Reiniciá el cliente para cargar `Data/Recipes.lua`.
 - **Equipo para nivel futuro (R24):** sin moneda automática si tu clase puede llegar a usar el subtipo y el nivel requerido es mayor al tuyo; tooltip «Podés usarlo desde nivel {n}» / «Usable from level {n}». Sin ícono nuevo. Con nivel requerido desconocido no cambia el comportamiento anterior. Misión activa y profesión mantienen sus marcas; venta manual prevalece. Pendiente validar en el juego, junto con bolsas, banco y botín.
 - **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
 - **Repeatable reputation turn-ins (R20).** An explicit owner exception to the quest-log rule: an item objective of a repeatable quest with a positive reputation reward in QuestieDB is kept even when the quest is outside your log. No icon; "Turn in for reputation: <faction>" (localized name when available, otherwise faction ID). Profession and active-quest marks keep priority. Without QuestieDB there is no R20 protection: no Forever turn-in list could be derived from the game tables used. Manual sell still wins.
@@ -123,6 +123,16 @@ If you see a coin on something you needed, please tell us the item and the bag a
 Es la primera beta y todavía no se probó en el juego. Si ves una monedita en algo que necesitabas, avisá qué item y qué bolsa usás. Código propio, licencia MIT.
 
 ---
+
+### Opciones
+
+Las tres reglas opcionales arrancan **apagadas**, también al actualizar una instalación existente. `/knu junk rules` lista sus estados; `/knu junk status` también los muestra. Usá `/knu junk rules food|ammo|knownrecipe on|off` para cambiar una y refrescar las marcas.
+
+- **food (R9):** comida/bebida de restauración simple, nivel del personaje al menos 15 por encima del requerido y alternativa usable en bolsas que restaure más del mismo recurso. Sin buffs, comida exclusiva de mascota ni otros efectos. Tooltip: «Tenés comida/bebida mejor para tu nivel».
+- **ammo (R16):** flechas o balas ordinarias con otra pila usable del mismo subtipo en bolsas, de mayor DPS confirmado y al menos 10 niveles de objeto más. Conserva la munición equipada y al menos una pila compatible; sólo marca ejemplares identificados en las bolsas del personaje. Tooltip: «Tenés munición compatible de mayor daño».
+- **knownrecipe (R12/R13):** exige la línea exacta `ITEM_SPELL_KNOWN` («Already known»/«Ya conocido») del tooltip de ese ejemplar en bolsa. Con ligadura confirmada y precio positivo: moneda, «Ya conocés esta receta». Sin ligadura confirmada: sin moneda, «Ya la conocés; podés pasarla o subastarla». Ausencia de la línea no demuestra conocimiento.
+
+Misión activa, reactivos/herramientas, efectos adicionales o desconocidos, sets, llaves, objetos especiales y demás protecciones conservan precedencia; los overrides manuales siguen mandando. Sólo la restauración simple identificada se exceptúa de su propio efecto de uso, nunca de otro efecto. Datos de `wowf 1.60.1.70959`: `Data/Food.lua` contiene 131 comidas/bebidas y `Data/Ammo.lua`, 36 municiones; regeneración con `python -I tools/build_data.py --offline`. Reiniciá el cliente por los archivos nuevos del `.toc`. Pendiente validar en Forever.
 
 ## Project settings
 

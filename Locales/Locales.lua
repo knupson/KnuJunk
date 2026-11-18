@@ -1,5 +1,12 @@
 local _, ns = ...
 ns.L = LibStub('KnuLib-1.0'):NewLocale({
+    ['You have better food/drink for your level'] = 'Tenés comida/bebida mejor para tu nivel',
+    ['You have compatible ammunition with higher damage'] = 'Tenés munición compatible de mayor daño',
+    ['You already know this recipe'] = 'Ya conocés esta receta',
+    ['You already know it; you can pass it on or auction it'] = 'Ya la conocés; podés pasarla o subastarla',
+    ['Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]'] = 'Reglas opcionales: /knu junk rules [food|ammo|knownrecipe] [on|off]',
+    ['Rules: food: %s | ammo: %s | knownrecipe: %s'] = 'Reglas: food: %s | ammo: %s | knownrecipe: %s',
+    ['Rule %s: %s'] = 'Regla %s: %s',
     ['Recipe for %s'] = 'Receta de %s',
     [', requires %d'] = ', requiere %d',
     ['Usable from level %d'] = 'Podés usarlo desde nivel %d',

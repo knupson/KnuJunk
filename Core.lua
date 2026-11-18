@@ -2,6 +2,7 @@ local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
 ns.Defaults = { enabled = true, show = { coin = true, hammer = true, loot = true }, overrides = {} }
+ns.Defaults.rules = { food = false, ammo = false, knownRecipe = false }
 ns.Print = KL:NewPrinter('Junk')
 ns.Data = ns.Data or {}
 

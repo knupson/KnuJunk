@@ -13,6 +13,7 @@ local questMemo, skillMemo = {}, {} -- {fp=, data=}: resultado del ultimo escane
 local scanning = false -- true mientras se expanden/pliegan encabezados: sus eventos sincronicos se ignoran
 local pending = false -- hay una reconstruccion diferida programada
 local changedCallbacks = {}
+local knownState, restorationState, optionalRevision = {}, {}, 0 -- conocimiento por ejemplar
 -- Efectos vistos en el tooltip (regla 30): [itemID] = true|false, solo lecturas completas.
 local effectState = {} -- [itemID] = true|false|{pendiente}: ver resolveEffect
 local scanTip -- GameTooltip oculto de respaldo (sin C_TooltipInfo), creado al primer uso
@@ -27,6 +28,7 @@ local questRevision = 0
 local function markDirty()
     if cache then previous = cache end
     cache = nil
+    knownState, restorationState = {}, {}
 end
 
 function Player.Invalidate() markDirty() end
@@ -40,6 +42,7 @@ function Player.ResetState()
     cache, previous, lastQuestFound, scanning, pending = nil, nil, nil, false, false
     questMemo, skillMemo, changedCallbacks = {}, {}, {}
     effectState, scanTip, retryAt, effectRevision = {}, nil, nil, 0
+    knownState, restorationState, optionalRevision = {}, {}, 0
     eventQueue, eventScheduled = {}, false
 end
 
@@ -394,10 +397,13 @@ local function buildContext()
         questLogIncomplete = incomplete or nil,
         questieUses = ns.Questie and ns.Questie.Uses or nil,
         overrides = ns.DB and ns.DB.overrides or {},
+        rules = ns.DB and ns.DB.rules or {},
     }
+    ctx.bagStock = Player.BagStock(level, ctx.rules)
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
-        sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids) }, '|')
+        sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids), tostring(optionalRevision),
+        ctx.bagStock.signature or '' }, '|')
     return ctx
 end
 
@@ -463,10 +469,14 @@ end
 -- si no, esta pendiente. GameTooltip oculto (sin C_TooltipInfo): solo se llama con el item ya en la
 -- cache del cliente (ReadLink exige GetItemInfo antes); con el titulo presente, una region con texto
 -- vacio ('') es un espaciador de diseno, y una sin texto (nil) o "Recuperando..." esta pendiente.
-local function tooltipTexts(id)
+local function tooltipTexts(id, bag, slot)
     local link = 'item:' .. id
-    if type(C_TooltipInfo) == 'table' and type(C_TooltipInfo.GetHyperlink) == 'function' then
-        local success, data = pcall(C_TooltipInfo.GetHyperlink, link)
+    local getter = type(C_TooltipInfo) == 'table' and (bag ~= nil and C_TooltipInfo.GetBagItem or C_TooltipInfo.GetHyperlink)
+    if bag ~= nil and type(C_TooltipInfo) == 'table' and type(C_TooltipInfo.GetBagItem) ~= 'function' then getter = nil end
+    if type(getter) == 'function' then
+        local success, data
+        if bag ~= nil then success, data = pcall(getter, bag, slot)
+        else success, data = pcall(getter, link) end
         if not success or type(data) ~= 'table' or type(data.lines) ~= 'table' or #data.lines == 0 then
             return nil, 'partial'
         end
@@ -497,10 +507,12 @@ local function tooltipTexts(id)
         if not scanTip then
             scanTip = CreateFrame('GameTooltip', 'KnuJunkScanTooltip', nil, 'GameTooltipTemplate')
         end
-        if type(scanTip.NumLines) ~= 'function' or type(scanTip.SetHyperlink) ~= 'function' then return nil, 'unavailable' end
+        if type(scanTip.NumLines) ~= 'function' then return nil, 'unavailable' end
+        if bag ~= nil and type(scanTip.SetBagItem) ~= 'function' then return nil, 'unavailable' end
+        if bag == nil and type(scanTip.SetHyperlink) ~= 'function' then return nil, 'unavailable' end
         if type(scanTip.SetOwner) == 'function' then scanTip:SetOwner(rawget(_G, 'WorldFrame') or UIParent, 'ANCHOR_NONE') end
         if type(scanTip.ClearLines) == 'function' then scanTip:ClearLines() end
-        scanTip:SetHyperlink(link)
+        if bag ~= nil then scanTip:SetBagItem(bag, slot) else scanTip:SetHyperlink(link) end
         local count = scanTip:NumLines()
         if type(count) ~= 'number' or count == 0 then return nil, 'partial' end
         local list, complete, withText = {}, true, 0
@@ -690,6 +702,34 @@ function Player.ReadLink(link)
     local _, _, quality, _, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
     local effect = itemEffect(id)
+    -- Sólo el efecto exacto de restauración acreditado por la build queda exceptuado.
+    -- Un segundo prefijo de uso/equipar/proc o una lectura incompleta conserva la protección.
+    local restorationOnly
+    local food = ns.DB and ns.DB.rules and ns.DB.rules.food and ns.Data.food and ns.Data.food[id]
+    local spellAPI = type(C_Item) == 'table' and C_Item.GetItemSpell or nil
+    if type(spellAPI) ~= 'function' then spellAPI = GetItemSpell end
+    local restored = restorationState[id]
+    if food and restored then
+        restorationOnly = restored.value
+    elseif food and classID == 0 and subclassID == 5 and type(spellAPI) == 'function' then
+        local good, _, spell = pcall(spellAPI, id)
+        if good and spell == food.spell then
+            local texts, how = tooltipTexts(id)
+            local count, onlyUse = 0, true
+            for _, text in ipairs(texts or {}) do
+                text = bare(text) or ''
+                for _, prefix in ipairs(triggers()) do
+                    if text:sub(1, #prefix) == prefix then
+                        count = count + 1
+                        if prefix ~= rawget(_G, 'ITEM_SPELL_TRIGGER_ONUSE') and prefix ~= 'Use:' and prefix ~= 'Uso:' then onlyUse = false end
+                        break
+                    end
+                end
+            end
+            restorationOnly = how == 'complete' and onlyUse and count == 1 or nil
+        end
+        restorationState[id] = {value=restorationOnly}
+    end
     return {
         id = id,
         quality = quality,
@@ -702,6 +742,7 @@ function Player.ReadLink(link)
         effect = effect,
         hasUseOrEquipSpell = effect ~= 'no', -- compatibilidad: true = con efecto o sin saberlo
         isSetPiece = setID ~= nil and setID ~= 0,
+        restorationOnly = restorationOnly,
     }
 end
 
@@ -732,8 +773,84 @@ function Player.ReadItem(bag, slot)
     local target = link or itemID
     if not target then return nil end
     local item = Player.ReadLink(target)
-    if item then item.isBound = boundAt(bag, slot, info) end
+    if item then
+        item.isBound = boundAt(bag, slot, info)
+        item.bag, item.slot = bag, slot
+        if ns.DB and ns.DB.rules and ns.DB.rules.knownRecipe and item.classID == 9 then
+            local key = bag .. ':' .. slot
+            local state = knownState[key]
+            if not state or state.id ~= item.id then
+                local texts = tooltipTexts(item.id, bag, slot)
+                local wanted = { ['Already known'] = true, ['Ya conocido'] = true }
+                local global = rawget(_G, 'ITEM_SPELL_KNOWN')
+                if type(global) == 'string' and global ~= '' then wanted[global] = true end
+                state = {id=item.id}
+                for _, text in ipairs(texts or {}) do
+                    if wanted[bare(text) or ''] then state.known = true; break end
+                end
+                knownState[key] = state
+            end
+            item.knownRecipe = state.known
+        end
+        if item.classID == 6 then
+            local equipped = Player.EquippedAmmo()
+            item.equippedAmmo = equipped == nil or equipped == item.id
+        end
+    end
     return item
+end
+
+-- false = no hay munición equipada; nil = API ausente/fallida (se conserva).
+function Player.EquippedAmmo()
+    if type(GetInventoryItemID) == 'function' then
+        local good, id = pcall(GetInventoryItemID, 'player', 0)
+        if good then return id or false end
+    elseif type(GetInventoryItemLink) == 'function' then
+        local good, link = pcall(GetInventoryItemLink, 'player', 0)
+        if good then return link and tonumber(link:match('item:(%d+)')) or false end
+    end
+end
+
+-- Inventario vivo, sólo mochila y bolsas del personaje; nunca banco ni cachés de alts.
+function Player.BagStock(level, rules)
+    local stock, signature = {}, {}
+    if not (rules.food or rules.ammo) or type(level) ~= 'number' then return stock end
+    local modern = type(C_Container) == 'table' and C_Container or nil
+    local slots = modern and C_Container.GetContainerNumSlots or GetContainerNumSlots
+    if type(slots) ~= 'function' then return stock end
+    for bag = 0, (tonumber(rawget(_G, 'NUM_BAG_SLOTS')) or 4) do
+        local good, count = pcall(slots, bag)
+        if good and type(count) == 'number' then
+            for slot = 1, count do
+                local id
+                if modern and type(modern.GetContainerItemInfo) == 'function' then
+                    local info = modern.GetContainerItemInfo(bag, slot)
+                    if info then id = info.itemID or (info.hyperlink and tonumber(info.hyperlink:match('item:(%d+)'))) end
+                elseif type(GetContainerItemLink) == 'function' then
+                    local link = GetContainerItemLink(bag, slot)
+                    id = link and tonumber(link:match('item:(%d+)'))
+                end
+                local candidate = id and ((rules.food and ns.Data.food and ns.Data.food[id])
+                    or (rules.ammo and ns.Data.ammo and ns.Data.ammo[id]))
+                local item = candidate and Player.ReadItem(bag, slot)
+                if item then
+                    local food = rules.food and ns.Data.food and ns.Data.food[item.id]
+                    local ammo = rules.ammo and ns.Data.ammo and ns.Data.ammo[item.id]
+                    local data = food or ammo
+                    if data then
+                        local usable = level >= data.reqLevel and not item.isSetPiece
+                            and (item.effect == 'no' or (food and item.restorationOnly == true))
+                        if ammo and Player.EquippedAmmo() == nil then usable = false end
+                        stock[#stock + 1] = {id=item.id, bag=bag, slot=slot, usable=usable == true}
+                        signature[#signature + 1] = bag .. ':' .. slot .. ':' .. item.id .. ':' .. tostring(usable)
+                    end
+                end
+            end
+        end
+    end
+    signature[#signature + 1] = tostring(Player.EquippedAmmo())
+    stock.signature = table.concat(signature, ',')
+    return stock
 end
 
 -- ---------------------------------------------------------------------------
@@ -744,7 +861,8 @@ local frame = CreateFrame('Frame')
 -- Todo evento que pueda cambiar el contexto lo ensucia; la reconstruccion es perezosa. Un
 -- evento que el cliente no conozca no debe romper la carga.
 for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
-    'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED' }) do
+    'QUEST_TURNED_IN', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
+    'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 
@@ -764,6 +882,17 @@ pcall(frame.RegisterEvent, frame, 'TOOLTIP_DATA_UPDATE')
 pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
 
 frame:SetScript('OnEvent', function(_, event, arg1)
+    if scanning then return end -- también antes de invalidar las cachés opcionales
+    local rules = ns.DB and ns.DB.rules
+    local optionalEvent = event == 'BAG_UPDATE_DELAYED' or event == 'SPELLS_CHANGED'
+        or event == 'LEARNED_SPELL_IN_TAB' or event == 'PLAYER_EQUIPMENT_CHANGED'
+        or event == 'UNIT_INVENTORY_CHANGED' or event == 'TOOLTIP_DATA_UPDATE'
+        or event == 'GET_ITEM_INFO_RECEIVED'
+    if optionalEvent and rules and (rules.food or rules.ammo or rules.knownRecipe) then
+        optionalRevision = optionalRevision + 1
+        markDirty()
+        scheduleCheck()
+    end
     -- Datos de tooltip o de item que llegan: solo adelantan reintentos de efectos pendientes, sin
     -- ensuciar el contexto.
     if event == 'TOOLTIP_DATA_UPDATE' then
@@ -773,7 +902,6 @@ frame:SetScript('OnEvent', function(_, event, arg1)
         onItemInfo(arg1)
         return
     end
-    if scanning then return end -- eco sincronico de nuestra propia expansion
     -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo
     -- total bajo un encabezado plegado): se olvida lo escaneado. QUEST_LOG_UPDATE no, porque es
     -- tambien el eco de nuestra propia expansion.

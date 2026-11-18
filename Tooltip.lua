@@ -138,11 +138,16 @@ end
 
 -- Líneas {text, r, g, b}, incluidos motivos de protección sin marca. bound = true si el
 -- propio tooltip confirma que el ejemplar está ligado (ver boundFromTooltip); nil = no se sabe.
-function Tooltip.Lines(link, bound)
+function Tooltip.Lines(link, bound, bag, slot)
     local lines = {}
     if not enabled() or not link then return lines end
-    local item = ns.Player.ReadLink(link)
+    local item
+    if bag ~= nil then item = ns.Player.ReadItem(bag, slot) else item = ns.Player.ReadLink(link) end
     if not item then return lines end
+    if bag ~= nil then
+        local id = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or link
+        if item.id ~= id then return lines end
+    end
     if bound == true then item.isBound = true end
     local result = ns.Classify(item, ns.Player.GetContext())
     local mark = type(result) == 'table' and result.mark or nil
@@ -155,7 +160,9 @@ function Tooltip.Lines(link, bound)
 
     for _, reason in ipairs(reasons) do
         local kind = reason.kind
-        if kind == 'override_keep' then
+        if kind == 'recipe_known_tradeable' and mark == nil then
+            add(L['You already know it; you can pass it on or auction it'], WHITE)
+        elseif kind == 'override_keep' then
             add(L['Marked by hand: keep'], WHITE)
         elseif kind == 'override_sell' then
             add(L['Marked by hand: sell'], WHITE, 'coin')
@@ -178,6 +185,12 @@ function Tooltip.Lines(link, bound)
         elseif mark == 'coin' and shows('coin') then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')
+            elseif kind == 'food_outgrown' then
+                add(L['You have better food/drink for your level'], GOLD, 'coin')
+            elseif kind == 'ammo_outgrown' then
+                add(L['You have compatible ammunition with higher damage'], GOLD, 'coin')
+            elseif kind == 'recipe_known' then
+                add(L['You already know this recipe'], GOLD, 'coin')
             elseif kind == 'quest_done' then
                 add(L['Quest finished: %s']:format(questName(reason.questID)), GOLD, 'coin')
             elseif kind == 'quest_not_active' then
@@ -352,11 +365,15 @@ local function boundFromTooltip(tooltip, data)
     return nil
 end
 
-local function decorate(tooltip, data)
+local function decorate(tooltip, data, bag, slot)
     if type(tooltip) ~= 'table' or type(tooltip.AddLine) ~= 'function' or not supported(tooltip) then return end
     local link = tooltipLink(tooltip, data)
     if not link then return end
-    local lines = Tooltip.Lines(link, boundFromTooltip(tooltip, data))
+    if bag == nil and type(tooltip.GetBagItem) == 'function' then
+        local good, b, s = pcall(tooltip.GetBagItem, tooltip)
+        if good and type(b) == 'number' and type(s) == 'number' then bag, slot = b, s end
+    end
+    local lines = Tooltip.Lines(link, boundFromTooltip(tooltip, data), bag, slot)
     if #lines == 0 then return end
     local missing = missingLines(tooltip, link, lines)
     if #missing == 0 then return end
@@ -372,13 +389,16 @@ local function decorate(tooltip, data)
 end
 
 -- Punto de entrada de los hooks: nunca lanza.
-function Tooltip.Decorate(tooltip, data)
-    pcall(decorate, tooltip, data)
+function Tooltip.Decorate(tooltip, data, bag, slot)
+    pcall(decorate, tooltip, data, bag, slot)
 end
 
 local function hookTooltip(tooltip, withSetItem)
     if type(tooltip) ~= 'table' or type(tooltip.HookScript) ~= 'function' then return end
     pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', function(self) guard[self] = nil end)
+    if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
+        pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
+    end
     if withSetItem then
         pcall(tooltip.HookScript, tooltip, 'OnTooltipSetItem', function(self) Tooltip.Decorate(self) end)
     end

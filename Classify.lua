@@ -68,6 +68,7 @@ function ns.Classify(item, ctx)
     local reasons = result.reasons
     if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
     local id = item.id
+    local rules = ctx.rules or {}
 
     -- 1. Overrides del usuario.
     local override = ctx.overrides and ctx.overrides[id]
@@ -188,8 +189,10 @@ function ns.Classify(item, ctx)
         reasons[#reasons + 1] = { kind = 'profession_tool', professions = mineTool }
         return result
     end
-    -- R14: el rango o conocer ya la receta no autoriza venderla. Profesión ajena: amarillo.
-    if recipe then
+    -- R14 por defecto; R12/R13 sólo difieren la receta conocida para evaluar todas las P.
+    local knownRecipe = rules.knownRecipe == true and item.classID == 9 and item.knownRecipe == true
+        and #questReasons == 0 and (item.isBound ~= true or (type(item.price) == 'number' and item.price > 0))
+    if recipe and not knownRecipe then
         result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
         reasons[#reasons + 1] = { kind = 'recipe', skillLine = recipe.skillLine, rank = recipe.rank }
         return result
@@ -225,7 +228,7 @@ function ns.Classify(item, ctx)
     end
     if lockReason then return result end
     -- Una receta sin profesión identificada tampoco es basura confirmada.
-    if item.classID == 9 then return result end
+    if item.classID == 9 and not knownRecipe then return result end
 
     -- R20: excepción del dueño a «fuera del diario = moneda». Sólo objetivos de entregas
     -- repetibles que otorgan reputación; misión activa y profesión conservan su precedencia.
@@ -273,12 +276,69 @@ function ns.Classify(item, ctx)
         effect = item.hasUseOrEquipSpell and 'yes' or 'no'
     end
     -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
-    if effect == 'yes' or item.isSetPiece then
+    if (effect == 'yes' and not (rules.food == true and item.restorationOnly == true
+        and ns.Data.food and ns.Data.food[id])) or item.isSetPiece then
         reasons[#reasons + 1] = { kind = 'useful' }
         return result
     end
     -- Efecto desconocido (ronda de arreglos 2): solo la moneda del gris sigue valiendo; mision y clase no.
     local unknownEffect = effect == 'unknown'
+
+    -- Opcionales: después de TODAS las protecciones; diario incompleto nunca habilita moneda.
+    if not unknownEffect and not ctx.questLogIncomplete and not logUnknown then
+        if knownRecipe then
+            if item.isBound == true then
+                result.mark = 'coin'
+                reasons[#reasons + 1] = { kind = 'recipe_known' }
+            else
+                reasons[#reasons + 1] = { kind = 'recipe_known_tradeable' }
+            end
+            return result
+        end
+        local food = rules.food == true and item.classID == 0 and item.subclassID == 5
+            and ns.Data.food and ns.Data.food[id]
+        if food and type(ctx.level) == 'number' and ctx.level >= food.reqLevel + 15 then
+            for _, stock in ipairs(ctx.bagStock or {}) do
+                local better = stock.usable == true and ns.Data.food[stock.id]
+                -- Una alternativa debe superar todos los recursos que restaura el original.
+                if better and better.reqLevel <= ctx.level
+                    and (not food.health or (better.health and better.health > food.health))
+                    and (not food.mana or (better.mana and better.mana > food.mana)) then
+                    result.mark = 'coin'; reasons[#reasons + 1] = { kind = 'food_outgrown' }
+                    return result
+                end
+            end
+        end
+        local ammo = rules.ammo == true and item.classID == 6 and ns.Data.ammo and ns.Data.ammo[id]
+        -- Sólo ejemplares de bolsas: el botín/banco/enlaces no acreditan la reserva.
+        if ammo and item.subclassID == ammo.subclass and item.bag and item.bag >= 0
+            and item.slot and not item.equippedAmmo and type(ctx.level) == 'number' then
+            local current, alternative, reserve = false, false, 0
+            for _, stock in ipairs(ctx.bagStock or {}) do
+                local other = ns.Data.ammo[stock.id]
+                if other and other.subclass == ammo.subclass and stock.usable == true and other.reqLevel <= ctx.level then
+                    if stock.bag == item.bag and stock.slot == item.slot and stock.id == id then
+                        current = true
+                    else
+                        reserve = reserve + 1
+                        if other.dps > ammo.dps and other.ilvl >= ammo.ilvl + 10 then alternative = true end
+                    end
+                end
+            end
+            if current and reserve >= 1 and alternative then
+                result.mark = 'coin'; reasons[#reasons + 1] = { kind = 'ammo_outgrown' }
+                return result
+            end
+        end
+    end
+    -- Conocida pero sin permiso de moneda: conserva la marca habitual de receta.
+    if knownRecipe then
+        if recipe then
+            result.mark = ctx.professions and ctx.professions[recipe.skillLine] and 'hammer_mine' or 'hammer_other'
+            reasons[#reasons + 1] = { kind = 'recipe', skillLine = recipe.skillLine, rank = recipe.rank }
+        end
+        return result
+    end
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 and type(item.price) == 'number' and item.price > 0 then

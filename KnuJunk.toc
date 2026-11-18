@@ -20,6 +20,8 @@ Data\Special.lua
 Data\ClassReagents.lua
 Data\Locks.lua
 Data\Recipes.lua
+Data\Food.lua
+Data\Ammo.lua
 Data\ClassGear.lua
 Classify.lua
 Player.lua

@@ -339,6 +339,7 @@ test('ayuda en castellano (esES y esMX)', function()
                 PREFIX .. 'Activar o desactivar las marcas: /knu junk on | off',
                 PREFIX .. 'Un solo tipo de marca: /knu junk coin|hammer|loot on|off',
                 PREFIX .. 'A mano: /knu junk keep|sell|clear <enlace o ID de ítem>',
+                PREFIX .. 'Reglas opcionales: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Ver el estado: /knu junk status',
             }, '\n'), locale)
         end)
@@ -353,6 +354,7 @@ test('ayuda en ingles (enUS y cualquier otro idioma)', function()
                 PREFIX .. 'Marks on/off: /knu junk on | off',
                 PREFIX .. 'One kind: /knu junk coin|hammer|loot on|off',
                 PREFIX .. 'By hand: /knu junk keep|sell|clear <item link or ID>',
+                PREFIX .. 'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Show state: /knu junk status',
             }, '\n'), locale)
         end)
@@ -408,11 +410,11 @@ test('argumentos nil, vacios o en blanco muestran la ayuda y no cambian nada', f
     withSpy(function(state)
         for _, args in ipairs({ '', ' ', '   ', '\t', ' \t ' }) do
             run(args)
-            eq(#FAKE.messages, 4, 'ayuda para ' .. string.format('%q', args))
+            eq(#FAKE.messages, 5, 'ayuda para ' .. string.format('%q', args))
         end
         FAKE.messages = {}
         ns.Commands.Handle(nil)
-        eq(#FAKE.messages, 4, 'ayuda para nil')
+        eq(#FAKE.messages, 5, 'ayuda para nil')
         eq(state.invalidate, 0); eq(state.refresh, 0)
         eq(ns.DB.enabled, true); eq(next(ns.DB.overrides), nil)
     end)
@@ -446,9 +448,9 @@ test('por el despachador real, junk sin argumentos y con blancos imprime la ayud
         ns.Commands.Register()
         FAKE.messages = {}
         KL:Dispatch('junk')
-        eq(#FAKE.messages, 4)
+        eq(#FAKE.messages, 5)
         FAKE.messages = {}
         KL:Dispatch('kj    ')
-        eq(#FAKE.messages, 4)
+        eq(#FAKE.messages, 5)
     end)
 end)

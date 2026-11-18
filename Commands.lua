@@ -8,6 +8,7 @@ local Commands = {}
 ns.Commands = Commands
 
 local KINDS = { coin = true, hammer = true, loot = true }
+local RULES = { food = 'food', ammo = 'ammo', knownrecipe = 'knownRecipe' }
 
 local function L(key) return ns.L[key] end
 local function say(key, ...) ns.Print(string.format(L(key), ...)) end
@@ -26,6 +27,7 @@ function Commands.Help()
         'Marks on/off: /knu junk on | off',
         'One kind: /knu junk coin|hammer|loot on|off',
         'By hand: /knu junk keep|sell|clear <item link or ID>',
+        'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
 end
@@ -52,6 +54,12 @@ function Commands.Status()
     say('Marks: %s | coin: %s | hammer: %s | loot: %s', onOff(db.enabled), onOff(db.show.coin),
         onOff(db.show.hammer), onOff(db.show.loot))
     say('Manual marks: %d', count)
+    Commands.RulesStatus()
+end
+
+function Commands.RulesStatus()
+    local rules = ns.DB.rules or {}
+    say('Rules: food: %s | ammo: %s | knownrecipe: %s', onOff(rules.food), onOff(rules.ammo), onOff(rules.knownRecipe))
 end
 
 local function setFlag(setter, value, label, kind)
@@ -92,6 +100,15 @@ function Commands.Handle(args)
         manual(sub, rest)
     elseif sub == 'status' then
         Commands.Status()
+    elseif sub == 'rules' then
+        if rest == '' then Commands.RulesStatus() return end
+        local name, state = rest:lower():match('^(%S+)%s+(%S+)$')
+        local key = name and RULES[name]
+        if not key or (state ~= 'on' and state ~= 'off') then
+            say('Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]')
+            return
+        end
+        setFlag(function(value) db.rules[key] = value end, state == 'on', 'Rule %s: %s', name)
     else
         say('Unknown option: %s', sub)
         Commands.Help()
