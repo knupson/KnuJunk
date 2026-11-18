@@ -22,7 +22,7 @@ It only shows icons. KnuJunk never sells, destroys or moves anything.
 - **Tooltip reason.** Hover a marked item and the tooltip tells you why: "Junk: sells", "Quest finished: ...", "Your class can't use Plate", "Your profession: Mining", "Profession you don't have: Blacksmithing". Items without an icon get no extra line, except "Marked by hand: keep" when you chose to keep the item.
 - **Loot window.** The Blizzard loot window shows the same coin and hammer, plus a quest sign on items a quest still needs (the quests in your log, and with QuestieDB any quest you haven't finished). With autoloot on there is no window, so nothing is marked.
 - **Your call wins.** `/knu junk keep <item>` stops an item from getting a coin, `/knu junk sell <item>` forces one, `/knu junk clear <item>` removes your choice. The item can be a link or an item ID.
-- **Only your own bags.** Icons go on your character's bags 0 to 4 and on the loot window. The bank, the guild bank and cached views of other characters get no icon.
+- **Only your own bags.** Icons go on your character's bags 0 to 4, on the loot window and on your character's bank while it is open at a banker (Blizzard bags, Baganator, Bagnon, Bagnonium, ElvUI, ArkInventory, BetterBags and Inventorian). Closing the bank removes them. A closed or cached bank, the guild bank and cached views of other characters get no icon.
 
 ### Commands
 
@@ -64,7 +64,7 @@ Some of these addons have no Forever version on CurseForge today (AdiBags, LiteB
 
 KnuJunk registers a junk plugin called "KnuJunk" in Baganator. When that plugin is the active one, Baganator draws its own junk coin on the items KnuJunk says are junk. KnuJunk also registers a hammer and a coin as corner widgets. The hammer comes with a default position, so Baganator adds it once to its top-right corner setting; the coin widget has no default position and is yours to place.
 
-KnuJunk never writes to Baganator's settings. Baganator may pick the KnuJunk plugin by itself when its current junk option is not one of the registered plugins. That comes from reading Baganator's code and has not been tested in game. You can change the choice in Baganator's options and Baganator remembers it. Baganator's views of other characters, the bank and the guild bank are left without icons.
+KnuJunk never writes to Baganator's settings. Baganator may pick the KnuJunk plugin by itself when its current junk option is not one of the registered plugins. That comes from reading Baganator's code and has not been tested in game. You can change the choice in Baganator's options and Baganator remembers it. Baganator's live bank (open at a banker, your own character) gets icons; its saved bank view, views of other characters and the guild bank are left without icons.
 
 ### QuestieDB (optional)
 
@@ -107,7 +107,7 @@ If you see a coin on something you needed, please tell us the item and the bag a
 - **Tooltip** con el motivo de cada ícono. Un item sin ícono no suma líneas, salvo «Marcado a mano: guardar» si elegiste conservarlo.
 - **Ventana de botín** de Blizzard con las mismas marcas y un signo de misión para lo que pide una misión activa. Con autolooteo no hay ventana y no se marca nada.
 - **Tu decisión manda:** `/knu junk keep <item>`, `/knu junk sell <item>` y `/knu junk clear <item>` (enlace o ID). También `/knu junk on|off`, `/knu junk coin|hammer|loot on|off` y `/knu junk status`.
-- **Sólo tus bolsas:** bolsas 0 a 4 de tu personaje y el botín. El banco, el banco de hermandad y las vistas guardadas de otros personajes no llevan ícono.
+- **Sólo tus bolsas:** bolsas 0 a 4 de tu personaje, el botín y el banco de tu personaje mientras está abierto en un banquero (bolsas de Blizzard, Baganator, Bagnon, Bagnonium, ElvUI, ArkInventory, BetterBags e Inventorian); al cerrarlo, los íconos del banco se van. El banco cerrado o guardado, el banco de hermandad y las vistas guardadas de otros personajes no llevan ícono.
 - **QuestieDB opcional:** sin Questie, la monedita en sobrantes de misión sólo sale en items que inician una misión ya hecha (aunque sea repetible: sin Questie no se sabe). Con QuestieDB también cuenta objetivos, objetivos ocultos y entregas, y un item de una misión repetible no lleva monedita automática.
 - **Bolsas:** Blizzard y su ventana de botín, más Baganator, ArkInventory, Baggins, Bagnon, ElvUI e Inventorian (revisadas contra el código de cada addon, sin probar en el juego) y el resto de la lista en inglés (sin probar). Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI y RealUI_Inventory hoy no muestran ninguna marca hasta verificar en el juego el nombre de su ventana. En Baganator, KnuJunk registra un plugin de basura; Baganator puede elegirlo solo si su opción actual no es un plugin, y KnuJunk nunca escribe la configuración de Baganator. El martillito se ubica solo arriba a la derecha.
 
