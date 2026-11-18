@@ -6,8 +6,14 @@ local unpack = unpack or table.unpack
 function methods:SetScript(event, fn) self.scripts[event] = fn end
 function methods:GetScript(event) return self.scripts[event] end
 function methods:HookScript(event, fn)
+    self.hookCalls = self.hookCalls or {}
+    self.hookCalls[event] = (self.hookCalls[event] or 0) + 1
     local previous = self.scripts[event]
     self.scripts[event] = function(...) if previous then previous(...) end; fn(...) end
+end
+function methods:Click(mouse)
+    local onClick = self:GetScript('OnClick')
+    if onClick then onClick(self, mouse or 'LeftButton') end
 end
 function methods:RegisterEvent(event) self.events[event] = true end
 function methods:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end

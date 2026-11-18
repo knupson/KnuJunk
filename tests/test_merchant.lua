@@ -9,10 +9,10 @@ local function setup()
     FAKE.Fire('MERCHANT_SHOW')
     local button = CreateFrame('Button')
     ns.Marks.Update(button, 0, 1, 'generic')
-    return button, button.KnuJunkShield
+    return button
 end
-local function ask(shield)
-    shield:GetScript('OnMouseUp')(shield, 'RightButton')
+local function ask(button)
+    button:Click('RightButton')
     return FAKE.popup
 end
 local function accept(popup)
@@ -55,32 +55,31 @@ test('vendedor: mover conserva el GUID y retirar libera el antiguo', function()
     FAKE.Fire('BAG_UPDATE_DELAYED'); eq(FAKE.locks[2], 'new')
 end)
 
-test('vendedor: apagar libera, oculta y reactivar sincroniza enseguida', function()
-    local _, shield = setup(); ok(shield:IsShown())
+test('vendedor: apagar libera y reactivar sincroniza enseguida', function()
+    local button = setup(); ok(ask(button)); FAKE.popup = nil
     ns.Options.Set('protectKeep', false)
-    eq(#FAKE.unlocks, 1); eq(shield:IsShown(), false)
+    eq(#FAKE.unlocks, 1); eq(ask(button), nil)
     FAKE.Fire('BAG_UPDATE_DELAYED'); eq(#FAKE.locks, 1)
-    ns.Options.Set('protectKeep', true); eq(#FAKE.locks, 2); ok(shield:IsShown())
-    ns.Options.Set('enabled', false); eq(#FAKE.unlocks, 2); eq(shield:IsShown(), false)
+    ns.Options.Set('protectKeep', true); eq(#FAKE.locks, 2); ok(ask(button)); FAKE.popup = nil
+    ns.Options.Set('enabled', false); eq(#FAKE.unlocks, 2); eq(ask(button), nil)
 end)
 
-test('vendedor: apagado antes de abrir no bloquea ni crea escudos', function()
+test('vendedor: apagado antes de abrir no bloquea ni confirma', function()
     ns.DB.protectKeep = false
     local button = setup(); eq(#FAKE.locks, 0); eq(button.KnuJunkShield, nil)
 end)
 
-test('vendedor: combate difiere bloqueos y creación hasta REGEN_ENABLED', function()
+test('vendedor: combate difiere bloqueos y hook hasta REGEN_ENABLED', function()
     FAKE.inCombat = true
-    local button = setup(); eq(#FAKE.locks, 0); eq(button.KnuJunkShield, nil)
+    local button = setup(); eq(#FAKE.locks, 0); eq(button:GetScript('OnClick'), nil)
     FAKE.inCombat = false; FAKE.Fire('PLAYER_REGEN_ENABLED')
-    eq(#FAKE.locks, 1); ok(button.KnuJunkShield:IsShown())
-    FAKE.inCombat = true; FAKE.Fire('PLAYER_REGEN_DISABLED')
-    eq(button.KnuJunkShield:IsShown(), false)
+    eq(#FAKE.locks, 1); eq(button.hookCalls.OnClick, 1); ok(ask(button)); FAKE.popup = nil
+    FAKE.inCombat = true; FAKE.Fire('PLAYER_REGEN_DISABLED'); eq(ask(button), nil)
 end)
 
 test('vendedor: cerrar en combate no deja bloqueos ni trabajo diferido', function()
-    local _, shield = setup(); FAKE.inCombat = true
-    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.unlocks, 1); eq(shield:IsShown(), false)
+    local button = setup(); FAKE.inCombat = true
+    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.unlocks, 1); eq(ask(button), nil)
     FAKE.inCombat = false; FAKE.Fire('PLAYER_REGEN_ENABLED'); eq(#FAKE.locks, 1)
 end)
 
@@ -107,64 +106,114 @@ test('vendedor: un escaneo fallido conserva la protección', function()
     FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.unlocks, 1)
 end)
 
-test('vendedor: escudo sólo con keep, respeta Clear y botones reciclados', function()
-    local button, shield = setup(); ok(shield:IsShown()); eq(shield.passThrough[1], 'LeftButton')
-    ns.Marks.Update(button, 0, 2); eq(shield:IsShown(), false)
-    ns.Marks.Update(button, 0, 1); ok(shield:IsShown())
-    ns.Marks.Clear(button); eq(shield:IsShown(), false)
-    FAKE.Fire('BAG_UPDATE_DELAYED'); eq(shield:IsShown(), false)
-    ns.Marks.Update(button, 0, 1); ns.Marks.UpdateLink(button, FAKE.linkOf(100))
-    eq(shield:IsShown(), false)
-    ns.Marks.Update(button, 5, 1); eq(shield:IsShown(), false)
+test('vendedor: botón reciclado usa el último slot y engancha una sola vez', function()
+    local button = setup()
+    item(2, 3, 100, 'keep-b', 'keep'); FAKE.Fire('BAG_UPDATE_DELAYED')
+    for _ = 1, 10 do ns.Marks.Update(button, 2, 3) end
+    eq(button.hookCalls.OnClick, 1)
+    local popup = ask(button)
+    eq(popup.data.bag, 2); eq(popup.data.slot, 3); eq(popup.data.guid, 'keep-b')
+    FAKE.popup = nil; ns.Marks.Update(button, 0, 2); eq(ask(button), nil)
+    ns.Marks.Update(button, 0, 1)
+    eq(ask(button).data.guid, 'keep-a'); eq(button.hookCalls.OnClick, 1)
 end)
 
-test('vendedor: sin passthrough queda sólo bloqueo y tooltip alternativo', function()
-    local meta = getmetatable(CreateFrame('Frame')).__index
-    local old = meta.SetPassThroughButtons
-    meta.SetPassThroughButtons = nil
-    local success, err = pcall(function()
-        local button = setup(); eq(button.KnuJunkShield, nil); eq(#FAKE.locks, 1)
-        eq(ns.Merchant.ProtectionText(0, 1), 'Protected while the merchant is open')
-    end)
-    meta.SetPassThroughButtons = old
-    if not success then error(err) end
+test('vendedor: sin HookScript conserva bloqueo y texto de protección', function()
+    item(0, 1, 100, 'keep-a', 'keep'); FAKE.Fire('MERCHANT_SHOW')
+    local button = CreateFrame('Button'); button.HookScript = false
+    ns.Marks.Update(button, 0, 1)
+    eq(button:GetScript('OnClick'), nil); eq(#FAKE.locks, 1)
+    eq(ns.Merchant.ProtectionText(0, 1), 'Protected: right-click to sell')
 end)
 
 test('vendedor: sólo clic derecho abre popup con link y configuración requerida', function()
-    local _, shield = setup()
-    shield:GetScript('OnMouseUp')(shield, 'LeftButton'); eq(FAKE.popup, nil)
-    local popup = ask(shield)
+    local button = setup()
+    button:Click('LeftButton'); eq(FAKE.popup, nil)
+    local popup = ask(button)
     eq(popup.key, 'KNUJUNK_CONFIRM_SELL'); eq(popup.text, FAKE.linkOf(100))
+    eq(popup.data.bag, 0); eq(popup.data.slot, 1); eq(popup.data.guid, 'keep-a')
     eq(popup.dialog.timeout, 0); eq(popup.dialog.whileDead, true)
     eq(popup.dialog.hideOnEscape, true); eq(popup.dialog.preferredIndex, 3)
     eq(popup.dialog.button1, YES or ns.L.Yes); eq(popup.dialog.button2, NO or ns.L.No)
     eq(#FAKE.used, 0)
 end)
 
-test('vendedor: tooltip del botón pasa por el escudo y tolera errores', function()
-    local button, shield = setup(); local entered, left = 0, 0
-    button:SetScript('OnEnter', function(self) eq(self, button); entered = entered + 1 end)
-    button:SetScript('OnLeave', function(self) eq(self, button); left = left + 1 end)
-    shield:GetScript('OnEnter')(); shield:GetScript('OnLeave')()
-    eq(entered, 1); eq(left, 1)
-    button:SetScript('OnEnter', function() error('tooltip ajeno') end)
-    shield:GetScript('OnEnter')()
+test('vendedor: OnClick original corre antes de la confirmación', function()
+    item(0, 1, 100, 'keep-a', 'keep'); FAKE.Fire('MERCHANT_SHOW')
+    local button = CreateFrame('Button'); local calls = 0
+    button:SetScript('OnClick', function(self, mouse)
+        eq(self, button); eq(FAKE.popup, nil); ok(FAKE.itemLocks['keep-a'])
+        eq(mouse, calls == 0 and 'LeftButton' or 'RightButton'); calls = calls + 1
+    end)
+    ns.Marks.Update(button, 0, 1)
+    button:Click('LeftButton'); eq(FAKE.popup, nil)
+    ok(ask(button)); eq(calls, 2)
+end)
+
+for _, scenario in ipairs({ 'cerrado', 'apagado', 'deshabilitado', 'combate', 'sin bloqueo', 'otro GUID', 'bloqueo ajeno' }) do
+    local state = scenario
+    test('vendedor: clic derecho con ' .. state .. ' no confirma', function()
+        local button = setup()
+        if state == 'cerrado' then FAKE.Fire('MERCHANT_CLOSED')
+        elseif state == 'apagado' then ns.Options.Set('protectKeep', false)
+        elseif state == 'deshabilitado' then ns.Options.Set('enabled', false)
+        elseif state == 'combate' then FAKE.inCombat = true
+        elseif state == 'sin bloqueo' then ns.Overrides.Set(100, nil)
+        else
+            FAKE.guids['0:1'] = 'replacement'
+            if state == 'bloqueo ajeno' then FAKE.itemLocks.replacement = true; FAKE.Fire('BAG_UPDATE_DELAYED') end
+        end
+        eq(ask(button), nil); eq(#FAKE.used, 0)
+    end)
+end
+
+test('vendedor: aceptar sólo libera el GUID confirmado', function()
+    local button = setup()
+    item(0, 2, 100, 'keep-b', 'keep'); item(0, 3, 100, 'foreign', 'keep')
+    FAKE.itemLocks.foreign = true; FAKE.Fire('BAG_UPDATE_DELAYED')
+    accept(ask(button))
+    eq(#FAKE.used, 1); eq(#FAKE.unlocks, 1); eq(FAKE.unlocks[1], 'keep-a')
+    ok(FAKE.itemLocks['keep-b']); ok(FAKE.itemLocks.foreign)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); eq(#FAKE.locks, 2); eq(ns.DB.overrides[100], 'keep')
+end)
+
+test('vendedor: sólo abrir y cerrar refrescan las bolsas', function()
+    -- Registry también escucha BAG_UPDATE_DELAYED: aislar el manejador de Merchant.
+    local merchant
+    for _, frame in ipairs(FAKE.frames) do
+        if frame.events.MERCHANT_SHOW and frame.events.PLAYER_LEAVING_WORLD then merchant = frame end
+    end
+    ok(merchant)
+    local function fire(event) merchant:GetScript('OnEvent')(merchant, event) end
+    local refresh, count = ns.Bags.RefreshAll, 0
+    ns.Bags.RefreshAll = function() count = count + 1 end
+    local success, err = pcall(function()
+        item(0, 1, 100, 'keep-a', 'keep'); fire('MERCHANT_SHOW'); eq(count, 1)
+        item(0, 2, 100, 'keep-b', 'keep')
+        for _ = 1, 10 do fire('BAG_UPDATE_DELAYED') end
+        eq(count, 1); eq(#FAKE.locks, 2)
+        fire('PLAYER_REGEN_ENABLED'); eq(count, 1)
+        fire('MERCHANT_CLOSED'); eq(count, 2)
+        fire('BAG_UPDATE_DELAYED'); eq(count, 2)
+    end)
+    ns.Bags.RefreshAll = refresh
+    if not success then error(err) end
 end)
 
 test('vendedor: aceptar vende una vez sin cambiar keep ni rebloquear GUID', function()
-    local _, shield = setup(); local popup = ask(shield)
+    local button = setup(); local popup = ask(button)
     accept(popup); accept(popup)
     eq(#FAKE.unlocks, 1); eq(FAKE.unlocks[1], 'keep-a')
     eq(#FAKE.used, 1); eq(FAKE.used[1][1], 0); eq(FAKE.used[1][2], 1)
     FAKE.Fire('BAG_UPDATE_DELAYED'); eq(#FAKE.locks, 1)
-    eq(ns.DB.overrides[100], 'keep'); eq(shield:IsShown(), false)
+    eq(ns.DB.overrides[100], 'keep'); eq(ask(button), popup)
     FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('MERCHANT_SHOW'); eq(#FAKE.locks, 2)
 end)
 
 for _, scenario in ipairs({ 'cerrado', 'otro GUID', 'combate', 'apagado' }) do
     local state = scenario
     test('vendedor: aceptar con ' .. state .. ' no vende', function()
-        local _, shield = setup(); local popup = ask(shield)
+        local button = setup(); local popup = ask(button)
         if state == 'cerrado' then FAKE.Fire('MERCHANT_CLOSED')
         elseif state == 'otro GUID' then FAKE.guids['0:1'] = 'replacement'
         elseif state == 'combate' then FAKE.inCombat = true
@@ -173,9 +222,9 @@ for _, scenario in ipairs({ 'cerrado', 'otro GUID', 'combate', 'apagado' }) do
     end)
 end
 
-test('vendedor: salir del mundo libera y oculta escudos', function()
-    local _, shield = setup(); FAKE.Fire('PLAYER_LEAVING_WORLD')
-    eq(#FAKE.unlocks, 1); eq(shield:IsShown(), false)
+test('vendedor: salir del mundo libera e impide confirmar', function()
+    local button = setup(); FAKE.Fire('PLAYER_LEAVING_WORLD')
+    eq(#FAKE.unlocks, 1); eq(ask(button), nil)
 end)
 
 test('vendedor: fallback global sin C_Container funciona para bloqueo y venta', function()
@@ -185,7 +234,7 @@ test('vendedor: fallback global sin C_Container funciona para bloqueo y venta', 
         _G[key] = old[key]
     end
     local success, err = pcall(function()
-        local _, shield = setup(); accept(ask(shield)); eq(#FAKE.used, 1)
+        local button = setup(); accept(ask(button)); eq(#FAKE.used, 1)
     end)
     for _, key in ipairs({ 'GetContainerNumSlots', 'GetContainerItemID', 'GetContainerItemLink', 'UseContainerItem' }) do _G[key] = nil end
     C_Container = old
@@ -204,7 +253,7 @@ test('vendedor: tooltip agrega una sola línea mientras hay bloqueo propio', fun
 end)
 
 test('vendedor: una venta con eventos sincrónicos no rebloquea el GUID', function()
-    local _, shield = setup(); local popup = ask(shield)
+    local button = setup(); local popup = ask(button)
     local release = C_Item.UnlockItemByGUID
     C_Item.UnlockItemByGUID = function(guid)
         release(guid)
@@ -215,23 +264,25 @@ test('vendedor: una venta con eventos sincrónicos no rebloquea el GUID', functi
 end)
 
 test('vendedor: una venta fallida retira el permiso y vuelve a proteger', function()
-    local _, shield = setup()
+    local button = setup()
     C_Container.UseContainerItem = function() error('venta fallida') end
-    accept(ask(shield))
-    eq(#FAKE.locks, 2); eq(#FAKE.used, 0); ok(shield:IsShown())
+    accept(ask(button))
+    eq(#FAKE.locks, 2); eq(#FAKE.used, 0)
+    eq(ns.Merchant.ProtectionText(0, 1), 'Protected: right-click to sell')
+    FAKE.popup = nil; ok(ask(button))
 end)
 
 test('vendedor: desbloqueo fallido impide vender y se reintenta al cerrar', function()
-    local _, shield = setup(); local release = C_Item.UnlockItemByGUID
+    local button = setup(); local release = C_Item.UnlockItemByGUID
     C_Item.UnlockItemByGUID = function() error('no se pudo liberar') end
-    accept(ask(shield)); eq(#FAKE.used, 0)
+    accept(ask(button)); eq(#FAKE.used, 0)
     C_Item.UnlockItemByGUID = release
     FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.unlocks, 1)
 end)
 
 for _, path in ipairs({ 'GetItemGUID', 'IsLocked' }) do
     local api = path
-    test('vendedor: error en ' .. api .. ' no bloquea ni muestra escudos', function()
+    test('vendedor: error en ' .. api .. ' no bloquea ni reclama protección', function()
         C_Item[api] = function() error('API fallida') end
         local button = setup(); eq(#FAKE.locks, 0); eq(button.KnuJunkShield, nil)
     end)
