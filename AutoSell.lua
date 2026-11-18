@@ -105,7 +105,10 @@ end
 
 function AutoSell.OtherSellers()
     local found = {}
-    if type(LeaPlusLC) == 'table' and LeaPlusLC.AutoSellJunk == 'On' then found.Leatrix_Plus = true end
+    -- LeaPlusLC es local en Leatrix (Leatrix_Plus.lua:16); lo visible es su SavedVariable LeaPlusDB
+    -- (Leatrix_Plus.toc:8), donde guarda AutoSellJunk = "On" (visto en WTF/.../Leatrix_Plus.lua).
+    local lea = rawget(_G, 'LeaPlusDB')
+    if type(lea) == 'table' and lea.AutoSellJunk == 'On' then found.Leatrix_Plus = true end
     local e = type(ElvUI) == 'table' and ElvUI[1]
     local db = type(e) == 'table' and e.db
     local bags = type(db) == 'table' and db.bags

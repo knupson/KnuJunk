@@ -436,7 +436,7 @@ end
 function FAKE.Reset()
     hooksecurefunc = secureHook
     C_Timer.NewTicker = newTicker
-    LeaPlusLC, debugstack, GetCoinTextureString, UseContainerItem = nil, nil, nil, nil
+    LeaPlusDB, debugstack, GetCoinTextureString, UseContainerItem = nil, nil, nil, nil
     GQ, C_EquipmentSet, GetEquipmentSetItemIDs, GetNumEquipmentSets, GetEquipmentSetInfo = nil, nil, nil, nil, nil
     Auctionator, ColorPickerFrame = nil, nil
     FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}

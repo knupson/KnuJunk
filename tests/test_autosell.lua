@@ -166,21 +166,21 @@ end
 
 test('venta: detección estática respeta on, off, ausente y valores malformados', function()
     eq(next(ns.AutoSell.OtherSellers()), nil)
-    LeaPlusLC = { AutoSellJunk = 'On' }; ElvUI = { { db = { bags = { vendorGrays = { enable = true } } } } }
+    LeaPlusDB = { AutoSellJunk = 'On' }; ElvUI = { { db = { bags = { vendorGrays = { enable = true } } } } }
     local detected = ns.AutoSell.OtherSellers(); ok(detected.Leatrix_Plus); ok(detected.ElvUI)
-    eq(LeaPlusLC.AutoSellJunk, 'On'); eq(ElvUI[1].db.bags.vendorGrays.enable, true)
-    LeaPlusLC.AutoSellJunk = 'Off'; ElvUI[1].db.bags.vendorGrays.enable = false
+    eq(LeaPlusDB.AutoSellJunk, 'On'); eq(ElvUI[1].db.bags.vendorGrays.enable, true)
+    LeaPlusDB.AutoSellJunk = 'Off'; ElvUI[1].db.bags.vendorGrays.enable = false
     eq(next(ns.AutoSell.OtherSellers()), nil)
-    LeaPlusLC, ElvUI = true, { { db = true } }; eq(next(ns.AutoSell.OtherSellers()), nil)
+    LeaPlusDB, ElvUI = true, { { db = true } }; eq(next(ns.AutoSell.OtherSellers()), nil)
 end)
 
 test('venta: advertencias estáticas en General se actualizan sin cambiar ajustes', function()
-    LeaPlusLC = { AutoSellJunk = 'On' }; ElvUI = { { db = { bags = { vendorGrays = { enable = true } } } } }
+    LeaPlusDB = { AutoSellJunk = 'On' }; ElvUI = { { db = { bags = { vendorGrays = { enable = true } } } } }
     local panel = ns.Options.Build(); panel:SetSize(500, 600); panel:Show(); ns.Options.Refresh()
     ok(panel.autoSellWarnings.Leatrix_Plus:GetText():find('Leatrix Plus', 1, true))
     ok(panel.autoSellWarnings.ElvUI:GetText():find('Bolsas > Vender grises', 1, true))
     eq(panel.controls['autoSell.max'].widget:GetValue(), 12)
-    LeaPlusLC.AutoSellJunk = 'Off'; ElvUI[1].db.bags.vendorGrays.enable = false
+    LeaPlusDB.AutoSellJunk = 'Off'; ElvUI[1].db.bags.vendorGrays.enable = false
     ns.Options.Refresh(); eq(panel.autoSellWarnings.ElvUI:GetText(), '')
     eq(panel.autoSellWarnings.Leatrix_Plus:GetText(), '')
 end)
