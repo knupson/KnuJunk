@@ -252,11 +252,11 @@ end
 -- Lineas de `lines` que el tooltip aun no tiene, linea por linea (una decoracion parcial se completa
 -- al reintentar sin repetir las ya puestas). Las regiones <nombre>TextLeft<i> leibles son la
 -- autoridad: si el tooltip las expone, se mira solo lo que dicen. Si no se pueden leer (sin
--- GetNumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
+-- NumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
 -- que OnTooltipCleared borra.
 local function missingLines(tooltip, link, lines)
-    if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
-        local success, count = pcall(tooltip.GetNumLines, tooltip)
+    if type(tooltip.NumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.NumLines, tooltip)
         local name = success and tooltip:GetName()
         if success and type(count) == 'number' and type(name) == 'string' then
             local present, readable = {}, count == 0
@@ -307,8 +307,8 @@ local function boundFromTooltip(tooltip, data)
             if type(entry) == 'table' and wanted[bare(entry.leftText) or ''] then return true end
         end
     end
-    if type(tooltip.GetNumLines) == 'function' and type(tooltip.GetName) == 'function' then
-        local success, count = pcall(tooltip.GetNumLines, tooltip)
+    if type(tooltip.NumLines) == 'function' and type(tooltip.GetName) == 'function' then
+        local success, count = pcall(tooltip.NumLines, tooltip)
         local named, name = pcall(tooltip.GetName, tooltip)
         if success and type(count) == 'number' and named and type(name) == 'string' then
             for index = 1, count do

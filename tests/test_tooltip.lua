@@ -6,7 +6,7 @@ local function addItem(id, fields)
     return base
 end
 
--- Tooltip falso con nombre (como los de Blizzard): AddLine crea <nombre>TextLeft<n>, GetNumLines
+-- Tooltip falso con nombre (como los de Blizzard): AddLine crea <nombre>TextLeft<n>, NumLines
 -- cuenta las lineas, GetItem devuelve el enlace puesto en .link y Clear dispara OnTooltipCleared.
 local tooltipCount = 0
 local function newTooltip(id)
@@ -18,7 +18,7 @@ local function newTooltip(id)
         self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
         CreateFrame('FontString', self:GetName() .. 'TextLeft' .. #self.lines):SetText(text)
     end
-    function tooltip:GetNumLines() return #self.lines end
+    function tooltip:NumLines() return #self.lines end
     function tooltip:GetItem() if self.link then return 'Item', self.link end end
     function tooltip:Clear()
         self.lines = {}
@@ -392,6 +392,18 @@ test('Tooltip: reactivo de hechizos de clase', function()
     C_Spell = nil
 end)
 
+-- Ronda de arreglos 1: camino clasico (OnTooltipSetItem, sin TooltipDataProcessor ni data.lines). El
+-- "Ligado" se lee de las regiones TextLeftN contando con NumLines, como los tooltips de Blizzard.
+test('Tooltip: camino clasico sin data.lines lee Ligado con NumLines', function()
+    addItem(100, { quality = 2, classID = 4, subclassID = 4, subType = 'Placas' })
+    local tip = newTooltip(100)
+    GameTooltip = tip
+    ok(ns.Tooltip.Hook(), 'engancha por OnTooltipSetItem')
+    tip:AddLine('Ligado')
+    tip.scripts.OnTooltipSetItem(tip)
+    line(tip, 2, 'Tu clase no usa Placas', { 1, 0.82, 0 })
+end)
+
 test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
         "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',
@@ -448,7 +460,7 @@ test('Tooltip: sin poder leer las lineas, el respaldo por enlace evita repetir y
     addItem(100, { quality = 0, price = 5 })
     local processor = withProcessor()
     local tooltip = newTooltip(100)
-    tooltip.GetNumLines = nil
+    tooltip.NumLines = nil
     GameTooltip = tooltip
     ns.Tooltip.Hook()
     run(processor, tooltip, {})
@@ -577,7 +589,7 @@ test('Tooltip: parcial tambien con el tooltip ilegible (respaldo por registro)',
     addItem(100, { quality = 1 })
     local processor = withProcessor()
     local tooltip = newTooltip(100)
-    tooltip.GetNumLines = nil
+    tooltip.NumLines = nil
     GameTooltip = tooltip
     ns.Tooltip.Hook()
     local original, calls = tooltip.AddLine, 0
