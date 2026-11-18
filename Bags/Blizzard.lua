@@ -6,6 +6,14 @@ local _, ns = ...
 --   * moderna: frame:UpdateItems() de ContainerFrame1..N y ContainerFrameCombinedBags; botones de
 --     frame:EnumerateValidItems() (o frame.Items), bolsa = button:GetBagID().
 -- El slot es siempre button:GetID(). Si ambas existieran, el doble pintado es idempotente.
+-- Banco (solo VIVO: ns.Bank; Marks rechaza toda bolsa de banco con el banco cerrado):
+--   * bolsas del banco abiertas en ContainerFrameN: el mismo camino de arriba (la bolsa es del banco).
+--   * panel del banco de Forever: botones de un pool que copian el mixin al crearse; se engancha
+--     Refresh de BankPanelItemButtonMixin y de CamelotBankPanelItemButtonMixin (el que exista), bolsa =
+--     button:GetBankTabID(), slot = button:GetContainerSlotID(); al repintar se recorre
+--     BankPanel:EnumerateValidItems() (o BankFrame.BankPanel). SIN VERIFICAR contra el codigo de
+--     Blizzard (no hay copia local): la forma sale de magic-eraser Tint-Junk.lua l.135-140, 164-166 y
+--     181-185, itemera Filters_Bank.lua l.11-14 y bagmarks Bags.lua l.12-13, 207 y 262.
 local Blizzard = {}
 ns.Blizzard = Blizzard
 
@@ -13,6 +21,8 @@ local OWNER = 'blizzard'
 local MAX_CLASSIC_BUTTONS = 200
 local hookedFrames = setmetatable({}, { __mode = 'k' })
 local hookedGlobal = false
+local hookedMixins = {}
+local BANK_MIXINS = { 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin' }
 
 local function bagOf(button, frame)
     if type(button.GetBagID) == 'function' then return button:GetBagID() end
@@ -50,6 +60,46 @@ local function paintFrame(frame)
     end)
 end
 
+-- Boton del panel del banco: bolsa y slot de sus propios metodos (nil si no los tiene).
+local function bankSlotOf(button)
+    if type(button.GetBankTabID) ~= 'function' or type(button.GetContainerSlotID) ~= 'function' then return nil end
+    return button:GetBankTabID(), button:GetContainerSlotID()
+end
+
+local function paintBankButton(button)
+    if type(button) ~= 'table' then return end
+    if not pcall(function()
+        if type(button.IsShown) == 'function' and not button:IsShown() then return ns.Marks.Clear(button) end
+        local bag, slot = bankSlotOf(button)
+        ns.Marks.Update(button, bag, slot, OWNER)
+    end) then
+        pcall(ns.Marks.Clear, button)
+    end
+end
+
+local function bankPanel()
+    local panel = rawget(_G, 'BankPanel')
+    if type(panel) ~= 'table' then
+        local frame = rawget(_G, 'BankFrame')
+        panel = type(frame) == 'table' and frame.BankPanel or nil
+    end
+    if type(panel) == 'table' then return panel end
+end
+
+-- Recorre los botones activos del panel del banco (solo con el banco vivo y el panel visible).
+-- El enumerador del pool da (boton, true); el de los contenedores (indice, boton): se aceptan ambos.
+local function paintBankPanel()
+    if not (ns.Bank and ns.Bank.IsLive()) then return end
+    local panel = bankPanel()
+    if not panel or type(panel.EnumerateValidItems) ~= 'function' then return end
+    if type(panel.IsShown) == 'function' and not panel:IsShown() then return end
+    pcall(function()
+        for first, second in panel:EnumerateValidItems() do
+            paintBankButton(type(first) == 'table' and first or second)
+        end
+    end)
+end
+
 local function knownFrames()
     local frames = {}
     if type(ContainerFrameCombinedBags) == 'table' then frames[#frames + 1] = ContainerFrameCombinedBags end
@@ -67,6 +117,15 @@ function Blizzard.Hook()
         hookedGlobal = true
     end
     local any = hookedGlobal
+    for _, name in ipairs(BANK_MIXINS) do
+        local mixin = rawget(_G, name)
+        if hookedMixins[name] == mixin and mixin ~= nil then any = true
+        elseif type(mixin) == 'table' and type(mixin.Refresh) == 'function' then
+            hooksecurefunc(mixin, 'Refresh', paintBankButton)
+            hookedMixins[name] = mixin
+            any = true
+        end
+    end
     for _, frame in ipairs(knownFrames()) do
         ns.Bags.DeclareLiveContainer(frame)   -- ventanas de bolsas de Blizzard: vivas, del personaje actual
         if hookedFrames[frame] then any = true
@@ -86,11 +145,13 @@ function Blizzard.Refresh()
     for _, frame in ipairs(knownFrames()) do
         if type(frame.IsShown) ~= 'function' or frame:IsShown() then paintFrame(frame) end
     end
+    paintBankPanel()
 end
 
 -- Al retomar una marca pendiente (datos del item o fin del combate) el boton pudo reciclarse:
--- se lee lo que muestra AHORA. Tiene que estar visible, su bolsa (del frame actual) en 0-4 y el
--- item vivo de ese slot es lo que muestra. Cualquier duda: nil (sin marca).
+-- se lee lo que muestra AHORA. Tiene que estar visible, su bolsa (del frame actual, o la pestana del
+-- panel del banco) en 0-4 o del banco vivo (Marks.AllowedBag) y el item vivo de ese slot es lo que
+-- muestra. Cualquier duda: nil (sin marca).
 local function revalidate(button)
     if type(button) ~= 'table' then return nil end
     if type(button.IsVisible) == 'function' then
@@ -98,11 +159,14 @@ local function revalidate(button)
     elseif type(button.IsShown) == 'function' and not button:IsShown() then
         return nil
     end
-    local frame = type(button.GetParent) == 'function' and button:GetParent() or nil
-    if type(button.GetBagID) ~= 'function' and type(frame) ~= 'table' then return nil end
-    local bag = bagOf(button, frame or {})
-    local slot = type(button.GetID) == 'function' and button:GetID() or nil
-    if type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return nil end
+    local bag, slot = bankSlotOf(button)
+    if bag == nil then
+        local frame = type(button.GetParent) == 'function' and button:GetParent() or nil
+        if type(button.GetBagID) ~= 'function' and type(frame) ~= 'table' then return nil end
+        bag = bagOf(button, frame or {})
+        slot = type(button.GetID) == 'function' and button:GetID() or nil
+    end
+    if not ns.Marks.AllowedBag(bag) or type(slot) ~= 'number' then return nil end
     return bag, slot, ns.Marks.SlotItemID(bag, slot)
 end
 
@@ -110,7 +174,8 @@ end
 function Blizzard.ResetState()
     hookedFrames = setmetatable({}, { __mode = 'k' })
     hookedGlobal = false
+    hookedMixins = {}
 end
 
 ns.Bags.Register('Blizzard', { install = Blizzard.Hook, refresh = Blizzard.Refresh,
-    revalidate = revalidate, owner = OWNER })
+    revalidate = revalidate, owner = OWNER, bank = true })

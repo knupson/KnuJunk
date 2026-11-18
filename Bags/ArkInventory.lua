@@ -13,13 +13,16 @@ local _, ns = ...
 --     si la ventana muestra otro personaje, o banco/vault/correo/vacio sin estar abiertos.
 --   * ArkInventoryConst.lua:1066-1090: Const.Location.Bag = 1 (Keyring 2, Bank 3, Vault 4, ... ReagentBag
 --     21): la ventana de bolsas del personaje es la ubicacion 1. Vault usa blizzard_id 1000+tab
---     (ArkInventory.lua:2929) y las bolsas de banco/reagent ids fuera de 0-4: Marks los descarta.
+--     (ArkInventory.lua:2929) y las de reagent ids fuera de 0-4: Marks los descarta.
 --   * ArkInventory.lua:7581-7586: frame.ARK_Data = { loc_id, bag_id, blizzard_id, slot_id } con el
 --     bag id de Blizzard y el slot (frame:GetID() = slot_id).
 --   * Mecanismo y funciones de la referencia: magic-eraser Tint-Junk.lua l.397-420.
--- Sin marca: ubicacion distinta de Const.Location.Bag, ARK_Data.loc_id distinto de la ubicacion del
--- callback, LocationIsOffline distinto de false (offline, invalida o con error), item mostrado
--- ausente o distinto del que hay en el slot. SIN VERIFICAR EN EL JUEGO (solo contra el codigo).
+-- Banco: Const.Location.Bank (3) se acepta solo con el banco VIVO (ns.Bank), LocationIsOffline(3) ==
+-- false (ArkInventory.lua:4020-4052: el banco es offline si no esta abierto o es de otro personaje) y
+-- blizzard_id del banco del personaje (ns.Bank.IsBankBag).
+-- Sin marca: ubicacion distinta de Const.Location.Bag (o Bank vivo), ARK_Data.loc_id distinto de la
+-- ubicacion del callback, LocationIsOffline distinto de false (offline, invalida o con error), item
+-- mostrado ausente o distinto del que hay en el slot. SIN VERIFICAR EN EL JUEGO (solo contra el codigo).
 local OWNER = 'ArkInventory'
 local Adapter = {}
 ns.ArkInventoryAdapter = Adapter
@@ -39,10 +42,14 @@ local function reader(frame, locationId)
     if not api or type(locationId) ~= 'number' then return nil end
     local success, offline = pcall(api.LocationIsOffline, locationId)
     if not success or offline ~= false then return nil end
-    local location = type(ark.Const) == 'table' and type(ark.Const.Location) == 'table' and ark.Const.Location.Bag
-    if type(location) ~= 'number' or locationId ~= location then return nil end
+    local locations = type(ark.Const) == 'table' and type(ark.Const.Location) == 'table' and ark.Const.Location
+    if not locations then return nil end
+    local isBag = type(locations.Bag) == 'number' and locationId == locations.Bag
+    local isBank = type(locations.Bank) == 'number' and locationId == locations.Bank and ns.Bank.IsLive()
+    if not isBag and not isBank then return nil end
     local data = frame.ARK_Data
     if type(data) ~= 'table' or data.loc_id ~= locationId then return nil end
+    if isBank and not ns.Bank.IsBankBag(data.blizzard_id) then return nil end
     local ok, item = pcall(api.ItemFrameItemTableGet, frame)
     local shown = ok and type(item) == 'table' and Common.ItemIDOf(item.h) or nil
     if not shown then return nil end
@@ -75,4 +82,4 @@ function Adapter.ResetState() hooked = false end
 Common.OnReset(Adapter.ResetState)
 
 ns.Bags.Register('ArkInventory', { addon = 'ArkInventory', install = Adapter.Install, refresh = Adapter.Refresh,
-    revalidate = revalidate })
+    revalidate = revalidate, bank = true })

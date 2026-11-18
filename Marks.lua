@@ -3,6 +3,9 @@ local _, ns = ...
 -- Dibuja (o esconde) la marca de un boton de item: moneda, martillo o signo de mision.
 -- Regla de oro: ante cualquier duda, sin marca. Nada se marca fuera de las bolsas 0-4 ni con el
 -- addon apagado, y un item cuyos datos el cliente aun no tiene queda sin marca hasta que lleguen.
+-- Excepcion: el banco VIVO del personaje actual (ns.Bank: abierto en un banquero) se marca si el
+-- dueno del boton es un adaptador que declaro bank = true (ns.Bags.AllowsBank). Al cerrarse el banco
+-- se borran sus marcas y nada pendiente o diferido vuelve a marcarlo.
 -- Texturas: iconos del juego, salvo el martillo (media\martillo.tga, propio). Decision documentada:
 --   coin   -> Interface\MoneyFrame\UI-GoldIcon           (la moneda de oro de la interfaz)
 --   hammer -> Interface\AddOns\KnuJunk\media\martillo   (silueta blanca con borde negro, propia del addon;
@@ -29,6 +32,23 @@ local pending = setmetatable({}, { __mode = 'k' })
 -- [boton] = { bag =, slot =, id = | link =, id =, owner = }: botones protegidos que, en combate, no
 -- tenian aun nuestra textura: no se crea ahora; se retoma (revalidando todo) al salir del combate.
 local queued = setmetatable({}, { __mode = 'k' })
+-- [boton] = true: botones a los que se les pidio una bolsa del banco (se limpian al cerrarlo).
+local bankButtons = setmetatable({}, { __mode = 'k' })
+
+local function isBankBag(bag)
+    local bank = ns.Bank
+    return bank ~= nil and bank.IsBankBag(bag) == true
+end
+
+-- true si `bag` se puede marcar: bolsa 0-4, o bolsa del banco con el banco vivo (y, si se da
+-- `owner`, un dueno que soporta banco).
+local function allowedBag(bag, owner, checkOwner)
+    if type(bag) ~= 'number' then return false end
+    if bag >= 0 and bag <= 4 then return true end
+    if not isBankBag(bag) or not ns.Bank.IsLive() then return false end
+    if not checkOwner then return true end
+    return ns.Bags ~= nil and type(ns.Bags.AllowsBank) == 'function' and ns.Bags.AllowsBank(owner) == true
+end
 
 local function itemIDOf(link)
     if type(link) == 'number' then return link end
@@ -115,7 +135,7 @@ end
 
 -- Cuerpo de Update: puede lanzar error (lecturas del cliente); el llamador lo aisla con pcall.
 local function updateSlot(button, bag, slot, owner)
-    if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return end
+    if not enabled() or not allowedBag(bag, owner or 'generic', true) or type(slot) ~= 'number' then return end
     local id = slotItemID(bag, slot)
     if not id then return end -- slot vacio
     local item = ns.Player.ReadItem(bag, slot)
@@ -172,10 +192,12 @@ local function defer(button, entry)
     if entry.id then queued[button] = entry end
 end
 
--- Marca el item de bolsa `bag`/`slot` (solo bolsas 0-4) en `button`. 'quest' no se dibuja aqui.
+-- Marca el item de bolsa `bag`/`slot` (bolsas 0-4, o el banco vivo si `owner` lo soporta) en
+-- `button`. 'quest' no se dibuja aqui.
 function Marks.Update(button, bag, slot, owner)
     if type(button) ~= 'table' then return end
     button.KnuJunkOwner = owner or 'generic'
+    bankButtons[button] = isBankBag(bag) or nil
     if mustDefer(button) then return defer(button, { bag = bag, slot = slot, owner = owner }) end
     safely(button, updateSlot, bag, slot, owner)
 end
@@ -188,13 +210,13 @@ function Marks.UpdateLink(button, link, owner)
     safely(button, updateLinkBody, link, owner)
 end
 
--- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (solo 0-4, del
--- personaje actual). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
+-- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (0-4, o el
+-- banco vivo: el que llama tiene que haber probado que su vista es la viva). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
 -- nil si no; el 2.o valor es true cuando el cliente aun no tiene los datos del item (reintentar con
 -- GET_ITEM_INFO_RECEIVED). Si expectedID viene, el slot tiene que contener ese item. Nunca lanza.
 function Marks.Verdict(bag, slot, expectedID)
     local success, mark, waiting = pcall(function()
-        if not enabled() or type(bag) ~= 'number' or bag < 0 or bag > 4 or type(slot) ~= 'number' then return nil end
+        if not enabled() or not allowedBag(bag) or type(slot) ~= 'number' then return nil end
         local id = slotItemID(bag, slot)
         if not id or (expectedID ~= nil and id ~= expectedID) then return nil end
         local item = ns.Player.ReadItem(bag, slot)
@@ -206,6 +228,10 @@ function Marks.Verdict(bag, slot, expectedID)
     if success then return mark, waiting == true end
     return nil, false
 end
+
+-- true si `bag` se puede marcar ahora: 0-4, o del banco con el banco vivo. Para revalidadores (que
+-- ademas son de un adaptador con bank = true).
+function Marks.AllowedBag(bag) return allowedBag(bag) end
 
 -- ID del item vivo en el slot `bag`/`slot`, o nil (vacio o error). Para revalidadores.
 function Marks.SlotItemID(bag, slot)
@@ -224,7 +250,24 @@ end
 function Marks.ResetState()
     pending = setmetatable({}, { __mode = 'k' })
     queued = setmetatable({}, { __mode = 'k' })
+    bankButtons = setmetatable({}, { __mode = 'k' })
+    Marks.ConnectBank()
 end
+
+-- Al cerrarse el banco: fuera toda marca, espera o diferido de un boton que mostro el banco. (Un boton
+-- reciclado a la bolsa se vuelve a marcar en el repintado que pide Registry.)
+local function onBankChanged(live)
+    if live then return end
+    local list = {}
+    for button in pairs(bankButtons) do list[#list + 1] = button end
+    bankButtons = setmetatable({}, { __mode = 'k' })
+    for _, button in ipairs(list) do pcall(Marks.Clear, button) end
+end
+
+function Marks.ConnectBank()
+    if ns.Bank and ns.Bank.OnChanged then ns.Bank.OnChanged(onBankChanged) end
+end
+Marks.ConnectBank()
 
 -- Retoma lo que quedo esperando (datos del item o fin del combate) SIN confiar en lo guardado:
 -- el slot tiene que seguir teniendo el item que se esperaba y, si el adaptador del dueno sabe

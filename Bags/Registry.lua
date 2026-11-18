@@ -4,7 +4,9 @@ local _, ns = ...
 --   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil,
 --            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional),
 --            owner = dueno que el adaptador guarda en los botones, si no es el nombre (opcional),
---            bagUpdates = false: no repintar por cambios de bolsas, solo por cambios de veredicto (opcional) }
+--            bagUpdates = false: no repintar por cambios de bolsas, solo por cambios de veredicto (opcional),
+--            bank = true: el adaptador PRUEBA que sus botones de banco son el banco vivo del personaje actual;
+--                         solo entonces Marks acepta bolsas del banco con ese dueno (opcional) }
 -- install se llama (hasta tener exito una vez) cuando su addon esta cargado: en PLAYER_LOGIN y en
 -- cada ADDON_LOADED; devuelve false si aun no puede engancharse y se reintenta. refresh repinta.
 local Bags = {}
@@ -90,6 +92,15 @@ function Bags.Revalidator(name)
     if entry and type(entry.spec.revalidate) == 'function' then return entry.spec.revalidate end
 end
 
+-- true si el dueno `owner` (nombre registrado o spec.owner) declaro bank = true.
+function Bags.AllowsBank(owner)
+    if type(owner) ~= 'string' then return false end
+    for _, entry in ipairs(specs) do
+        if (entry.name == owner or entry.spec.owner == owner) and entry.spec.bank == true then return true end
+    end
+    return false
+end
+
 function Bags.Installed()
     local list = {}
     for index, name in ipairs(installedList) do list[index] = name end
@@ -118,10 +129,11 @@ function Bags.RefreshAll(reason)
     C_Timer.After(REFRESH_DELAY, refreshNow)
 end
 
--- Cambios reales de contexto y fin del indice de Questie piden un repintado.
+-- Cambios reales de contexto, fin del indice de Questie y apertura/cierre del banco piden un repintado.
 local function connectSources()
     if ns.Player and ns.Player.OnChanged then ns.Player.OnChanged(function() Bags.RefreshAll() end) end
     if ns.Questie and ns.Questie.OnReady then ns.Questie.OnReady(function() Bags.RefreshAll() end) end
+    if ns.Bank and ns.Bank.OnChanged then ns.Bank.OnChanged(function() Bags.RefreshAll() end) end
 end
 connectSources()
 

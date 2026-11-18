@@ -315,11 +315,13 @@ function FAKE.Reset()
         'ElvUI', 'BaudBag', 'SetItemButtonQuality', 'ItemButtonMixin', 'ContainerFrameItemButtonMixin',
         'LootFrame_Update', 'ScrollUtil', 'LootFrameElementMixin', 'LootFrameItemElementMixin', 'GetLootSlotLink', 'LOOTFRAME_NUMBUTTONS',
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
-        'TooltipUtil', 'C_Item' }) do _G[name] = nil end
+        'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
+        'BankPanel', 'BankFrame' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
     GameTooltip = CreateFrame('Tooltip') -- limpio: sin hooks, scripts ni lineas de la prueba anterior
+    if ns and ns.Bank then ns.Bank.ResetState() end -- antes que Marks y Bags: ellos se vuelven a suscribir
     if ns and ns.Player then ns.Player.ResetState() end
     if ns and ns.Questie then ns.Questie.ResetState() end
     if ns and ns.Marks then ns.Marks.ResetState() end

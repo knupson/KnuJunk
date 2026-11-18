@@ -25,7 +25,11 @@ local _, ns = ...
 -- button.itemID (l.410 de GetInfo) nunca se limpia y puede estar viejo. Su IsCached() (l.373-375:
 -- vista de otro personaje o banco sin abrir, Frame.lua l.707) lo ve Common.NonCarried; button.bag y SetBagID (l.85, 90)
 -- tienen que coincidir con el ID del padre (bagContainers, l.353-366); la ventana de bolsas es
--- _G.InventorianBagFrame (Inventorian.lua l.81) y no se recorre mientras esta oculta.
+-- _G.InventorianBagFrame (Inventorian.lua l.81) y no se recorre mientras esta oculta. Banco VIVO (ns.Bank):
+-- tambien se recorre _G.InventorianBankFrame (Inventorian.lua l.82) mientras esta visible, y un boton con
+-- bolsa del banco se marca solo si su IsCached() es false (Frame.lua l.706-708: cacheado si es otro
+-- personaje o el banco no esta abierto; Events.lua l.201-247 lo abre/cierra con BANKFRAME_* y
+-- PLAYER_INTERACTION_MANAGER_FRAME_*). Las demas entradas no tienen banco: sin marca ahi.
 -- Un boton con otro dueno dedicado (Marks.KnuJunkOwner de otro adaptador) no se toca; uno con dueno
 -- generico ('generic' o 'GenericHook') se toma (Common.MayTakeOver) y el generico deja de seguirlo. Los refrescos llegan
 -- por Registry (instalacion y BAG_UPDATE_DELAYED) y, con contenedor verificado, al abrir su ventana
@@ -41,7 +45,8 @@ local Common = ns.Bags.Common
 local BAG_COUNT = 4          -- bolsas 0-4
 local MAX_BAG_SLOTS = 42     -- tope por bolsa (ElvUI B.MAX_CONTAINER_ITEMS = 42)
 local MAX_INDEX = 5 * MAX_BAG_SLOTS
-local PROBE_CAP = 500        -- sondeos de globals por pasada y addon
+local PROBE_CAP = 1000       -- sondeos de globals por pasada y addon (con el banco de Inventorian abierto
+                             -- el pool crece: 13x36 ContainerFrame + InventorianItemButton, Item.lua l.17-24, 57-70)
 
 local function inventorianLink(button) return Common.ItemIDOf(button.itemLink) end
 
@@ -54,7 +59,8 @@ local ENTRIES = {
     { name = 'OneBag3', addon = 'OneBag3', scans = {
         { from = 0, to = BAG_COUNT, max = MAX_BAG_SLOTS, name = function(bag, slot) return 'OneBagFrameBag' .. bag .. 'Item' .. slot end },
     } },
-    { name = 'Inventorian', addon = 'Inventorian', frame = 'InventorianBagFrame', identity = inventorianLink, pooled = true, scans = {
+    { name = 'Inventorian', addon = 'Inventorian', frame = 'InventorianBagFrame', bankFrame = 'InventorianBankFrame',
+      identity = inventorianLink, pooled = true, scans = {
         { from = 1, to = NUM_CONTAINER_FRAMES or 13, max = 36, name = function(frame, slot) return 'ContainerFrame' .. frame .. 'Item' .. slot end },
         { max = MAX_INDEX, name = function(index) return 'InventorianItemButton' .. index end },
     } },
@@ -94,10 +100,19 @@ local function bagOf(button)
     return found
 end
 
-local function locate(button)
+-- allowBank: la entrada soporta el banco (tiene bankFrame verificado). Una bolsa del banco solo se
+-- acepta con el banco VIVO (ns.Bank) y si el boton dice explicitamente que NO es cache (Inventorian
+-- Item.lua l.373-375 -> Frame.lua l.706-708: cacheado si es otro personaje o el banco no esta abierto).
+local function locate(button, allowBank)
     if type(button) ~= 'table' then return nil end
+    local bag = bagOf(button)
+    if ns.Bank.IsBankBag(bag) then
+        if not allowBank or not ns.Bank.IsLive() or Common.Call(button, 'IsCached') ~= false then return nil end
+        if Common.NonCarried(button, true) then return nil end
+        return bag, Common.Call(button, 'GetID')
+    end
     if Common.NonCarried(button) then return nil end
-    return bagOf(button), Common.Call(button, 'GetID')
+    return bag, Common.Call(button, 'GetID')
 end
 
 local function visible(button)
@@ -135,15 +150,21 @@ end
 local function newAdapter(entry)
     local adapter = { entry = entry }
     local tracker = Common.NewTracker(entry.name)
-    local reader = Common.ExposedReader(locate, entry.identity and function(button)
+    local allowBank = entry.bankFrame ~= nil
+    local reader = Common.ExposedReader(function(button) return locate(button, allowBank) end, entry.identity and function(button)
         return entry.identity(button)
     end or nil)
 
-    -- Sin contenedor conocido, inexistente u oculto: no se recorre.
+    -- Sin contenedor conocido, inexistente u oculto: no se recorre. La ventana del banco (si la
+    -- entrada la tiene verificada) cuenta solo con el banco vivo.
+    local function shownFrame(name)
+        local frame = name and rawget(_G, name)
+        return type(frame) == 'table' and visible(frame)
+    end
     local function frameOpen()
         if not entry.frame then return false end
-        local frame = rawget(_G, entry.frame)
-        return type(frame) == 'table' and visible(frame)
+        if shownFrame(entry.frame) then return true end
+        return entry.bankFrame ~= nil and ns.Bank.IsLive() and shownFrame(entry.bankFrame)
     end
 
     local function paint(button)
@@ -155,14 +176,19 @@ local function newAdapter(entry)
     -- Abrir la ventana del addon pide un refresco agrupado (HookScript, nunca SetScript). La
     -- ventana puede crearse despues de instalar: se reintenta en cada Refresh y unos segundos
     -- tras instalar.
-    local hookedFrame -- la ventana ya enganchada (si el global pasa a ser otra, se engancha esa)
+    local hookedFrames = {} -- [nombre global] = ventana ya enganchada (si el global pasa a ser otra, se engancha esa)
+    local function hookOne(name)
+        local frame = rawget(_G, name)
+        if frame == hookedFrames[name] then return frame ~= nil end
+        if type(frame) ~= 'table' or type(frame.HookScript) ~= 'function' then return false end
+        if pcall(frame.HookScript, frame, 'OnShow', function() ns.Bags.RefreshAll() end) then hookedFrames[name] = frame end
+        return hookedFrames[name] == frame
+    end
+    -- true cuando la ventana de bolsas esta enganchada (la del banco se intenta, pero no se exige).
     local function hookShow()
         if not entry.frame then return true end
-        local frame = rawget(_G, entry.frame)
-        if frame == hookedFrame then return frame ~= nil end
-        if type(frame) ~= 'table' or type(frame.HookScript) ~= 'function' then return false end
-        if pcall(frame.HookScript, frame, 'OnShow', function() ns.Bags.RefreshAll() end) then hookedFrame = frame end
-        return hookedFrame == frame
+        if entry.bankFrame then hookOne(entry.bankFrame) end
+        return hookOne(entry.frame)
     end
 
     -- Botones de un pool (Inventorian Item.lua l.73-97): Free los suelta (oculto, sin padre) y Set
@@ -213,7 +239,7 @@ local function newAdapter(entry)
     local function revalidate(button) return tracker:Read(button) end
 
     ns.Bags.Register(entry.name, { addon = entry.addon, install = adapter.Install, refresh = adapter.Refresh,
-        revalidate = revalidate })
+        revalidate = revalidate, bank = allowBank })
     return adapter
 end
 
