@@ -310,7 +310,7 @@ class FilterTest(unittest.TestCase):
         out = build_data.filtered_row('itemsparse', self.row(StartQuestID='5'), self.COLUMNS)
         self.assertEqual(dict(zip(self.COLUMNS, out)),
                          {'ID': '1', 'StartQuestID': '5', 'TotemCategoryID': '0',
-                          'Display_lang': '', 'Description_lang': ''})
+                          'Display_lang': '', 'Description_lang': '', 'LockID': '0'})
 
     def test_special_items_keep_their_texts(self):
         book = self.row(Description_lang="A fine addition to any library's collection.")
@@ -327,6 +327,38 @@ class ConsistencyTest(unittest.TestCase):
         with open(core, encoding='utf-8') as handle:
             ids = build_data.parse_core_professions(handle.read())
         self.assertEqual(ids, set(build_data.PROFESSIONS))
+
+
+class LocksTest(unittest.TestCase):
+    def test_keys_boxes_and_only_item_requirements(self):
+        keys, boxes = build_data.compute_locks(
+            [{'ID': '1', 'ClassID': '13'}, {'ID': '2', 'ClassID': '15'}],
+            [{'ID': '3', 'LockID': '99'}, {'ID': '4', 'LockID': '0'}],
+            [{'Type_0': '1', '_Index_0': '5', 'Type_1': '2', '_Index_1': '6',
+              'Type_7': '1', '_Index_7': '7'}, {'Type_0': '1', '_Index_0': '0'}])
+        self.assertEqual(keys, {1, 5, 7})
+        self.assertEqual(boxes, {3})
+        text = build_data.render_locks_lua(keys, boxes, 'x')
+        self.assertIn('ns.Data.keys', text)
+        self.assertIn('ns.Data.lockboxes', text)
+        self.assertLess(text.index('[1]'), text.index('[5]'))
+
+    def test_locked_sparse_row_survives_filter(self):
+        row = {c: '0' for c in build_data.COLUMNS['itemsparse']}
+        row.update(ID='3', LockID='99', Display_lang='Box', Description_lang='')
+        self.assertIsNotNone(build_data.filtered_row('itemsparse', row, build_data.COLUMNS['itemsparse']))
+
+    def test_item_filter_only_keeps_keys(self):
+        self.assertIsNone(build_data.filtered_row('item', {'ID': '2', 'ClassID': '15'}, ['ID', 'ClassID']))
+        self.assertEqual(build_data.filtered_row('item', {'ID': '1', 'ClassID': '13'}, ['ID', 'ClassID']), ['1', '13'])
+
+    def test_lock_filter_does_not_treat_skill_as_item(self):
+        columns = build_data.COLUMNS['lock']
+        row = {c: '0' for c in columns}
+        row.update(ID='1', Type_0='2', _Index_0='633')
+        self.assertIsNone(build_data.filtered_row('lock', row, columns))
+        row.update(Type_7='1', _Index_7='12382')
+        self.assertIsNotNone(build_data.filtered_row('lock', row, columns))
 
 
 if __name__ == '__main__':

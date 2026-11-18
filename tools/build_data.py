@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua, Data/Special.lua y
-Data/ClassReagents.lua desde las tablas DB2 de wago.tools (producto wowf).
+Data/ClassReagents.lua y Data/Locks.lua desde las tablas DB2 de wago.tools (producto wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -40,7 +40,9 @@ REAGENT_SLOTS = ['Reagent_%d' % i for i in range(8)]
 COLUMNS = {
     'skilllineability': ['SkillLine', 'Spell', 'ClassMask'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
-    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang'],
+    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID'],
+    'item': ['ID', 'ClassID'],
+    'lock': ['ID'] + ['%s_%d' % (name, i) for name in ('Type', '_Index') for i in range(8)],
     'spelltotems': ['SpellID', 'RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1', 'Totem_0', 'Totem_1'],
     'totemcategory': ['ID', 'Name_lang', 'TotemCategoryType', 'TotemCategoryMask'],
 }
@@ -132,6 +134,27 @@ def _crate_kind(row):
 
 def _is_special(row):
     return bool(LIBRARY_RE.search(row.get('Description_lang') or '')) or _crate_kind(row) is not None
+
+
+def compute_locks(item_rows, sparse_rows, lock_rows):
+    """Llaves por clase 13 o requisito ITEM (Type=1); cajas por LockID, incluso sin fila Lock."""
+    keys = {_int(r.get('ID')) for r in item_rows if _int(r.get('ClassID')) == 13}
+    boxes = {_int(r.get('ID')) for r in sparse_rows if _int(r.get('LockID')) > 0}
+    for row in lock_rows:
+        for i in range(8):
+            if _int(row.get('Type_%d' % i)) == 1:
+                keys.add(_int(row.get('_Index_%d' % i)))
+    return {i for i in keys if i > 0}, {i for i in boxes if i > 0}
+
+
+def render_locks_lua(keys, boxes, build):
+    lines = [_header(build), '-- Item.ClassID=13 y requisitos ITEM de Lock; ItemSparse.LockID > 0.\n']
+    for name, ids in (('keys', keys), ('lockboxes', boxes)):
+        lines.append('ns.Data.%s = {\n' % name)
+        for item in sorted(ids):
+            lines.append('    [%d] = true,\n' % item)
+        lines.append('}\n')
+    return ''.join(lines)
 
 
 def compute_special(item_rows):
@@ -444,9 +467,14 @@ def filtered_row(table, row, columns):
     textos (nombre, descripcion) solo se conservan en los libros y cajones."""
     if table == 'itemsparse':
         special = _is_special(row)
-        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0:
+        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0:
             return None
-        return [row[c] if special or c not in ITEM_TEXTS else '' for c in columns]
+        return [row.get(c, '0') if special or c not in ITEM_TEXTS else '' for c in columns]
+    if table == 'item' and _int(row.get('ClassID')) != 13:
+        return None
+    if table == 'lock' and not any(_int(row.get('Type_%d' % i)) == 1 and
+                                  _int(row.get('_Index_%d' % i)) > 0 for i in range(8)):
+        return None
     if table == 'spellreagents' and not any(_int(row[c]) for c in REAGENT_SLOTS):
         return None
     if table == 'spelltotems' and not any(_int(row[c]) for c in TOTEM_REQUIRED + TOTEM_ITEMS):
@@ -457,7 +485,9 @@ def filtered_row(table, row, columns):
 def download_filtered(table, build):
     """Baja la tabla en streaming y guarda en data-raw/ solo las columnas usadas. Devuelve la ruta."""
     columns = COLUMNS[table]
-    url = '%s/db2/%s/csv?product=%s&build=%s' % (BASE, table, PRODUCT, build)
+    # La build identifica el producto; Item/Lock con product=wowf devolvieron 403.
+    url = ('%s/db2/%s/csv?build=%s' % (BASE, table.capitalize(), build) if table in ('item', 'lock')
+           else '%s/db2/%s/csv?product=%s&build=%s' % (BASE, table, PRODUCT, build))
     target = os.path.join(RAW_DIR, table + '.csv')
     os.makedirs(RAW_DIR, exist_ok=True)
     temp = target + '.part'
@@ -525,6 +555,7 @@ def main(argv=None):
     tools = compute_tools(raw('skilllineability'), raw('spelltotems'), raw('totemcategory'), raw('itemsparse'))
     gear, missing = compute_class_gear(raw('skilllineability'))
     books, crates = compute_special(raw('itemsparse'))
+    keys, boxes = compute_locks(raw('item'), raw('itemsparse'), raw('lock'))
     class_reagents = compute_class_reagents(raw('skilllineability'), raw('spellreagents'), raw('spelltotems'),
                                             raw('totemcategory'), raw('itemsparse'))
     if missing:
@@ -535,6 +566,8 @@ def main(argv=None):
     write_lua('ClassGear.lua', render_class_gear_lua(gear, build))
     write_lua('Special.lua', render_special_lua(books, crates, build))
     write_lua('ClassReagents.lua', render_class_reagents_lua(class_reagents, build))
+    write_lua('Locks.lua', render_locks_lua(keys, boxes, build))
+    print('%d llaves/abridores, %d cajas con cerradura' % (len(keys), len(boxes)))
     print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
           '%d libros de biblioteca, %d cajones arrebatados (%d llenos), %d reactivos de clase'
           % (build, len(reagents), len(starters), len(tools), len(gear), len(books), len(crates),
