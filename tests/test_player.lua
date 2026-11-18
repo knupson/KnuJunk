@@ -475,6 +475,50 @@ test('no guardado: TOOLTIP_DATA_UPDATE de su instancia lo relee; efecto tardio q
     C_TooltipInfo.GetHyperlink = real
 end)
 
+-- Ronda de arreglos 3 (reproduccion del revisor): un 'no' invalidado por TOOLTIP_DATA_UPDATE cuya
+-- relectura es parcial pasa a pendiente completo (sin error en lecturas siguientes) y avisa por
+-- OnChanged para retirar la moneda de clase; despues, con el efecto confirmado, sigue sin moneda.
+test('no invalidado con relectura parcial: pendiente valido, aviso y moneda retirada', function()
+    addItem(99790, { quality = 2, classID = 4, subclassID = 4 })
+    local real = C_TooltipInfo.GetHyperlink
+    local phase = 'complete'
+    C_TooltipInfo.GetHyperlink = function()
+        if phase == 'partial' then return { dataInstanceID = 55, lines = { { leftText = 'Peto' }, {} } } end
+        local lines = { { leftText = 'Peto' }, { leftText = 'Placas' } }
+        if phase == 'effect' then lines[3] = { leftText = 'Equip: Useful effect' } end
+        return { dataInstanceID = 55, lines = lines }
+    end
+    FAKE.bags['0:4'] = 99790; FAKE.bound['0:4'] = true
+    local button = CreateFrame('Button', nil, UIParent)
+    local function coinShown()
+        ns.Marks.Update(button, 0, 4)
+        return button.KnuJunkMark ~= nil and button.KnuJunkMark:IsShown() == true
+    end
+    local changed = 0
+    ns.Player.GetContext()
+    ns.Player.OnChanged(function() changed = changed + 1 end)
+    local item = ns.Player.ReadItem(0, 4)
+    eq(item.effect, 'no')
+    eq(ns.Classify(item, ns.Player.GetContext()).mark, 'coin', 'inicio: moneda')
+    ok(coinShown(), 'moneda visible al inicio')
+    phase = 'partial'
+    FAKE.Fire('TOOLTIP_DATA_UPDATE', 55)
+    FAKE.Advance(0.1)
+    eq(changed, 1, 'no -> unknown avisa')
+    local again = ns.Player.ReadItem(0, 4) -- no debe fallar
+    eq(again.effect, 'unknown')
+    eq(ns.Classify(again, ns.Player.GetContext()).mark, nil, 'sin moneda de clase')
+    ok(not coinShown(), 'moneda retirada')
+    eq(ns.Player.ReadLink(FAKE.linkOf(99790)).effect, 'unknown', 'otra lectura tampoco falla')
+    phase = 'effect'
+    FAKE.Advance(5) -- reintento por timer
+    local final = ns.Player.ReadItem(0, 4)
+    eq(final.effect, 'yes')
+    eq(ns.Classify(final, ns.Player.GetContext()).mark, nil, 'efecto confirmado: sin moneda')
+    eq(changed, 2, 'unknown -> yes avisa')
+    C_TooltipInfo.GetHyperlink = real
+end)
+
 test('ReadItem y ReadLink devuelven subclassName (7mo valor de GetItemInfo)', function()
     addItem(710, { quality = 1, classID = 2, subclassID = 19, subType = 'Varita' })
     FAKE.bags['0:1'] = 710

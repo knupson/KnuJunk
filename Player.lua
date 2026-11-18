@@ -546,7 +546,7 @@ local scheduleEffectRetry
 local function resolveEffect(id, mode)
     local state = effectState[id]
     if state and state.value ~= nil then return state.value end
-    if state and mode == nil and (state.final or now() < state.nextAt) then return nil end
+    if state and mode == nil and (state.final or now() < (state.nextAt or 0)) then return nil end
     if state and mode == 'timer' and state.final then return nil end
     local answer, how, instance = scanEffect(id)
     if answer ~= nil then
@@ -554,10 +554,18 @@ local function resolveEffect(id, mode)
         return answer
     end
     state = state or { attempts = 0, nextAt = 0 }
+    state.attempts, state.nextAt = state.attempts or 0, state.nextAt or 0
     state.instance = instance or state.instance
     if how == 'unavailable' then
         state.final = true
-    elseif mode ~= 'event' then
+    elseif mode == 'event' then
+        -- Las relecturas por evento no gastan intentos; si el pendiente todavia tiene intentos del timer
+        -- y no hay uno programado a futuro, se programa el proximo.
+        if not state.final and state.nextAt <= now() then
+            state.nextAt = now() + EFFECT_BACKOFF * 2 ^ state.attempts
+            scheduleEffectRetry(state.nextAt)
+        end
+    else
         -- Las relecturas por evento no gastan intentos del timer.
         state.attempts = state.attempts + 1
         if state.attempts >= MAX_EFFECT_ATTEMPTS then
@@ -610,9 +618,11 @@ local function flushEventQueue()
     local queue = eventQueue
     eventQueue = {}
     local changed = false
+    -- Cualquier cambio de estado avisa, tambien no -> no se sabe (retira una moneda de clase vieja).
     for id, before in pairs(queue) do
         local after = resolveEffect(id, 'event')
-        if after ~= nil and after ~= before then changed = true end
+        if after == nil then after = 'pending' end
+        if after ~= before then changed = true end
     end
     if changed then announceEffects() end
 end
@@ -633,7 +643,8 @@ local function onTooltipDataUpdate(instance)
         if state.value == nil then
             if instance == nil or state.instance == nil or state.instance == instance then queueEffect(id, 'pending') end
         elseif state.value == false and instance ~= nil and state.instance == instance then
-            state.value = nil -- invalidado: se relee
+            -- Invalidado: pasa a pendiente completo (intentos del timer desde cero) y se relee.
+            effectState[id] = { attempts = 0, nextAt = 0, instance = state.instance }
             queueEffect(id, false)
         end
     end
