@@ -613,3 +613,55 @@ test('Tooltip: aislamiento - el caso siguiente ve el GameTooltip limpio', functi
     ok(next(GameTooltip.scripts) == nil, 'sin scripts enganchados')
     eq(GameTooltip.lines, nil)
 end)
+
+-- Libros de biblioteca y cajones arrebatados: linea neutra (blanca, sin icono) con a quien
+-- entregarlos; solo el PNJ de la faccion del jugador, los dos si no se sabe.
+test('Tooltip: libro de biblioteca y cajon arrebatado segun la faccion', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local book = { mark = nil, reasons = { { kind = 'library_book' } } }
+    local crate = { mark = nil, reasons = { { kind = 'waylaid_crate' } } }
+    local sealed = { mark = nil, reasons = { { kind = 'waylaid_crate', sealed = true } } }
+    local cases = {
+        { 'Horde', book, 'Libro de biblioteca: entregalo al bibliotecario (Owen Thadd en Entrañas)' },
+        { 'Alliance', book, 'Libro de biblioteca: entregalo al bibliotecario (Garion Wendell en Ventormenta)' },
+        { nil, book, 'Libro de biblioteca: entregalo al bibliotecario (Owen Thadd en Entrañas / Garion Wendell en Ventormenta)' },
+        { 'Horde', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Dokimi (Encrucijada)' },
+        { 'Alliance', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Marcy Baker (Crestagrana)' },
+        { 'Neutral', crate, 'Cajón arrebatado: llenalo con una opción de la lista y entregalo a Dokimi (Encrucijada) / Marcy Baker (Crestagrana)' },
+        { 'Alliance', sealed, 'Cajón arrebatado lleno: entregalo a Marcy Baker (Crestagrana)' },
+    }
+    for _, case in ipairs(cases) do
+        FAKE.faction = case[1]
+        withClassify(function() return case[2] end, function()
+            local tooltip = newTooltip(100)
+            run(processor, tooltip, {})
+            eq(#tooltip.lines, 1)
+            local entry = line(tooltip, 1, case[3], { 1, 1, 1 })
+            eq(entry.text, case[3], 'sin icono')
+        end)
+    end
+end)
+
+test('Tooltip: libro sin UnitFactionGroup muestra los dos bibliotecarios', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    UnitFactionGroup = nil
+    withClassify(function() return { reasons = { { kind = 'library_book' } } } end, function()
+        local tooltip = newTooltip(100)
+        run(processor, tooltip, {})
+        line(tooltip, 1, '(Owen Thadd en Entrañas / Garion Wendell en Ventormenta)')
+    end)
+end)
+
+test('Tooltip: textos en ingles del libro y el cajon', function()
+    local L = ns.L
+    ok(rawget(L, 'Library book: turn it in to the librarian (%s)'), 'clave del libro')
+    ok(rawget(L, 'Waylaid crate: fill it with one option from the list and turn it in to %s'), 'clave del cajon')
+    ok(rawget(L, 'Sealed waylaid crate: turn it in to %s'), 'clave del cajon lleno')
+    for _, key in ipairs({ 'Owen Thadd in Undercity', 'Garion Wendell in Stormwind', 'Dokimi (Crossroads)', 'Marcy Baker (Redridge)' }) do
+        ok(rawget(L, key), 'clave ' .. key)
+    end
+end)

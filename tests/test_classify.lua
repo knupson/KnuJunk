@@ -451,3 +451,68 @@ test('item de mision que no es reactivo ni herramienta -> quest sin quest=true',
         eq(result.mark, 'quest'); eq(result.quest, nil)
     end)
 end)
+
+-- Libros de biblioteca y cajones arrebatados (2026-11-17): se guardan hasta entregarlos, asi que
+-- nunca llevan moneda automatica (ni gris, ni mision, ni clase); /knu junk sell si.
+local function withSpecial(books, crates, fn)
+    local savedB, savedC = ns.Data.libraryBooks, ns.Data.waylaidCrates
+    ns.Data.libraryBooks, ns.Data.waylaidCrates = books, crates
+    local success, err = pcall(fn)
+    ns.Data.libraryBooks, ns.Data.waylaidCrates = savedB, savedC
+    if not success then error(err, 0) end
+end
+
+test('libro de biblioteca de clase Mision fuera del diario -> sin moneda, library_book', function()
+    withData({}, {}, function()
+        withSpecial({ [9000] = true }, {}, function()
+            local result = ns.Classify(item { classID = 12, quality = 0, price = 5 }, ctx())
+            eq(result.mark, nil); ok(hasReason(result, 'library_book'), 'reason library_book')
+            eq(hasReason(result, 'quest_not_active'), nil); eq(hasReason(result, 'gray'), nil)
+        end)
+    end)
+end)
+
+test('libro de biblioteca con uso de Questie fuera del diario -> sin moneda', function()
+    withData({}, {}, function()
+        withSpecial({ [9000] = true }, {}, function()
+            local result = ns.Classify(item { classID = 12 }, ctx {
+                questieUses = function() return { { questID = 7 } } end })
+            eq(result.mark, nil); ok(hasReason(result, 'library_book'), 'reason library_book')
+        end)
+    end)
+end)
+
+test('cajon arrebatado gris o de armadura ajena -> sin moneda, waylaid_crate', function()
+    withData({}, {}, function()
+        withSpecial({}, { [9000] = true }, function()
+            local result = ns.Classify(item { quality = 0, price = 5, classID = 12 }, ctx())
+            eq(result.mark, nil)
+            local reason = hasReason(result, 'waylaid_crate')
+            ok(reason, 'reason waylaid_crate'); eq(reason.sealed, nil)
+        end)
+        withSpecial({}, { [9000] = 'sealed' }, function()
+            local result = ns.Classify(item { classID = 4, subclassID = 4 }, ctx())
+            eq(result.mark, nil); eq(hasReason(result, 'waylaid_crate').sealed, true)
+        end)
+    end)
+end)
+
+test('libro o cajon con override sell -> coin; keep -> override_keep', function()
+    withData({}, {}, function()
+        withSpecial({ [9000] = true }, { [9000] = true }, function()
+            local sell = ns.Classify(item(), ctx { overrides = { [9000] = 'sell' } })
+            eq(sell.mark, 'coin'); ok(hasReason(sell, 'override_sell'), 'override_sell')
+            local keep = ns.Classify(item(), ctx { overrides = { [9000] = 'keep' } })
+            eq(keep.mark, nil); ok(hasReason(keep, 'override_keep'), 'override_keep')
+        end)
+    end)
+end)
+
+test('libro sin datos de item cargados -> igual library_book (no depende del item)', function()
+    withData({}, {}, function()
+        withSpecial({ [9000] = true }, {}, function()
+            local result = ns.Classify({ id = 9000 }, ctx())
+            eq(result.mark, nil); ok(hasReason(result, 'library_book'), 'reason library_book')
+        end)
+    end)
+end)

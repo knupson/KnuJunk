@@ -15,6 +15,8 @@ local _, ns = ...
 -- esta AHORA en el diario; si no, monedita 'quest_not_active' (futuras, no tomadas, hechas y
 -- repetibles no tomadas no protegen). Los iniciadores siguen su propia regla: mision no hecha (o
 -- sin saberlo) -> util ('quest_starter'); hecha y no repetible -> monedita 'quest_done'.
+-- Libros de biblioteca y cajones arrebatados (Data/Special.lua): sin marca y sin moneda automatica,
+-- motivo 'library_book' o 'waylaid_crate' (sealed = true si el cajon ya esta lleno).
 
 local ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR, ITEM_CLASS_QUEST = 2, 4, 12
 
@@ -72,6 +74,19 @@ function ns.Classify(item, ctx)
     elseif override == 'sell' then
         result.mark = 'coin'
         reasons[#reasons + 1] = { kind = 'override_sell' }
+        return result
+    end
+
+    -- Libros de biblioteca y cajones arrebatados de Forever (Data/Special.lua): se guardan hasta
+    -- entregarlos al bibliotecario o al representante de comercio. Nunca moneda automatica, aunque
+    -- sean de clase Mision y ninguna mision del diario los pida; sin marca, motivo para el tooltip.
+    if ns.Data.libraryBooks and ns.Data.libraryBooks[id] then
+        reasons[#reasons + 1] = { kind = 'library_book' }
+        return result
+    end
+    local crate = ns.Data.waylaidCrates and ns.Data.waylaidCrates[id]
+    if crate then
+        reasons[#reasons + 1] = { kind = 'waylaid_crate', sealed = crate == 'sealed' or nil }
         return result
     end
 

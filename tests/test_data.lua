@@ -29,3 +29,12 @@ test('Data: herramientas generadas (martillo, pico, cuchillo) y todas con profes
         for _, line in ipairs(lines) do ok(ns.PROFESSIONS[line], 'profesion desconocida ' .. line .. ' en ' .. item) end
     end
 end)
+
+test('Data: libros de biblioteca y cajones arrebatados', function()
+    for _, id in ipairs({ 209851, 209847, 210177, 208800 }) do
+        eq(ns.Data.libraryBooks[id], true, 'libro ' .. id)
+    end
+    eq(ns.Data.waylaidCrates[248684], true, 'Cajon arrebatado: Textiles de aprendiz')
+    eq(ns.Data.waylaidCrates[248765], 'sealed', 'Cajon de aprendiz sellado')
+    eq(ns.Data.waylaidCrates[211315], nil, 'Waylaid Supplies no es un cajon')
+end)

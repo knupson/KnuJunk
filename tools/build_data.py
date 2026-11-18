@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua y Data/ClassGear.lua desde las tablas DB2 de wago.tools (producto wowf).
+"""Genera Data/Reagents.lua, Data/Starters.lua, Data/Tools.lua, Data/ClassGear.lua y Data/Special.lua desde las tablas DB2 de wago.tools (producto wowf).
 
 Uso:
     python -I tools/build_data.py                  # build mas nueva de wowf, descarga y regenera
@@ -39,12 +39,22 @@ REAGENT_SLOTS = ['Reagent_%d' % i for i in range(8)]
 COLUMNS = {
     'skilllineability': ['SkillLine', 'Spell', 'ClassMask'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
-    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID'],
+    'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang'],
     'spelltotems': ['SpellID', 'RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1', 'Totem_0', 'Totem_1'],
     'totemcategory': ['ID', 'Name_lang', 'TotemCategoryType', 'TotemCategoryMask'],
 }
 TOTEM_REQUIRED = ['RequiredTotemCategoryID_0', 'RequiredTotemCategoryID_1']
 TOTEM_ITEMS = ['Totem_0', 'Totem_1']
+# Textos de ItemSparse (enUS) que solo se guardan en data-raw para los items especiales.
+ITEM_TEXTS = ['Display_lang', 'Description_lang']
+# Libros de biblioteca de Forever: la descripcion termina en "A fine (o questionable) addition to
+# any library's collection." (40 items en la build 1.60.1.70959).
+LIBRARY_RE = re.compile(r"addition to any library's collection", re.I)
+# Cajones arrebatados: "Waylaid Crate" vacio y "Waylaid Crate: <opcion>" (sin llenar), y los ya
+# llenos "Sealed <rango> Crate" cuya descripcion pide entregarlos al representante de comercio.
+# "Waylaid Supplies: ..." y "Sealed Crate" (Venture Company) son otras cosas: no entran.
+CRATE_RE = re.compile(r'^Waylaid Crate(:|$)')
+SEALED_RE = re.compile(r'completed crate.*trade representative', re.I)
 
 # Hechizo de la habilidad de arma/armadura -> (tipo, subclase de item). Armadura (clase 4):
 # 1 tela, 2 cuero, 3 malla, 4 placas, 6 escudo. Armas (clase 2): 0/1 hacha 1M/2M, 2 arco,
@@ -109,6 +119,34 @@ def compute_starters(item_rows):
         if quest != 0 and item > 0:
             starters[item] = quest
     return starters
+
+
+def _crate_kind(row):
+    if CRATE_RE.match(row.get('Display_lang') or ''):
+        return True
+    if 'Crate' in (row.get('Display_lang') or '') and SEALED_RE.search(row.get('Description_lang') or ''):
+        return 'sealed'
+    return None
+
+
+def _is_special(row):
+    return bool(LIBRARY_RE.search(row.get('Description_lang') or '')) or _crate_kind(row) is not None
+
+
+def compute_special(item_rows):
+    """(libros, cajones): set de item IDs de libros de biblioteca y dict item ID -> True (cajon
+    arrebatado por llenar) o 'sealed' (cajon lleno, listo para entregar)."""
+    books, crates = set(), {}
+    for row in item_rows:
+        item = _int(row.get('ID'))
+        if item <= 0:
+            continue
+        if LIBRARY_RE.search(row.get('Description_lang') or ''):
+            books.add(item)
+        kind = _crate_kind(row)
+        if kind is not None:
+            crates[item] = kind
+    return books, crates
 
 
 def compute_tools(ability_rows, totem_rows, category_rows, item_rows):
@@ -241,6 +279,22 @@ def render_class_gear_lua(gear, build):
     return ''.join(lines)
 
 
+def render_special_lua(books, crates, build):
+    lines = [_header(build),
+             '-- Libros de biblioteca (se entregan al bibliotecario): item -> true.\n',
+             'ns.Data.libraryBooks = {\n']
+    for item in sorted(books):
+        lines.append('    [%d] = true,\n' % item)
+    lines.append('}\n')
+    lines.append('-- Cajones arrebatados: item -> true (por llenar) o "sealed" (lleno, para entregar).\n')
+    lines.append('ns.Data.waylaidCrates = {\n')
+    for item in sorted(crates):
+        value = 'true' if crates[item] is True else '"%s"' % crates[item]
+        lines.append('    [%d] = %s,\n' % (item, value))
+    lines.append('}\n')
+    return ''.join(lines)
+
+
 def parse_core_professions(core_lua):
     """IDs de ns.PROFESSIONS leidos del texto de Core.lua."""
     block = re.search(r'ns\.PROFESSIONS\s*=\s*\{(.*?)\n\}', core_lua, re.S)
@@ -291,6 +345,21 @@ def latest_build():
     return version
 
 
+def filtered_row(table, row, columns):
+    """Fila a guardar en data-raw (solo `columns`) o None si la tabla no la usa. En itemsparse los
+    textos (nombre, descripcion) solo se conservan en los libros y cajones."""
+    if table == 'itemsparse':
+        special = _is_special(row)
+        if not special and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0:
+            return None
+        return [row[c] if special or c not in ITEM_TEXTS else '' for c in columns]
+    if table == 'spellreagents' and not any(_int(row[c]) for c in REAGENT_SLOTS):
+        return None
+    if table == 'spelltotems' and not any(_int(row[c]) for c in TOTEM_REQUIRED + TOTEM_ITEMS):
+        return None
+    return [row[c] for c in columns]
+
+
 def download_filtered(table, build):
     """Baja la tabla en streaming y guarda en data-raw/ solo las columnas usadas. Devuelve la ruta."""
     columns = COLUMNS[table]
@@ -310,14 +379,10 @@ def download_filtered(table, build):
                 writer.writerow(columns)
                 count = 0
                 for row in reader:
-                    if table == 'itemsparse' and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0:
-                        continue
-                    if table == 'spellreagents' and not any(_int(row[c]) for c in REAGENT_SLOTS):
-                        continue
-                    if table == 'spelltotems' and not any(_int(row[c]) for c in TOTEM_REQUIRED + TOTEM_ITEMS):
-                        continue
-                    writer.writerow([row[c] for c in columns])
-                    count += 1
+                    out = filtered_row(table, row, columns)
+                    if out is not None:
+                        writer.writerow(out)
+                        count += 1
                 return count
         except OSError as err:
             raise TransientError(str(err))
@@ -365,14 +430,18 @@ def main(argv=None):
     starters = compute_starters(raw('itemsparse'))
     tools = compute_tools(raw('skilllineability'), raw('spelltotems'), raw('totemcategory'), raw('itemsparse'))
     gear, missing = compute_class_gear(raw('skilllineability'))
+    books, crates = compute_special(raw('itemsparse'))
     if missing:
         sys.exit('skilllineability: faltan los hechizos de arma/armadura %s; no se genera ClassGear' % missing)
     write_lua('Reagents.lua', render_reagents_lua(reagents, build))
     write_lua('Starters.lua', render_starters_lua(starters, build))
     write_lua('Tools.lua', render_tools_lua(tools, build))
     write_lua('ClassGear.lua', render_class_gear_lua(gear, build))
-    print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo'
-          % (build, len(reagents), len(starters), len(tools), len(gear)))
+    write_lua('Special.lua', render_special_lua(books, crates, build))
+    print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
+          '%d libros de biblioteca, %d cajones arrebatados (%d llenos)'
+          % (build, len(reagents), len(starters), len(tools), len(gear), len(books), len(crates),
+             sum(1 for kind in crates.values() if kind == 'sealed')))
 
 
 if __name__ == '__main__':

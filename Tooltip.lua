@@ -6,7 +6,8 @@ local _, ns = ...
 -- mision del diario: marca 'quest', o martillo con result.quest) explica por que no hay moneda:
 -- 'Mision activa: <titulo>' o, sin titulo ni questID, 'Lo pide una mision activa'.
 -- 'quest_starter': 'Inicia una mision que no hiciste: <titulo>'. 'quest_not_active' (moneda):
--- 'Ninguna mision activa lo pide'.
+-- 'Ninguna mision activa lo pide'. 'library_book' y 'waylaid_crate' (sin marca): linea neutra con el
+-- PNJ de entrega de la faccion del jugador (los dos si no se sabe).
 -- Hook: TooltipDataProcessor.AddTooltipPostCall si existe; si no, OnTooltipSetItem de GameTooltip
 -- e ItemRefTooltip. Todo va en pcall: un fallo nuestro nunca rompe el tooltip. Solo se atienden GameTooltip e
 -- ItemRefTooltip; no se repiten las lineas si el hook dispara dos veces (se miran las lineas ya puestas).
@@ -88,6 +89,18 @@ local function professionList(ids)
     return table.concat(names, ', ')
 end
 
+-- PNJ que recibe el libro o el cajon segun la faccion del jugador; los dos si no se sabe.
+local function byFaction(horde, alliance)
+    local faction
+    if type(UnitFactionGroup) == 'function' then
+        local success, value = pcall(UnitFactionGroup, 'player')
+        if success then faction = value end
+    end
+    if faction == 'Horde' then return horde end
+    if faction == 'Alliance' then return alliance end
+    return horde .. ' / ' .. alliance
+end
+
 -- Lineas {text, r, g, b} de un enlace de item; vacio si no hay marca ni override.
 function Tooltip.Lines(link)
     local lines = {}
@@ -109,6 +122,16 @@ function Tooltip.Lines(link)
             add(L['Marked by hand: keep'], WHITE)
         elseif kind == 'override_sell' then
             add(L['Marked by hand: sell'], WHITE, 'coin')
+        elseif kind == 'library_book' then
+            add(L['Library book: turn it in to the librarian (%s)']:format(
+                byFaction(L['Owen Thadd in Undercity'], L['Garion Wendell in Stormwind'])), WHITE)
+        elseif kind == 'waylaid_crate' then
+            local npc = byFaction(L['Dokimi (Crossroads)'], L['Marcy Baker (Redridge)'])
+            if reason.sealed then
+                add(L['Sealed waylaid crate: turn it in to %s']:format(npc), WHITE)
+            else
+                add(L['Waylaid crate: fill it with one option from the list and turn it in to %s']:format(npc), WHITE)
+            end
         elseif mark == 'coin' and shows('coin') then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')

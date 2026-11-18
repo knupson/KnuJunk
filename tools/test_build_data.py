@@ -199,6 +199,67 @@ class RetryTest(unittest.TestCase):
         self.assertIn('--offline', str(ctx.exception))
 
 
+class SpecialTest(unittest.TestCase):
+    def setUp(self):
+        self.books, self.crates = build_data.compute_special(rows('itemsparse.csv'))
+
+    def test_library_books_by_description(self):
+        # Frase "addition to any library's collection", sin importar mayusculas ni el adjetivo.
+        self.assertEqual(self.books, {208800, 203755})
+
+    def test_other_library_text_is_not_a_book(self):
+        self.assertNotIn(9100, self.books)
+
+    def test_waylaid_crates_open_and_sealed(self):
+        self.assertEqual(self.crates, {248549: True, 248684: True, 248765: 'sealed'})
+
+    def test_other_crates_and_waylaid_supplies_are_not_crates(self):
+        self.assertNotIn(6357, self.crates)
+        self.assertNotIn(211315, self.crates)
+
+    def test_special_lua(self):
+        text = build_data.render_special_lua({208800, 203755}, {248765: 'sealed', 248684: True}, 'x')
+        self.assertEqual(text.splitlines()[0],
+                         '-- Generado por tools/build_data.py desde wago.tools wowf x. No editar.')
+        self.assertIn('ns.Data.libraryBooks = {', text)
+        self.assertIn('[203755] = true,', text)
+        self.assertLess(text.index('[203755]'), text.index('[208800]'))
+        self.assertIn('ns.Data.waylaidCrates = {', text)
+        self.assertIn('[248684] = true,', text)
+        self.assertIn('[248765] = "sealed",', text)
+
+
+class FilterTest(unittest.TestCase):
+    COLUMNS = build_data.COLUMNS['itemsparse']
+
+    def row(self, **fields):
+        base = {'ID': '1', 'StartQuestID': '0', 'TotemCategoryID': '0', 'Display_lang': 'Name',
+                'Description_lang': 'Text', 'Other': 'x'}
+        base.update(fields)
+        return base
+
+    def test_itemsparse_columns_include_texts(self):
+        self.assertIn('Display_lang', self.COLUMNS)
+        self.assertIn('Description_lang', self.COLUMNS)
+
+    def test_plain_item_is_dropped(self):
+        self.assertIsNone(build_data.filtered_row('itemsparse', self.row(), self.COLUMNS))
+
+    def test_starter_keeps_row_without_texts(self):
+        out = build_data.filtered_row('itemsparse', self.row(StartQuestID='5'), self.COLUMNS)
+        self.assertEqual(dict(zip(self.COLUMNS, out)),
+                         {'ID': '1', 'StartQuestID': '5', 'TotemCategoryID': '0',
+                          'Display_lang': '', 'Description_lang': ''})
+
+    def test_special_items_keep_their_texts(self):
+        book = self.row(Description_lang="A fine addition to any library's collection.")
+        out = build_data.filtered_row('itemsparse', book, self.COLUMNS)
+        self.assertEqual(out[self.COLUMNS.index('Description_lang')], book['Description_lang'])
+        crate = self.row(Display_lang='Waylaid Crate: Expert Ore')
+        out = build_data.filtered_row('itemsparse', crate, self.COLUMNS)
+        self.assertEqual(out[self.COLUMNS.index('Display_lang')], 'Waylaid Crate: Expert Ore')
+
+
 class ConsistencyTest(unittest.TestCase):
     def test_professions_match_core_lua(self):
         core = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core.lua')
