@@ -56,7 +56,7 @@ local function withScrollUtil(fn)
     fn(callbacks)
 end
 
-local function open() FAKE.Fire('LOOT_OPENED') end
+local function open() FAKE.Fire('LOOT_OPENED'); FAKE.Advance(0) end
 
 test('Loot: sin ninguna API de botin no se instala', function()
     ns.Bags.InstallAll()
@@ -157,7 +157,7 @@ test('Loot: LOOT_CLOSED y LOOT_SLOT_CLEARED limpian', function()
     open()
     ok(visible(buttons[1]) and visible(buttons[2]))
     FAKE.loot[1] = nil                       -- el jugador recogio el slot 1
-    FAKE.Fire('LOOT_SLOT_CLEARED', 1)
+    FAKE.Fire('LOOT_SLOT_CLEARED', 1); FAKE.Advance(0)
     ok(not visible(buttons[1]), 'slot vaciado: sin marca')
     ok(visible(buttons[2]), 'el otro sigue')
     FAKE.Fire('LOOT_CLOSED')
@@ -175,7 +175,7 @@ test('Loot: LOOT_SLOT_CHANGED repinta el slot', function()
     open()
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\MoneyFrame\\UI-GoldIcon')
     FAKE.loot[1] = 500
-    FAKE.Fire('LOOT_SLOT_CHANGED', 1)
+    FAKE.Fire('LOOT_SLOT_CHANGED', 1); FAKE.Advance(0)
     eq(buttons[1].KnuJunkMark.texture, 'Interface\\AddOns\\KnuJunk\\media\\quest')
 end)
 
@@ -446,8 +446,7 @@ test('Loot: LOOT_CLOSED antes de PLAYER_REGEN_ENABLED: no se marca lo diferido',
     end)
 end)
 
--- Item 12 de la ola final: una rafaga de eventos de botin agenda UNA sola pasada diferida (cada
--- evento sigue repintando en el acto, asi una fila vaciada se limpia ya).
+-- Una r?faga de eventos se agrupa en una sola pasada al siguiente cuadro.
 test('Loot: rafaga de LOOT_SLOT_CHANGED -> un solo repintado diferido', function()
     installLoot()
     classicWindow(4)
@@ -463,7 +462,7 @@ test('Loot: rafaga de LOOT_SLOT_CHANGED -> un solo repintado diferido', function
     FAKE.Advance(1)
     ns.Loot.Refresh = original
     eq(scheduled, 1, 'un temporizador por rafaga')
-    eq(calls, 11, '10 inmediatos + 1 diferido')
+    eq(calls, 1, 'un solo repintado por cuadro')
     -- La rafaga siguiente vuelve a agendar.
     FAKE.Fire('LOOT_SLOT_CHANGED', 1)
     eq(#FAKE.timers, 1)

@@ -439,7 +439,7 @@ function FAKE.Reset()
     LeaPlusDB, debugstack, GetCoinTextureString, UseContainerItem = nil, nil, nil, nil
     GQ, C_EquipmentSet, GetEquipmentSetItemIDs, GetNumEquipmentSets, GetEquipmentSetInfo = nil, nil, nil, nil, nil
     Auctionator, ColorPickerFrame = nil, nil
-    FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}
+    FAKE.time = 0; FAKE.timers = {}; FAKE.messages = {}; FAKE.saleStub = nil
     FAKE.bindings = {}; FAKE.savedBindings = {}; FAKE.inCombat = false
     FAKE.shift, FAKE.ctrl, FAKE.alt = false, false, false
     IsShiftKeyDown = function() return FAKE.shift end

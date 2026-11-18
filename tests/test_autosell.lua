@@ -1,4 +1,11 @@
 local function item(bag, slot, id, quality, price)
+    if not FAKE.saleStub then
+        FAKE.saleStub = true
+        C_Container.UseContainerItem = function(bag, slot)
+            FAKE.used[#FAKE.used + 1] = {bag, slot}
+            FAKE.bags[bag .. ':' .. slot] = nil
+        end
+    end
     id = id or (1000 + bag * 100 + slot)
     FAKE.items[id] = { name = 'Prueba' .. id, quality = quality or 0, price = price or 10, classID = 15, subclassID = 0 }
     FAKE.bags[bag .. ':' .. slot] = id
@@ -35,16 +42,18 @@ end)
 test('venta: cerrar cancela el ticker y resume sólo lo vendido', function()
     item(0, 1); item(0, 2)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
-    FAKE.Fire('MERCHANT_CLOSED'); FAKE.Advance(3)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Fire('MERCHANT_CLOSED'); FAKE.Advance(3)
     eq(#FAKE.used, 1); eq(#FAKE.messages, 1)
-    ok(FAKE.messages[1]:find('KnuJunk vendió 1 ítems por 0o 0p 10c', 1, true))
+    ok(FAKE.messages[1]:find('KnuJunk vendió 1 ítems por 10c', 1, true))
 end)
 
 test('venta: límite predeterminado de doce y reinicio por visita', function()
     for bag = 0, 1 do for slot = 1, 8 do item(bag, slot) end end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5); eq(#FAKE.used, 12)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5); eq(#FAKE.used, 12)
-    FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5)
+    FAKE.Fire('MERCHANT_CLOSED')
+    for bag = 0, 1 do for slot = 1, 8 do item(bag, slot) end end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5)
     eq(#FAKE.used, 24); eq(#FAKE.messages, 2)
 end)
 
@@ -253,7 +262,7 @@ end)
 
 test('venta: fallback global vende sin C_Container.UseContainerItem', function()
     item(0, 1); C_Container.UseContainerItem = nil
-    UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot} end
+    UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot}; FAKE.bags[bag .. ':' .. slot] = nil end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
     eq(#FAKE.used, 1); eq(#FAKE.messages, 1)
 end)
@@ -301,4 +310,89 @@ test('venta: textos enUS y resumen sin texturas de moneda', function()
     end)
     ns.L, FAKE.locale = original, locale
     if not success then error(err, 0) end
+end)
+
+test('regresión 5: nil sin cambio de ranura no cuenta como venta ni dinero', function()
+    item(0, 1)
+    C_Container.UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot} end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
+    eq(#FAKE.used, 1); eq(#FAKE.messages, 0); ok(FAKE.bags['0:1'])
+    FAKE.Fire('BAG_UPDATE_DELAYED'); eq(#FAKE.messages, 0)
+    FAKE.Advance(2); FAKE.Fire('MERCHANT_CLOSED')
+    eq(#FAKE.used, 1); eq(#FAKE.messages, 0)
+end)
+
+test('regresión 5: incluso true necesita confirmación de inventario', function()
+    item(0, 1)
+    C_Container.UseContainerItem = function() return true end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(1)
+    eq(#FAKE.messages, 0); ok(FAKE.bags['0:1'])
+end)
+
+test('regresión 5: confirma GUID desaparecido al tick siguiente, sin resumen anticipado', function()
+    item(0, 1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
+    eq(FAKE.bags['0:1'], nil); eq(#FAKE.messages, 0)
+    FAKE.Advance(.2); eq(#FAKE.messages, 1)
+    ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+end)
+
+test('regresión 5: BAG_UPDATE_DELAYED confirma GUID cambiado antes del cierre', function()
+    item(0, 1)
+    C_Container.UseContainerItem = function() FAKE.guids['0:1'] = 'reemplazo' end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Fire('BAG_UPDATE_DELAYED')
+    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 1)
+    ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+end)
+
+test('regresión 5: una reducción parcial sólo suma el precio de las unidades vendidas', function()
+    item(0, 1, 1001, 0, 7)
+    local original, count = C_Container.GetContainerItemInfo, 5
+    C_Container.GetContainerItemInfo = function(...)
+        local info = original(...)
+        if info then info.stackCount = count end
+        return info
+    end
+    C_Container.UseContainerItem = function() count = 3 end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    eq(#FAKE.messages, 1)
+    ok(FAKE.messages[1]:find('1 ítems por 14c', 1, true))
+end)
+
+test('regresión 5: rechazos consumen sólo el límite de intentos; resumen sólo de confirmados', function()
+    for slot = 1, 4 do item(0, slot) end
+    ns.DB.autoSell.max = 3
+    C_Container.UseContainerItem = function(bag, slot)
+        FAKE.used[#FAKE.used + 1] = {bag, slot}
+        if slot == 2 then FAKE.bags[bag .. ':' .. slot] = nil end
+    end
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5)
+    eq(#FAKE.used, 3); ok(FAKE.bags['0:1']); ok(FAKE.bags['0:3']); ok(FAKE.bags['0:4'])
+    eq(#FAKE.messages, 1)
+    ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+end)
+
+test('regresión 5: confirmación ilegible y cierre con intento pendiente no inventan ventas', function()
+    item(0, 1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
+    C_Item.GetItemGUID = function() error('sin datos') end
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    eq(#FAKE.messages, 0)
+    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 0)
+end)
+
+test('regresión 5: cerrar antes de confirmar descarta el intento pendiente', function()
+    item(0, 1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
+    FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(1)
+    eq(#FAKE.messages, 0)
+end)
+
+test('dinero: sólo unidades distintas de cero (en el juego salía «0o 30p 48c»)', function()
+    local previous = GetCoinTextureString; GetCoinTextureString = nil
+    eq(ns.FormatMoney(3048), '30p 48c'); eq(ns.FormatMoney(10), '10c'); eq(ns.FormatMoney(0), '0c')
+    eq(ns.FormatMoney(10000), '1o'); eq(ns.FormatMoney(12345), '1o 23p 45c')
+    GetCoinTextureString = previous
 end)

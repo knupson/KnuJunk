@@ -21,6 +21,7 @@ local DEFAULT_BUTTONS = 4
 local hookedRows = setmetatable({}, { __mode = 'k' })  -- filas con su Init enganchado (fallback por mixin)
 local mixinInit                                        -- el Init del mixin ya enganchado
 local closed = false                                   -- LOOT_CLOSED visto y aun no hay LOOT_OPENED
+local shiftDown = false
 local ownerToken = {}                                  -- "dueno" de los callbacks de la lista
 local hooked = { list = false, mixin = false, classic = false }
 local rowOfMark = setmetatable({}, { __mode = 'k' })   -- [boton marcado] = fila que lo contiene
@@ -170,20 +171,21 @@ local soonPending = false -- hay una pasada diferida agendada (ver refreshSoon)
 function Loot.ResetState()
     hooked = { list = false, mixin = false, classic = false }
     closed = false
+    shiftDown = false
     mixinInit = nil
     hookedRows = setmetatable({}, { __mode = 'k' })
     rowOfMark = setmetatable({}, { __mode = 'k' })
     seen = setmetatable({}, { __mode = 'k' })
     soonPending = false
+    ns.LootAdvisor.Invalidate()
 end
 
 ns.Bags.Register(OWNER, { install = Loot.Hook, refresh = Loot.Refresh, revalidate = revalidate })
 
--- Eventos del botin: cerrar limpia; abrir/cambiar/vaciar repinta desde los slots actuales, en el acto y
--- otra vez al siguiente cuadro (cuando Blizzard ya dibujo las filas). La pasada diferida es una sola
--- por rafaga de eventos.
+-- Una sola pasada al siguiente cuadro, cuando Blizzard ya dibujo las filas.
 local function refreshSoon()
-    if soonPending or not (C_Timer and C_Timer.After) then return end
+    if soonPending then return end
+    if not (C_Timer and C_Timer.After) then return Loot.Refresh() end
     soonPending = true
     C_Timer.After(0, function()
         soonPending = false
@@ -195,13 +197,23 @@ local frame = CreateFrame('Frame')
 for _, event in ipairs({ 'LOOT_OPENED', 'LOOT_SLOT_CHANGED', 'LOOT_SLOT_CLEARED', 'LOOT_CLOSED', 'MODIFIER_STATE_CHANGED', 'BAG_UPDATE_DELAYED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
-frame:SetScript('OnEvent', function(_, event)
+frame:SetScript('OnEvent', function(_, event, key)
+    if event == 'MODIFIER_STATE_CHANGED' then
+        if key ~= 'LSHIFT' and key ~= 'RSHIFT' then return end
+        local down = type(IsShiftKeyDown) == 'function' and IsShiftKeyDown() == true
+        if down == shiftDown then return end
+        shiftDown = down
+    else
+        ns.LootAdvisor.Invalidate()
+    end
     if event == 'LOOT_CLOSED' then
         closed = true                -- un repintado pendiente no debe revivir las marcas
         return pcall(Loot.ClearAll)
     end
-    if event == 'LOOT_OPENED' then closed = false end
+    if event == 'LOOT_OPENED' then
+        closed = false
+        shiftDown = type(IsShiftKeyDown) == 'function' and IsShiftKeyDown() == true
+    end
     if not lootShown() then return end
-    pcall(Loot.Refresh)
     pcall(refreshSoon)
 end)
