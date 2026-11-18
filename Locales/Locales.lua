@@ -10,6 +10,10 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ["Your class can't use %s: you can auction it or pass it to another character"] = 'Tu clase no puede usar %s: podés subastarlo o pasarlo a otro personaje',
     ["Quest turned in; unknown if it's repeatable"] = 'Misión entregada; no se sabe si es repetible',
     ['Your profession: %s'] = 'Tu profesión: %s',
+    ['%s reagent: %s'] = 'Reactivo de %s: %s',
+    ['%s and %d more'] = '%s y %d más',
+    ["Reagent for your class's spells"] = 'Reactivo de hechizos de tu clase',
+    ['%s reagent'] = 'Reactivo de %s',
     ["Profession you don't have: %s"] = 'Profesión que no tenés: %s',
     ['Tool for your profession: %s'] = 'Herramienta de tu profesión: %s',
     ["Tool for a profession you don't have: %s"] = "Herramienta de profesión que no tenés: %s",
@@ -60,6 +64,26 @@ local NAMES = {
     [129] = { es = 'Primeros auxilios', en = 'First Aid' },
     [356] = { es = 'Pesca', en = 'Fishing' },
 }
+
+-- Nombres de las clases (token de UnitClass) para cuando el cliente no trae LOCALIZED_CLASS_NAMES_MALE.
+local CLASS_NAMES = {
+    WARRIOR = { es = 'Guerrero', en = 'Warrior' }, PALADIN = { es = 'Paladín', en = 'Paladin' },
+    HUNTER = { es = 'Cazador', en = 'Hunter' }, ROGUE = { es = 'Pícaro', en = 'Rogue' },
+    PRIEST = { es = 'Sacerdote', en = 'Priest' }, SHAMAN = { es = 'Chamán', en = 'Shaman' },
+    MAGE = { es = 'Mago', en = 'Mage' }, WARLOCK = { es = 'Brujo', en = 'Warlock' },
+    DRUID = { es = 'Druida', en = 'Druid' },
+}
+
+-- Nombre de la clase: el del cliente (LOCALIZED_CLASS_NAMES_MALE) o el propio en su idioma.
+function ns.ClassName(token)
+    local client = rawget(_G, 'LOCALIZED_CLASS_NAMES_MALE')
+    if type(client) == 'table' and type(client[token]) == 'string' and client[token] ~= '' then return client[token] end
+    local names = CLASS_NAMES[token]
+    if not names then return tostring(token) end
+    local locale = GetLocale and GetLocale() or 'enUS'
+    if locale == 'esES' or locale == 'esMX' then return names.es end
+    return names.en
+end
 
 -- Minusculas y sin tildes (UTF-8), para comparar sin importar mayusculas ni acentos.
 local ACCENTS = {

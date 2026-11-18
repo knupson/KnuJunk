@@ -330,6 +330,60 @@ test('equipo de otra clase sin ligar o sin saberlo -> sin moneda, motivo class_c
     end)
 end)
 
+-- Tanda 1, regla 15: reactivos/herramientas de hechizos de clase (Data/ClassReagents.lua). Propia o
+-- ajena: sin moneda y sin marca (nunca martillo); el motivo dice la clase y, si es la tuya, los hechizos.
+local function withClassReagents(map, fn)
+    local saved = ns.Data.classReagents
+    ns.Data.classReagents = map
+    local success, err = pcall(fn)
+    ns.Data.classReagents = saved
+    if not success then error(err, 0) end
+end
+
+test('reactivo de clase propia o ajena -> sin moneda ni marca, motivo class_reagent', function()
+    withData({}, {}, function()
+        withClassReagents({ [9000] = { 'MAGE', 'PRIEST', spells = { MAGE = { 130 }, PRIEST = { 1706 } } } }, function()
+            local gray = item { quality = 0, price = 5 }
+            local own = ns.Classify(gray, ctx { class = 'MAGE' })
+            eq(own.mark, nil); ok(not hasReason(own, 'gray'), 'sin moneda gris')
+            local reason = hasReason(own, 'class_reagent')
+            eq(reason.own, true); eq(reason.spells[1], 130); eq(reason.classes[1], 'MAGE')
+            local other = ns.Classify(gray, ctx { class = 'WARRIOR' })
+            eq(other.mark, nil)
+            local otherReason = hasReason(other, 'class_reagent')
+            eq(otherReason.own, false); eq(otherReason.spells, nil)
+            eq(otherReason.classes[1], 'MAGE'); eq(otherReason.classes[2], 'PRIEST')
+            local quest = ns.Classify(item { classID = 12 }, ctx { class = 'WARRIOR' })
+            eq(quest.mark, nil, 'tampoco quest_not_active')
+            local sold = ns.Classify(gray, ctx { overrides = { [9000] = 'sell' } })
+            eq(sold.mark, 'coin', 'override_sell sigue valiendo')
+        end)
+    end)
+    -- Si ademas es reactivo de profesion: martillo verde > tu clase > martillo amarillo > otra clase.
+    withData({ [9000] = { 171 } }, {}, function()
+        withClassReagents({ [9000] = { 'ROGUE', spells = { ROGUE = { 1 } } } }, function()
+            eq(ns.Classify(item(), ctx { class = 'ROGUE', professions = { [171] = true } }).mark, 'hammer_mine', 'alquimista')
+            local rogue = ns.Classify(item(), ctx { class = 'ROGUE' })
+            eq(rogue.mark, nil, 'picaro sin Alquimia: reactivo de su clase')
+            eq(hasReason(rogue, 'class_reagent').own, true)
+            eq(ns.Classify(item(), ctx { class = 'MAGE' }).mark, 'hammer_other', 'otra clase sin Alquimia')
+        end)
+    end)
+end)
+
+test('Data: reactivos de clase de ejemplo generados', function()
+    local expected = { [17031] = 'MAGE', [17032] = 'MAGE', [17030] = 'SHAMAN', [5140] = 'ROGUE',
+        [6265] = 'WARLOCK', [17056] = 'MAGE' }
+    for id, class in pairs(expected) do
+        local entry = ns.Data.classReagents[id]
+        ok(entry, 'falta ' .. id)
+        local found = false
+        for _, name in ipairs(entry) do if name == class then found = true end end
+        ok(found, class .. ' en ' .. id)
+        ok(type(entry.spells[class]) == 'table', 'hechizos de ' .. class .. ' en ' .. id)
+    end
+end)
+
 -- Correccion del user (2026-11-17): un iniciador cuya mision no hiciste es util aunque no este en
 -- el diario; con la mision hecha (y no repetible) es basura.
 test('iniciador de QuestieDB: no hecha -> quest_starter; hecha -> coin quest_done', function()

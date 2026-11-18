@@ -360,6 +360,38 @@ test('Tooltip: la linea Ligado del propio tooltip confirma el ejemplar ligado', 
     line(pickup, 2, 'Tu clase no puede usar Placas: podés subastarlo o pasarlo a otro personaje', { 1, 1, 1 })
 end)
 
+-- Tanda 1, regla 15: reactivo de hechizo de clase. Linea neutra sin icono: con la clase propia nombra
+-- el hechizo (o 'hechizos de tu clase' si no hay nombre); con otra clase, solo la clase.
+test('Tooltip: reactivo de hechizos de clase', function()
+    addItem(100, { quality = 1 })
+    local processor = withProcessor()
+    ns.Tooltip.Hook()
+    local function shown(reason)
+        local text
+        withClassify(function() return { mark = nil, reasons = { reason } } end, function()
+            local tip = newTooltip(100)
+            run(processor, tip, {})
+            eq(#tip.lines, 1)
+            ok(not hasIcon(tip.lines[1]), 'sin icono')
+            eq(tip.lines[1].r, 1); eq(tip.lines[1].g, 1); eq(tip.lines[1].b, 1)
+            text = tip.lines[1].text
+        end)
+        return text
+    end
+    GetSpellInfo = function(id) if id == 130 then return 'Caída lenta' end end
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE', 'PRIEST' }, spells = { 130 } }), 'Reactivo de Mago: Caída lenta')
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE' }, spells = { 9, 130, 131 } }), 'Reactivo de Mago: Caída lenta y 2 más')
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'MAGE' }, spells = { 9 } }), 'Reactivo de hechizos de tu clase')
+    eq(shown({ kind = 'class_reagent', own = false, classes = { 'MAGE', 'PRIEST' } }), 'Reactivo de Mago, Sacerdote')
+    LOCALIZED_CLASS_NAMES_MALE = { WARLOCK = 'Brujo del cliente' }
+    eq(shown({ kind = 'class_reagent', own = false, classes = { 'WARLOCK' } }), 'Reactivo de Brujo del cliente')
+    LOCALIZED_CLASS_NAMES_MALE = nil
+    GetSpellInfo = nil
+    C_Spell = { GetSpellName = function(id) if id == 693 then return 'Crear piedra de alma' end end }
+    eq(shown({ kind = 'class_reagent', own = true, classes = { 'WARLOCK' }, spells = { 693 } }), 'Reactivo de Brujo: Crear piedra de alma')
+    C_Spell = nil
+end)
+
 test('Tooltip: las nueve claves en ingles tienen traduccion al castellano', function()
     local keys = { 'Junk: sells', 'Quest finished: %s', "Your class can't use %s", 'Your profession: %s',
         "Profession you don't have: %s", 'Marked by hand: keep', 'Marked by hand: sell',

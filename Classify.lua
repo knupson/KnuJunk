@@ -174,13 +174,38 @@ function ns.Classify(item, ctx)
         result.mark = 'hammer_mine'
         reasons[#reasons + 1] = { kind = 'profession_tool', professions = mineTool }
         return result
-    elseif reagentLines then
+    end
+    -- Reactivo o herramienta de un hechizo de clase (Data/ClassReagents.lua: runas del mago, ankh,
+    -- fragmento de alma, venenos...). Sin moneda y sin marca (nunca martillo, que es de profesiones);
+    -- no se exige que el hechizo ya este aprendido. Precedencia: martillo verde > reactivo de TU clase
+    -- > martillo amarillo (profesion que no tenes) > reactivo de otra clase. spells solo para tu clase.
+    local classReagent = ns.Data.classReagents and ns.Data.classReagents[id]
+    local classReason
+    if type(classReagent) == 'table' then
+        local classes, own = {}, false
+        for i, name in ipairs(classReagent) do
+            classes[i] = name
+            if name == ctx.class then own = true end
+        end
+        local spells = own and type(classReagent.spells) == 'table' and classReagent.spells[ctx.class] or nil
+        classReason = { kind = 'class_reagent', own = own, classes = classes, class = own and ctx.class or nil,
+            spells = own and (type(spells) == 'table' and spells or {}) or nil }
+        if own then
+            reasons[#reasons + 1] = classReason
+            return result
+        end
+    end
+    if reagentLines then
         result.mark = 'hammer_other'
         reasons[#reasons + 1] = { kind = 'profession', professions = copy(reagentLines) }
         return result
     elseif toolLines then
         result.mark = 'hammer_other'
         reasons[#reasons + 1] = { kind = 'profession_tool', professions = copy(toolLines) }
+        return result
+    end
+    if classReason then
+        reasons[#reasons + 1] = classReason
         return result
     end
 

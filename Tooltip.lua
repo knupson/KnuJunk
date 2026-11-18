@@ -83,6 +83,22 @@ local function subclassName(given, classID, subclassID)
     return tostring(subclassID)
 end
 
+-- Nombre localizado de un hechizo (C_Spell.GetSpellName o GetSpellInfo), o nil.
+local function spellName(spellID)
+    local api
+    if type(C_Spell) == 'table' and type(C_Spell.GetSpellName) == 'function' then api = C_Spell.GetSpellName
+    elseif type(GetSpellInfo) == 'function' then api = GetSpellInfo end
+    if not api then return nil end
+    local success, name = pcall(api, spellID)
+    if success and type(name) == 'string' and name ~= '' then return name end
+end
+
+local function classList(tokens)
+    local names = {}
+    for _, token in ipairs(type(tokens) == 'table' and tokens or {}) do names[#names + 1] = ns.ClassName(token) end
+    return table.concat(names, ', ')
+end
+
 local function professionList(ids)
     local names = {}
     for _, skillLine in ipairs(type(ids) == 'table' and ids or {}) do
@@ -145,6 +161,25 @@ function Tooltip.Lines(link, bound)
                 add(L['No active quest needs it'], GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
+            end
+        elseif kind == 'class_reagent' and mark == nil then
+            -- Reactivo de hechizo de clase: neutro y sin icono. Tu clase: el primer hechizo con nombre
+            -- (y cuantos mas lo usan); sin nombre, generico. Otra clase: solo la clase.
+            if reason.own then
+                local spells = type(reason.spells) == 'table' and reason.spells or {}
+                local name
+                for _, spellID in ipairs(spells) do
+                    name = spellName(spellID)
+                    if name then break end
+                end
+                if name then
+                    if #spells > 1 then name = L['%s and %d more']:format(name, #spells - 1) end
+                    add(L['%s reagent: %s']:format(ns.ClassName(reason.class or (reason.classes or {})[1]), name), WHITE)
+                else
+                    add(L["Reagent for your class's spells"], WHITE)
+                end
+            else
+                add(L['%s reagent']:format(classList(reason.classes)), WHITE)
             end
         elseif kind == 'class_cannot_use_tradeable' and mark == nil then
             -- Sin ligar o sin saberlo: no es basura, se puede vender en subasta o pasar (sin icono).

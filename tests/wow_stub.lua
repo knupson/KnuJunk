@@ -331,7 +331,7 @@ function FAKE.Reset()
         'TooltipDataProcessor', 'Enum', 'GetItemSubClassInfo', 'QuestUtils_GetQuestName', 'ItemRefTooltip',
         'TooltipUtil', 'C_Item', 'Syndicator', 'BankPanelItemButtonMixin', 'CamelotBankPanelItemButtonMixin',
         'BankPanel', 'BankFrame', 'ItemLocation', 'ITEM_SPELL_TRIGGER_ONEQUIP', 'ITEM_SPELL_TRIGGER_ONUSE',
-        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND' }) do _G[name] = nil end
+        'ITEM_SPELL_TRIGGER_ONPROC', 'ITEM_SOULBOUND', 'GetSpellInfo', 'C_Spell', 'LOCALIZED_CLASS_NAMES_MALE' }) do _G[name] = nil end
     for name in pairs(FAKE.named) do _G[name] = nil end
     FAKE.named = {}
     installClient()
