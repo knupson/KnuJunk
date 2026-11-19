@@ -4,6 +4,8 @@ Iconos en las bolsas y en el botín para ver qué se puede vender o tirar y qué
 
 **Estado:** 0.1.0-beta, sin publicar. Probado sólo con pruebas automáticas contra un cliente simulado (`luajit tests/run.lua`); nada probado todavía en el juego.
 
+- Clasificación: efecto subordinado a clase y misión, fallback `no_rule` visible y motivos adicionales en gris; [auditoría completa de venta](docs/auditoria-venta.md), reproducible con `python -I tools/auditoria_venta.py --ambos` (o `--offline --ambos` con las tablas descargadas).
+
 - **Reparación automática:** activada por defecto; fondos de hermandad opcionales en General, Shift para saltearla y reintento tras las ventas si faltaba plata. Sin archivos nuevos en el `.toc`; pendiente validar en Forever.
 
 - **Venta automática:** activada por defecto, sólo moneditas de bolsas 0 a 4, una ranura cada 0,2 s y hasta 12 por visita; opciones «Sólo grises» y límite de 1 a 12, resumen y avisos de otros vendedores automáticos sin cambiarles la configuración. Reiniciá el cliente por `AutoSell.lua`; pendiente probar en Forever.

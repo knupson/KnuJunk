@@ -95,7 +95,7 @@ test('juego1: sin APIs de foco no interrumpe tooltip', function()
     eq(ns.Merchant.ShowHoveredShield(0, 1), nil)
     local tip = tooltip(900001)
     ns.Tooltip.Decorate(tip)
-    eq(#tip.lines, 3)
+    eq(#tip.lines, 4) -- incluye el motivo informativo de misión fuera del diario
 end)
 
 local function protected()
@@ -152,7 +152,7 @@ test('juego1: Show conserva bolsa y slot del hook SetBagItem sin GetBagItem', fu
     tip:GetScript('OnTooltipCleared')(tip); tip.lines = {}
     function tip:Show() self:GetScript('OnTooltipSetItem')(self) end
     ns.Tooltip.Decorate(tip, nil, 0, 1)
-    eq(#tip.lines, 3); eq(button.hookCalls.OnClick, 1)
+    eq(#tip.lines, 4); eq(button.hookCalls.OnClick, 1)
     button:Click('RightButton'); eq(FAKE.popup.data.slot, 1)
 end)
 
@@ -260,8 +260,9 @@ test('juego1: tooltip sin precio automatico y venta manual en tres locales', fun
                 ns.DB.overrides[900001] = manual and 'sell' or nil
                 local lines = ns.Tooltip.Lines(FAKE.linkOf(900001))
                 local expected = locale == 'enUS' and 'Cannot be sold (no vendor price)' or 'No se puede vender (sin precio)'
-                eq(lines[#lines].text, expected)
-                ok(not lines[#lines].text:find('|T', 1, true))
+                local priceLine = lines[manual and 3 or #lines]
+                eq(priceLine.text, expected)
+                ok(not priceLine.text:find('|T', 1, true))
                 if not manual then
                     eq(lines[2].text, ns.L['No active quest needs it'])
                     eq(lines[2].r, 1); eq(lines[2].g, 1); eq(lines[2].b, 1)

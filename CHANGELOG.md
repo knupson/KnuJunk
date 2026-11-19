@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Corregida la precedencia de efectos frente a clase y misión; fallback `no_rule`, motivos informativos en tooltip y auditoría completa de wowf con CSV por contexto, sin cambiar a venta por defecto ni agregar entradas al `.toc`.
+
 - Reparación automática activada por defecto, fondos de hermandad opcionales, Shift para saltearla, reintento tras las ventas y avisos de Leatrix Plus/ElvUI; pendiente validar en Forever.
 
 - Asesor de botín con bolsa llena: Shift muestra si conviene lootear, contempla pilas, misiones y bolsas especiales; tooltip con candidato y valores, sin tirar nada automáticamente.

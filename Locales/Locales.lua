@@ -78,6 +78,12 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ["Color picker unavailable in this client"] = "Selector de color no disponible en este cliente",
 
     ['Cannot be sold (no vendor price)'] = 'No se puede vender (sin precio)',
+    ['No rule for this item: not sold by default'] = 'Sin regla para este ítem: por defecto no se vende',
+    ['The quest log could not be read completely'] = 'No se pudo leer todo el diario de misiones',
+    ['Repeatable quest: %s'] = 'Misión repetible: %s',
+    ['Also: '] = 'También: ',
+    ['Has a use or equip effect'] = 'Tiene un efecto de uso o de equipar',
+    ['Part of an item set'] = 'Forma parte de un conjunto de equipo',
     ['Locks them while the merchant is open; right-click asks before selling.'] = 'Los traba mientras el vendedor está abierto; con clic derecho te pregunta antes de vender.',
     ['Protected: right-click to sell'] = 'Protegido: clic derecho para vender',
     ['Protected while the merchant is open'] = 'Protegido mientras el vendedor está abierto',
