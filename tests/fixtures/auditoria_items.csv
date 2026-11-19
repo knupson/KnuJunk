@@ -1,0 +1,9 @@
+id,name,classID,subclassID,quality,price,reqLevel,bonding,startQuestID,isSetPiece,equipLoc,hasUseSpell,hasEquipSpell,effect,openable
+990801,"Sin regla,
+con coma",15,0,1,10,0,0,0,0,,0,0,no,0
+990802,"Basura ""gris""",15,0,0,12,0,0,0,0,,0,0,no,0
+990803,Objetivo con uso,12,0,1,8,0,1,0,0,,1,0,yes,0
+990804,Bastón con efecto,2,10,2,50,25,1,0,0,INVTYPE_2HWEAPON,0,1,yes,0
+990805,Gris sin precio,15,0,0,0,0,0,0,0,,0,0,no,0
+990806,Efecto desconocido,15,0,1,2,0,0,0,0,,0,0,unknown,0
+990807,Datos pendientes,15,0,,,,0,0,0,,0,0,no,0

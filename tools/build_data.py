@@ -41,7 +41,7 @@ COLUMNS = {
     'skilllineability': ['SkillLine', 'Spell', 'ClassMask', 'MinSkillLineRank'],
     'spellreagents': ['SpellID'] + REAGENT_SLOTS,
     'itemsparse': ['ID', 'StartQuestID', 'TotemCategoryID', 'Display_lang', 'Description_lang', 'LockID', 'RequiredSkill', 'RequiredSkillRank',
-                   'RequiredLevel', 'ItemLevel', 'OverallQualityID', 'AllowableClass', 'AllowableRace_0', 'RequiredAbility', 'MinFactionID', 'RequiredPVPRank', 'RequiredHoliday'],
+                   'RequiredLevel', 'ItemLevel', 'OverallQualityID', 'AllowableClass', 'AllowableRace_0', 'RequiredAbility', 'MinFactionID', 'RequiredPVPRank', 'RequiredHoliday', 'Flags_0'],
     'item': ['ID', 'ClassID', 'SubclassID'],
     'itemxitemeffect': ['ItemID', 'ItemEffectID'],
     'itemeffect': ['ID', 'SpellID', 'TriggerType'],
@@ -158,9 +158,17 @@ def compute_locks(item_rows, sparse_rows):
     return {i for i in keys if i > 0}, {i for i in boxes if i > 0}
 
 
-def render_locks_lua(keys, boxes, build):
-    lines = [_header(build), '-- Item.ClassID=13 más abridores curados; ItemSparse.LockID > 0.\n']
-    for name, ids in (('keys', keys), ('lockboxes', boxes)):
+def compute_openables(sparse_rows):
+    """Items que se abren (Flags_0 & 0x4)."""
+    return {_int(r.get('ID')) for r in sparse_rows if _int(r.get('ID')) > 0 and (_int(r.get('Flags_0')) & 0x4) != 0}
+
+
+def render_locks_lua(keys, boxes, build, openables=None):
+    lines = [_header(build), '-- Item.ClassID=13 más abridores curados; ItemSparse.LockID > 0; ItemSparse.Flags_0 & 0x4.\n']
+    tables = [('keys', keys), ('lockboxes', boxes)]
+    if openables is not None:
+        tables.append(('openables', openables))
+    for name, ids in tables:
         lines.append('ns.Data.%s = {\n' % name)
         for item in sorted(ids):
             lines.append('    [%d] = true,\n' % item)
@@ -341,19 +349,7 @@ RECIPE_SUBCLASSES = {1: 165, 2: 197, 3: 202, 4: 164, 5: 185,
                      6: 171, 7: 129, 8: 333, 9: 356}
 
 
-def compute_recipes(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, ability_rows):
-    """Receta -> profesión/rango: Item -> ItemXItemEffect -> ItemEffect (learn, trigger 6)
-    o SpellEffect (learn spell, efecto 36) -> SkillLineAbility. Respaldo por subclase.
-    No se infiere una profesión de un hechizo de uso cualquiera. Conflictos: sin dato.
-    RequiredSkillRank del item gana al mínimo del hechizo; cero/ausente = desconocido.
-    """
-    items = {_int(r['ID']): _int(r.get('SubclassID')) for r in item_rows if _int(r.get('ClassID')) == 9}
-    sparse = {_int(r['ID']): r for r in sparse_rows}
-    abilities = {}
-    for row in ability_rows:
-        line = _int(row.get('SkillLine'))
-        if line in PROFESSIONS:
-            abilities.setdefault(_int(row.get('Spell')), {}).setdefault(line, set()).add(_int(row.get('MinSkillLineRank')))
+def _learned_spells(items, link_rows, effect_rows, spell_rows):
     teaches = {}
     for row in spell_rows:
         if _int(row.get('Effect')) == 36 and _int(row.get('EffectTriggerSpell')) > 0:
@@ -367,6 +363,23 @@ def compute_recipes(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, 
         item = _int(row.get('ItemID'))
         if item in items:
             learned.setdefault(item, set()).update(effects.get(_int(row.get('ItemEffectID')), ()))
+    return learned
+
+
+def compute_recipes(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, ability_rows):
+    """Receta -> profesión/rango: Item -> ItemXItemEffect -> ItemEffect (learn, trigger 6)
+    o SpellEffect (learn spell, efecto 36) -> SkillLineAbility. Respaldo por subclase.
+    No se infiere una profesión de un hechizo de uso cualquiera. Conflictos: sin dato.
+    RequiredSkillRank del item gana al mínimo del hechizo; cero/ausente = desconocido.
+    """
+    items = {_int(r['ID']): _int(r.get('SubclassID')) for r in item_rows if _int(r.get('ClassID')) == 9}
+    sparse = {_int(r['ID']): r for r in sparse_rows}
+    abilities = {}
+    for row in ability_rows:
+        line = _int(row.get('SkillLine'))
+        if line in PROFESSIONS:
+            abilities.setdefault(_int(row.get('Spell')), {}).setdefault(line, set()).add(_int(row.get('MinSkillLineRank')))
+    learned = _learned_spells(items, link_rows, effect_rows, spell_rows)
     result = {}
     for item, subclass in items.items():
         lines = {}
@@ -390,12 +403,36 @@ def compute_recipes(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, 
     return result
 
 
-def render_recipes_lua(recipes, build):
+def compute_class_books(item_rows, sparse_rows, link_rows, effect_rows, spell_rows, ability_rows=()):
+    """Libros de clase (ClassID=9, SubclassID=0): item -> {spell, classMask}."""
+    items = {_int(r['ID']) for r in item_rows if _int(r.get('ClassID')) == 9 and _int(r.get('SubclassID')) == 0}
+    sparse = {_int(r['ID']): r for r in sparse_rows}
+    prof_spells = {_int(r.get('Spell')) for r in ability_rows if _int(r.get('SkillLine')) in PROFESSIONS}
+    learned = _learned_spells(items, link_rows, effect_rows, spell_rows)
+    result = {}
+    for item in items:
+        spells = {s for s in learned.get(item, ()) if s > 0 and s not in prof_spells}
+        if len(spells) != 1:
+            continue
+        mask = _int(sparse.get(item, {}).get('AllowableClass'))
+        if mask <= 0:
+            continue
+        result[item] = {'spell': next(iter(spells)), 'classMask': mask}
+    return result
+
+
+def render_recipes_lua(recipes, build, class_books=None):
     lines = [_header(build), '-- Recetas: item -> profesión y rango requerido, si se conoce.\n', 'ns.Data.recipes = {\n']
     for item, recipe in sorted(recipes.items()):
         rank = ', rank = %d' % recipe['rank'] if 'rank' in recipe else ''
         lines.append('    [%d] = { skillLine = %d%s },\n' % (item, recipe['skillLine'], rank))
     lines.append('}\n')
+    if class_books is not None:
+        lines.append('-- Libros de clase: item -> hechizo que enseña y máscara de clases (AllowableClass).\n')
+        lines.append('ns.Data.classBooks = {\n')
+        for item, book in sorted(class_books.items()):
+            lines.append('    [%d] = { spell = %d, classMask = %d },\n' % (item, book['spell'], book['classMask']))
+        lines.append('}\n')
     return ''.join(lines)
 
 
@@ -637,7 +674,9 @@ def filtered_row(table, row, columns, retain_ids=(), retain_spells=None):
     textos (nombre, descripcion) solo se conservan en los libros y cajones."""
     if table == 'itemsparse':
         special = _is_special(row)
-        if not special and _int(row['ID']) not in retain_ids and _int(row['StartQuestID']) == 0 and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0 and _int(row.get('RequiredSkill')) == 0:
+        if (not special and _int(row['ID']) not in retain_ids and _int(row['StartQuestID']) == 0
+                and _int(row['TotemCategoryID']) == 0 and _int(row.get('LockID')) == 0
+                and _int(row.get('RequiredSkill')) == 0 and (_int(row.get('Flags_0')) & 0x4) == 0):
             return None
         return [row.get(c, '0') if special or c not in ITEM_TEXTS else '' for c in columns]
     if table == 'item' and _int(row.get('ClassID')) not in (0, 6, 9, 13):
@@ -725,7 +764,7 @@ def main(argv=None):
         build = args.build or latest_build()
         download_filtered('item', build)
         candidates = {_int(r['ID']) for r in read_csv(os.path.join(RAW_DIR, 'item.csv'))
-                      if _int(r['ClassID']) in (0, 6)}
+                      if _int(r['ClassID']) in (0, 6, 9)}
         for table in COLUMNS:
             if table != 'item':
                 spells = food_spell_ids() if table in ('spelleffect', 'spellmisc') else None
@@ -748,8 +787,11 @@ def main(argv=None):
     gear, missing = compute_class_gear(raw('skilllineability'))
     books, crates = compute_special(raw('itemsparse'))
     keys, boxes = compute_locks(raw('item'), raw('itemsparse'))
+    openables = compute_openables(raw('itemsparse'))
     recipes = compute_recipes(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
                               raw('spelleffect'), raw('skilllineability'))
+    class_books = compute_class_books(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
+                                      raw('spelleffect'), raw('skilllineability'))
     food = compute_food(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemeffect'),
                         raw('spelleffect'), raw('spellmisc'), raw('spellduration'))
     ammo = compute_ammo(raw('item'), raw('itemsparse'), raw('itemxitemeffect'), raw('itemdamageammo'))
@@ -763,13 +805,15 @@ def main(argv=None):
     write_lua('ClassGear.lua', render_class_gear_lua(gear, build))
     write_lua('Special.lua', render_special_lua(books, crates, build))
     write_lua('ClassReagents.lua', render_class_reagents_lua(class_reagents, build))
-    write_lua('Locks.lua', render_locks_lua(keys, boxes, build))
-    write_lua('Recipes.lua', render_recipes_lua(recipes, build))
+    write_lua('Locks.lua', render_locks_lua(keys, boxes, build, openables))
+    write_lua('Recipes.lua', render_recipes_lua(recipes, build, class_books))
     write_lua('Food.lua', render_optional_lua(food, 'food', build))
     write_lua('Ammo.lua', render_optional_lua(ammo, 'ammo', build))
     print('%d comidas/bebidas simples, %d municiones ordinarias' % (len(food), len(ammo)))
-    print('%d recetas (%d con rango)' % (len(recipes), sum('rank' in r for r in recipes.values())))
-    print('%d llaves/abridores, %d cajas con cerradura' % (len(keys), len(boxes)))
+    print('%d recetas (%d con rango), %d libros de clase'
+          % (len(recipes), sum('rank' in r for r in recipes.values()), len(class_books)))
+    print('%d llaves/abridores, %d cajas con cerradura, %d items que se abren'
+          % (len(keys), len(boxes), len(openables)))
     print('build %s: %d reactivos, %d iniciadores de mision, %d herramientas, %d clases con equipo, '
           '%d libros de biblioteca, %d cajones arrebatados (%d llenos), %d reactivos de clase'
           % (build, len(reagents), len(starters), len(tools), len(gear), len(books), len(crates),

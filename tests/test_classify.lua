@@ -335,7 +335,7 @@ test('item de mision (clase 12) que ninguna mision activa pide -> coin quest_not
     end)
 end)
 
-test('item de mision: diario incompleto, reactivo o con efecto de uso -> sin moneda', function()
+test('item de mision: diario incompleto y reactivo protegen; efecto no protege', function()
     withData({}, {}, function()
         local quest = item { classID = 12, quality = 1 }
         local incomplete = ns.Classify(quest, ctx { questLogIncomplete = true,
@@ -343,7 +343,7 @@ test('item de mision: diario incompleto, reactivo o con efecto de uso -> sin mon
         eq(incomplete.mark, 'useful'); ok(hasReason(incomplete, 'quest_log_incomplete'), 'diario incompleto')
         local useful = ns.Classify(item { classID = 12, quality = 1, hasUseOrEquipSpell = true }, ctx {
             questieUses = function() return { { questID = 50 } } end })
-        eq(useful.mark, 'useful', 'con efecto de uso')
+        eq(useful.mark, 'coin', 'con efecto de uso manda la misión')
     end)
     withData({ [9000] = { 171 } }, {}, function()
         local reagent = ns.Classify(item { classID = 12, quality = 1 }, ctx {
@@ -375,7 +375,7 @@ test('equipo de otra clase sin ligar o sin saberlo -> sin moneda, motivo class_c
         ok(not hasReason(gray, 'class_cannot_use'), 'sin moneda por clase')
         -- Usable por la clase: ningun motivo de clase.
         local cloth = ns.Classify(item { classID = 4, subclassID = 1, quality = 2, isBound = true }, ctx { class = 'MAGE' })
-        eq(cloth.mark, 'useful'); eq(#cloth.reasons, 0)
+        eq(cloth.mark, 'useful'); ok(hasReason(cloth, 'no_rule'))
     end)
 end)
 
@@ -434,7 +434,7 @@ test('Data: reactivos de clase de ejemplo generados', function()
 end)
 
 -- Efecto en tres estados: el gris siempre es basura; en no grises se conserva la proteccion.
--- La moneda por clase exige ligado y efecto 'no'; la mision con efecto desconocido se conserva.
+-- La moneda por clase exige ligado y efecto conocido; la mision con efecto desconocido se conserva.
 test('efecto confirmado o desconocido: gris -> coin; no gris conserva proteccion', function()
     withData({}, {}, function()
         local gray = function(effect) return item { quality = 0, price = 5, effect = effect, hasUseOrEquipSpell = effect ~= 'no' } end
@@ -448,7 +448,7 @@ test('efecto confirmado o desconocido: gris -> coin; no gris conserva proteccion
         local plateUnknown = ns.Classify(plate('unknown'), ctx { class = 'MAGE' })
         eq(plateUnknown.mark, 'useful', 'ligado con efecto desconocido')
         ok(not hasReason(plateUnknown, 'class_cannot_use'), 'sin motivo de moneda')
-        eq(ns.Classify(plate('yes'), ctx { class = 'MAGE' }).mark, 'useful')
+        eq(ns.Classify(plate('yes'), ctx { class = 'MAGE' }).mark, 'coin')
         -- Gris de otra clase, ligado, efecto desconocido: moneda solo por gris.
         local grayPlate = ns.Classify(item { classID = 4, subclassID = 4, quality = 0, price = 5, isBound = true,
             effect = 'unknown', hasUseOrEquipSpell = true }, ctx { class = 'MAGE' })
@@ -503,8 +503,8 @@ test('questLogIncomplete: no gris sin moneda salvo override_sell', function()
         local armor = item { quality = 1, classID = 4, subclassID = 4, hasUseOrEquipSpell = false, isSetPiece = false, isBound = true }
         local second = ns.Classify(armor, incomplete)
         eq(second.mark, 'useful'); ok(hasReason(second, 'quest_log_incomplete'), 'class_cannot_use tampoco da moneda')
-        -- Sin motivos de moneda no se agrega nada.
-        eq(#ns.Classify(item { quality = 1 }, incomplete).reasons, 0)
+        -- Sin motivos de moneda se explica la conservación por falta de regla.
+        ok(hasReason(ns.Classify(item { quality = 1 }, incomplete), 'no_rule'))
         -- override_sell sigue valiendo.
         local sold = ns.Classify(item { quality = 1, id = 77 }, ctx { questLogIncomplete = true, overrides = { [77] = 'sell' } })
         eq(sold.mark, 'coin'); ok(hasReason(sold, 'override_sell'), 'override_sell')

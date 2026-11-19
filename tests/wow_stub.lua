@@ -209,8 +209,11 @@ local function installClient()
     UnitClass = function() return 'Mago', FAKE.class end
     FAKE.raceID = 1         -- UnitRace: 1 = humano
     FAKE.faction = 'Alliance'
+    FAKE.spells = {}
     UnitRace = function() return 'Humano', 'Human', FAKE.raceID end
     UnitFactionGroup = function() return FAKE.faction, FAKE.faction end
+    IsPlayerSpell = function(id) return FAKE.spells[id] == true end
+    IsSpellKnown = function(id) return FAKE.spells[id] == true end
     LibQuestieDB, Questie = nil, nil
     GetProfessions = function()
         local indexes = {}
@@ -307,7 +310,7 @@ local function installClient()
     GetItemInfo = function(key)
         local id, d = itemOf(key)
         if not d then return nil end
-        return d.name, linkOf(id), d.quality, 1, 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
+        return d.name, linkOf(id), d.quality, 1, d.reqLevel or 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
     end
     GetItemSpell = function(key)

@@ -2,6 +2,10 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Venta por defecto (`no_keep_reason`, opción `rules.sellUnruled` activada por defecto) con excepciones respaldadas por datos y sufijos en el tooltip (`openables` en `Data/Locks.lua`, equipo, bolsas, munición, libros/recetas, misión, llaves y calidad rara/épica), reglas para equipo de nivel superado (`gear_outgrown`) y libros de clase (`classBooks` en `Data/Recipes.lua`), enlaces vendidos en el resumen de auto-venta y auditoría actualizada con chequeo de fugas.
+
+- Corregida la precedencia de efectos frente a clase y misión; fallback `no_rule`, motivos informativos en tooltip y auditoría completa de wowf con CSV por contexto, sin cambiar a venta por defecto ni agregar entradas al `.toc`.
+
 - Reparación automática activada por defecto, fondos de hermandad opcionales, Shift para saltearla, reintento tras las ventas y avisos de Leatrix Plus/ElvUI; pendiente validar en Forever.
 
 - Asesor de botín con bolsa llena: Shift muestra si conviene lootear, contempla pilas, misiones y bolsas especiales; tooltip con candidato y valores, sin tirar nada automáticamente.

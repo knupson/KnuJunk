@@ -452,7 +452,7 @@ test('pendiente agotado: los eventos lo reabren y se resuelve', function()
 end)
 
 -- C: un 'no' guardado con su dataInstanceID se invalida con TOOLTIP_DATA_UPDATE de ese id y se relee.
-test('no guardado: TOOLTIP_DATA_UPDATE de su instancia lo relee; efecto tardio quita la moneda', function()
+test('no guardado: TOOLTIP_DATA_UPDATE relee el efecto; equipo ajeno ligado conserva moneda', function()
     addItem(789, { quality = 2, classID = 4, subclassID = 4 })
     local real = C_TooltipInfo.GetHyperlink
     local late = false
@@ -471,13 +471,13 @@ test('no guardado: TOOLTIP_DATA_UPDATE de su instancia lo relee; efecto tardio q
     FAKE.Advance(0.1)
     local item = ns.Player.ReadItem(0, 3)
     eq(item.effect, 'yes')
-    eq(ns.Classify(item, classifyCtx()).mark, 'useful', 'efecto tardio: sin moneda')
+    eq(ns.Classify(item, classifyCtx()).mark, 'coin', 'efecto tardio: decide la clase')
     C_TooltipInfo.GetHyperlink = real
 end)
 
 -- Ronda de arreglos 3 (reproduccion del revisor): un 'no' invalidado por TOOLTIP_DATA_UPDATE cuya
 -- relectura es parcial pasa a pendiente completo (sin error en lecturas siguientes) y avisa por
--- OnChanged para retirar la moneda de clase; despues, con el efecto confirmado, sigue sin moneda.
+-- OnChanged para retirar la moneda de clase; con el efecto confirmado, decide nuevamente la clase.
 test('no invalidado con relectura parcial: pendiente valido, aviso y moneda retirada', function()
     addItem(99790, { quality = 2, classID = 4, subclassID = 4 })
     local real = C_TooltipInfo.GetHyperlink
@@ -514,7 +514,7 @@ test('no invalidado con relectura parcial: pendiente valido, aviso y moneda reti
     FAKE.Advance(5) -- reintento por timer
     local final = ns.Player.ReadItem(0, 4)
     eq(final.effect, 'yes')
-    eq(ns.Classify(final, ns.Player.GetContext()).mark, 'useful', 'efecto confirmado: sin moneda')
+    eq(ns.Classify(final, ns.Player.GetContext()).mark, 'coin', 'efecto confirmado: decide la clase')
     eq(changed, 2, 'unknown -> yes avisa')
     C_TooltipInfo.GetHyperlink = real
 end)

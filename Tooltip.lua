@@ -144,10 +144,25 @@ function Tooltip.Lines(link, bound, bag, slot)
     local L = ns.L
 
     local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
-        recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true }
+        recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true,
+        no_keep_reason = true, gear_outgrown = true, book_other_class = true, book_known = true }
+    local noRuleKeys = {
+        gear = 'No rule for this item: not sold by default (gear)',
+        bag = 'No rule for this item: not sold by default (bag)',
+        openable = 'No rule for this item: not sold by default (openable)',
+        rare_or_epic = 'No rule for this item: not sold by default (rare or epic)',
+        ammo = 'No rule for this item: not sold by default (ammunition)',
+        book = 'No rule for this item: not sold by default (book or recipe)',
+        quest = 'No rule for this item: not sold by default (quest)',
+        key = 'No rule for this item: not sold by default (key)',
+    }
     local neutral = (mark == nil or mark == 'useful' or mark == 'trash' or mark == 'auction')
     local noPrice = not (type(item.price) == 'number' and item.price > 0)
+    local informational = false
     local function add(text, color, kind)
+        if informational then
+            text, color, kind = L['Also: '] .. text, { 0.6, 0.6, 0.6 }, nil
+        end
         if kind == 'coin' and neutral and noPrice then color, kind = WHITE, nil end
         lines[#lines + 1] = { text = (kind and icon(kind, mark) or '') .. text, r = color[1], g = color[2], b = color[3] }
     end
@@ -176,9 +191,21 @@ function Tooltip.Lines(link, bound, bag, slot)
         if key then add(L[key], WHITE) end
     end
 
-    for _, reason in ipairs(reasons) do
+    local function renderReason(reason)
         local kind = reason.kind
-        if kind == 'no_sell_price' then
+        local neutral = informational or neutral
+        if kind == 'no_rule' then
+            local key = reason.exception and noRuleKeys[reason.exception] or 'No rule for this item: not sold by default'
+            add(L[key], WHITE)
+        elseif kind == 'book_unknown' and neutral then
+            add(L['Your class book, not learned'], WHITE)
+        elseif kind == 'quest_log_incomplete' then
+            add(L['The quest log could not be read completely'], WHITE)
+        elseif kind == 'quest_repeatable' then
+            add(L['Repeatable quest: %s']:format(questName(reason.questID)), WHITE, 'quest')
+        elseif kind == 'effect' or kind == 'useful' then
+            add(L[reason.setPiece and 'Part of an item set' or 'Has a use or equip effect'], WHITE)
+        elseif kind == 'no_sell_price' then
             add(L['Cannot be sold (no vendor price)'], WHITE)
         elseif kind == 'gear_not_ranked' then
             add(L['Not useful to you: %s']:format(reason.text), WHITE)
@@ -204,7 +231,7 @@ function Tooltip.Lines(link, bound, bag, slot)
             else
                 add(L['Waylaid crate: fill it with one option from the list and turn it in to %s']:format(npc), WHITE)
             end
-        elseif ((mark == 'coin' or mark == 'auction') and shows('coin')) or (neutral and noPrice and saleReasons[kind]) then
+        elseif saleReasons[kind] and (informational or ((mark == 'coin' or mark == 'auction') and shows('coin')) or (neutral and noPrice)) then
             if kind == 'gray' then
                 add(L['Junk: sells'], GOLD, 'coin')
             elseif kind == 'food_outgrown' then
@@ -219,6 +246,14 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['No active quest needs it'], GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
+            elseif kind == 'no_keep_reason' then
+                add(L['No rule for this item: sold by default'], GOLD, 'coin')
+            elseif kind == 'gear_outgrown' then
+                add(L['Level %d gear: too low for you']:format(reason.level or item.reqLevel or 0), GOLD, 'coin')
+            elseif kind == 'book_other_class' then
+                add(L['Book for another class'], GOLD, 'coin')
+            elseif kind == 'book_known' then
+                add(L['You already know this spell'], GOLD, 'coin')
             end
         elseif kind == 'class_reagent' and neutral then
             -- Reactivo de hechizo de clase: neutro y sin icono. Tu clase: el primer hechizo con nombre
@@ -263,20 +298,32 @@ function Tooltip.Lines(link, bound, bag, slot)
             local text = L['Recipe for %s']:format(professionList({ reason.skillLine }))
             if reason.rank then text = text .. L[', requires %d']:format(reason.rank) end
             add(text, mark == 'hammer_mine' and GREEN or GRAY, 'hammer')
-        elseif kind == 'profession' and shows('hammer') then
-            if mark == 'hammer_mine' then
+        elseif kind == 'profession' and (informational or shows('hammer')) then
+            if mark == 'hammer_mine' and not reason.other then
                 add(L['Your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')
-            elseif mark == 'hammer_other' then
+            elseif mark == 'hammer_other' or informational then
                 add(L["Profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
             end
-        elseif kind == 'profession_tool' and shows('hammer') then
-            if mark == 'hammer_mine' then
+        elseif kind == 'profession_tool' and (informational or shows('hammer')) then
+            if mark == 'hammer_mine' and not reason.other then
                 add(L['Tool for your profession: %s']:format(professionList(reason.professions)), GREEN, 'hammer')
-            elseif mark == 'hammer_other' then
+            elseif mark == 'hammer_other' or informational then
                 add(L["Tool for a profession you don't have: %s"]:format(professionList(reason.professions)), GRAY, 'hammer')
             end
         end
     end
+    -- El gris y GearQuest pueden reemplazar al ganador del núcleo en el wrapper.
+    local winner
+    local winningKind = mark == 'protected' and 'override_keep'
+        or (item.quality == 0 and (mark == 'coin' or mark == 'trash') and 'gray')
+        or (mark == 'quest' and 'quest_active')
+    for i, reason in ipairs(reasons) do
+        if reason.kind == 'gear_not_ranked' or reason.kind == 'gear_outgrown' or (winningKind and reason.kind == winningKind) then winner = i end
+    end
+    if winner then renderReason(reasons[winner]) end
+    for i, reason in ipairs(reasons) do if i ~= winner then renderReason(reason) end end
+    informational = true
+    for _, reason in ipairs(result.otherReasons or {}) do renderReason(reason) end
     return lines
 end
 

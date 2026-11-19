@@ -53,3 +53,22 @@ class RecipesTest(unittest.TestCase):
         self.assertIsNotNone(b.filtered_row('item', {'ID': '1', 'ClassID': '9', 'SubclassID': '1'}, ['ID', 'ClassID']))
         row = dict(ID='2406', StartQuestID='0', TotemCategoryID='0', RequiredSkill='165')
         self.assertIsNotNone(b.filtered_row('itemsparse', row, ['ID', 'RequiredSkill']))
+
+    def test_class_books_teaches_class_spell_with_allowable_class(self):
+        books = b.compute_class_books(
+            [{'ID': '16384', 'ClassID': '9', 'SubclassID': '0'},
+             {'ID': '2406', 'ClassID': '9', 'SubclassID': '1'}],
+            [{'ID': '16384', 'AllowableClass': '31488'},
+             {'ID': '2406', 'AllowableClass': '31488'}],
+            [{'ItemID': '16384', 'ItemEffectID': '10'}],
+            [{'ID': '10', 'SpellID': '100', 'TriggerType': '0'}],
+            [{'SpellID': '100', 'Effect': '36', 'EffectTriggerSpell': '19478'}],
+            [])
+        self.assertEqual(books, {16384: {'spell': 19478, 'classMask': 31488}})
+        text = b.render_recipes_lua({2406: {'skillLine': 165}}, 'test', books)
+        self.assertIn('ns.Data.classBooks', text)
+        self.assertIn('[16384] = { spell = 19478, classMask = 31488 },', text)
+
+
+if __name__ == '__main__':
+    unittest.main()

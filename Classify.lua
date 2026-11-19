@@ -63,6 +63,50 @@ local function classCannotUse(item, ctx)
     return gear[kind][subclassID] ~= true
 end
 
+local CLASS_BITS = {
+    WARRIOR = 1, PALADIN = 2, HUNTER = 4, ROGUE = 8, PRIEST = 16,
+    SHAMAN = 64, MAGE = 128, WARLOCK = 256, DRUID = 1024,
+}
+
+local function hasClassBit(mask, bit)
+    if type(mask) ~= 'number' or type(bit) ~= 'number' or bit <= 0 then return false end
+    if mask <= 0 then return true end -- -1 o 0: todas las clases
+    return math.floor(mask / bit) % 2 == 1
+end
+
+local function knowsClassBookSpell(spell)
+    if type(spell) ~= 'number' or spell <= 0 then return nil end
+    local known, checked = false, false
+    for _, apiName in ipairs({ 'IsPlayerSpell', 'IsSpellKnown' }) do
+        local fn = rawget(_G, apiName)
+        if type(fn) == 'function' then
+            local ok, res = pcall(fn, spell)
+            if not ok then return nil end
+            checked = true
+            if res == true then known = true end
+        end
+    end
+    if not checked then return nil end
+    return known
+end
+
+local function isOpenable(item)
+    return item.openable == true or (ns.Data.openables and ns.Data.openables[item.id] == true) or false
+end
+
+local function noRuleException(item)
+    if isOpenable(item) then return 'openable' end
+    local c = item.classID
+    if c == 1 or c == 11 then return 'bag'
+    elseif c == 2 or c == 4 then return 'gear'
+    elseif c == 6 then return 'ammo'
+    elseif c == 9 then return 'book'
+    elseif c == 12 then return 'quest'
+    elseif c == 13 then return 'key' end
+    if type(item.quality) == 'number' and item.quality >= 3 then return 'rare_or_epic' end
+    return nil
+end
+
 local function classify(item, ctx)
     local result = { mark = nil, reasons = {} }
     local reasons = result.reasons
@@ -232,6 +276,41 @@ local function classify(item, ctx)
         return result
     end
     if lockReason then return result end
+    local classBook = item.classID == 9 and item.subclassID == 0 and ns.Data.classBooks and ns.Data.classBooks[id]
+    if classBook then
+        local classBit = ctx.class and CLASS_BITS[ctx.class]
+        if not classBit then return result end
+        if not hasClassBit(classBook.classMask, classBit) then
+            if ctx.questLogIncomplete or logUnknown then
+                result.reasons = { { kind = 'quest_log_incomplete' } }
+                return result
+            end
+            if item.effect == 'unknown' then return result end
+            result.mark = 'coin'
+            if item.isBound == true then
+                reasons[#reasons + 1] = { kind = 'class_cannot_use', classID = item.classID,
+                    subclassID = item.subclassID, subclassName = item.subclassName }
+            else
+                reasons[#reasons + 1] = { kind = 'book_other_class' }
+            end
+            return result
+        end
+        local known = knowsClassBookSpell(classBook.spell)
+        if known == true then
+            if ctx.questLogIncomplete or logUnknown then
+                result.reasons = { { kind = 'quest_log_incomplete' } }
+                return result
+            end
+            if item.effect == 'unknown' then return result end
+            result.mark = 'coin'
+            reasons[#reasons + 1] = { kind = 'book_known', spell = classBook.spell }
+            return result
+        elseif known == false then
+            reasons[#reasons + 1] = { kind = 'book_unknown', spell = classBook.spell }
+            return result
+        end
+        return result
+    end
     -- Una receta sin profesión identificada tampoco es basura confirmada.
     if item.classID == 9 and not knownRecipe then return result end
 
@@ -282,9 +361,10 @@ local function classify(item, ctx)
     end
     -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
     -- En recetas (clase 9), el uso que enseña no protege de R12/R13.
-    if (effect == 'yes' and item.classID ~= 9 and not (rules.food == true and item.restorationOnly == true
+    if (effect == 'yes' and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST
+        and not classCannotUse(item, ctx) and not (rules.food == true and item.restorationOnly == true
         and ns.Data.food and ns.Data.food[id])) or item.isSetPiece then
-        reasons[#reasons + 1] = { kind = 'useful' }
+        reasons[#reasons + 1] = { kind = 'useful', setPiece = item.isSetPiece or nil }
         return result
     end
     -- Efecto desconocido: ninguna moneda automática, tampoco por calidad gris.
@@ -345,6 +425,10 @@ local function classify(item, ctx)
     if knownRecipe then
         return result
     end
+    if effect == 'yes' and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST and not classCannotUse(item, ctx) then
+        reasons[#reasons + 1] = { kind = 'useful' }
+        return result
+    end
 
     -- 4. Monedita: cada regla suma su motivo; basta una. Un nil de isQuestDone nunca la da.
     if item.quality == 0 then
@@ -365,7 +449,7 @@ local function classify(item, ctx)
     if classCannotUse(item, ctx) then
         local reason = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
         if item.isBound == true then
-            -- Ligado: moneda solo si ademas se sabe que no tiene efecto.
+            -- Ligado: moneda sólo con el estado del efecto conocido.
             if not unknownEffect then reasons[#reasons + 1] = reason end
         else
             reason.kind = 'class_cannot_use_tradeable'
@@ -383,6 +467,69 @@ local function classify(item, ctx)
     end
     if tradeable then reasons[#reasons + 1] = tradeable end
     return result
+end
+
+-- Evidencia informativa: no toca el item, el contexto ni el veredicto. Se ejecuta después
+-- de decidir, incluso si una protección hizo retornar antes de las reglas inferiores.
+local function collectEvidence(item, ctx, result)
+    local other, seen = {}, {}
+    for _, reason in ipairs(result.reasons) do seen[reason.kind] = true end
+    local function add(reason)
+        if seen[reason.kind] and reason.professions then
+            local covered = {}
+            for _, existing in ipairs(result.reasons) do
+                if existing.kind == reason.kind then
+                    for _, line in ipairs(existing.professions or {}) do covered[line] = true end
+                end
+            end
+            local remaining = {}
+            for _, line in ipairs(reason.professions) do if not covered[line] then remaining[#remaining + 1] = line end end
+            if #remaining == 0 then return end
+            reason.professions = remaining
+        elseif seen[reason.kind] then return end
+        other[#other + 1] = reason; seen[reason.kind] = true
+    end
+    if classCannotUse(item, ctx) then
+        add({ kind = item.isBound == true and 'class_cannot_use' or 'class_cannot_use_tradeable',
+            classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName })
+    end
+    local uses = type(ctx.questieUses) == 'function' and ctx.questieUses(item.id) or nil
+    local questItem, active, unknown = item.classID == ITEM_CLASS_QUEST, false, ctx.questLogIncomplete
+    for _, use in ipairs(uses or {}) do
+        if not use.starter then
+            questItem = true
+            local answer = inLog(ctx, use.questID)
+            if answer == true then active = true elseif answer == nil then unknown = true end
+        end
+    end
+    active = active or (ctx.questItemsInLog and ctx.questItemsInLog[item.id])
+    if questItem and not active and not unknown then add({ kind = 'quest_not_active' }) end
+    if item.quality == 0 then add({ kind = 'gray' }) end
+    for _, entry in ipairs({ { 'reagents', 'profession' }, { 'tools', 'profession_tool' } }) do
+        local lines = ns.Data[entry[1]] and ns.Data[entry[1]][item.id]
+        if not lines and entry[1] == 'tools' and item.classID == 2 and item.subclassID == 20 then lines = { 356 } end
+        local others = {}
+        for _, line in ipairs(lines or {}) do
+            if not (ctx.professions and ctx.professions[line]) then others[#others + 1] = line end
+        end
+        if #others > 0 then add({ kind = entry[2], professions = others, other = true }) end
+    end
+    local gear = ctx.class and ns.ClassGear[ctx.class]
+    local kind = item.classID == 4 and 'armor' or item.classID == 2 and 'weapon' or nil
+    if item.quality ~= 0 and gear and kind and gear[kind][item.subclassID] == true
+        and type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level then
+        add({ kind = 'future_level', level = item.reqLevel })
+    end
+    local effect = item.effect
+    if effect ~= 'yes' and effect ~= 'no' and effect ~= 'unknown' then effect = item.hasUseOrEquipSpell and 'yes' or 'no' end
+    if effect == 'yes' and not seen.useful then add({ kind = 'effect' }) end
+    if not item.isSetPiece and type(item.quality) == 'number' and item.quality > 0 and item.quality <= 2
+        and (item.classID == ITEM_CLASS_WEAPON or item.classID == ITEM_CLASS_ARMOR)
+        and type(item.reqLevel) == 'number' and item.reqLevel > 0
+        and type(ctx.level) == 'number' and item.reqLevel + 10 <= ctx.level then
+        add({ kind = 'gear_outgrown', level = item.reqLevel })
+    end
+    return other
 end
 
 -- Conjuntos guardados por el jugador, distintos de los sets de objetos (isSetPiece).
@@ -410,8 +557,48 @@ local function inEquipmentSet(id)
     return false
 end
 
-local excludedGearSlots = { INVTYPE_TRINKET = true, INVTYPE_TABARD = true,
-    INVTYPE_BODY = true, INVTYPE_BAG = true }
+local excludedGearSlots = {
+    INVTYPE_TRINKET = true, INVTYPE_TABARD = true, INVTYPE_BODY = true, INVTYPE_BAG = true,
+    INVTYPE_NON_EQUIP = true, INVTYPE_NON_EQUIP_IGNORE = true,
+    [''] = true, ['0'] = true, ['4'] = true, ['12'] = true, ['18'] = true, ['19'] = true,
+}
+
+-- Sin GearQuest: no puntuado. Con GearQuest en simulación o con error: se trata como puntuado (no se vende).
+local function gearQuestRanked(item, ctx)
+    if type(item.link) ~= 'string' or item.link == '' then return false end
+    local root = rawget(_G, 'GQ')
+    if type(root) ~= 'table' or type(root.Data) ~= 'table'
+        or type(root.Data.EntryForItemLink) ~= 'function' then return false end
+    if type(root.IsPreviewEnabled) == 'function' then
+        local ok, preview = pcall(root.IsPreviewEnabled, root)
+        if not ok or preview ~= false then return true end
+    end
+    if type(root.GetEffectiveLevel) == 'function' then
+        local ok, level = pcall(root.GetEffectiveLevel, root)
+        if not ok or level ~= ctx.level then return true end
+    end
+    if type(root.GetEffectiveClass) == 'function' then
+        local ok, class = pcall(root.GetEffectiveClass, root)
+        if not ok or class ~= ctx.class then return true end
+    end
+    local ok, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
+    return not ok or entry ~= nil
+end
+
+local function gearOutgrown(item, ctx, result)
+    if result.mark ~= 'useful' or result.uncertain or ctx.questLogIncomplete or item.effect == 'unknown'
+        or item.isSetPiece or type(item.quality) ~= 'number' or item.quality <= 0 or item.quality > 2
+        or (item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR)
+        or type(item.reqLevel) ~= 'number' or item.reqLevel <= 0
+        or type(ctx.level) ~= 'number' or item.reqLevel + 10 > ctx.level
+        or (item.equipLoc ~= nil and excludedGearSlots[item.equipLoc]) then return false end
+    for _, reason in ipairs(result.reasons) do
+        if reason.kind ~= 'useful' and reason.kind ~= 'no_rule' and reason.kind ~= 'no_sell_price'
+            and reason.kind ~= 'class_cannot_use_tradeable' then return false end
+    end
+    if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return false end
+    return true
+end
 
 local function gearMissText(item, ctx, result)
     if (ctx.rules and ctx.rules.gearNotRanked == false) or result.mark ~= 'useful'
@@ -422,7 +609,7 @@ local function gearMissText(item, ctx, result)
         or (type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level) then return end
     -- Las protecciones del núcleo conservan su precedencia aunque su marca sea Útil.
     for _, reason in ipairs(result.reasons) do
-        if reason.kind ~= 'useful' and reason.kind ~= 'no_sell_price'
+        if reason.kind ~= 'useful' and reason.kind ~= 'no_rule' and reason.kind ~= 'no_sell_price'
             and reason.kind ~= 'class_cannot_use_tradeable' then return end
     end
     local root = rawget(_G, 'GQ')
@@ -460,7 +647,8 @@ end
 
 -- La moneda automatica siempre acredita un precio de venta conocido y positivo.
 -- Se conserva el veredicto de utilidad y sus motivos; la venta manual prevalece.
-function ns.Classify(item, ctx)
+-- withEvidence=false permite contrastar exactamente el mismo decisor sin la segunda pasada.
+function ns.Classify(item, ctx, withEvidence)
     local result = classify(item, ctx)
     if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
     if item.pending == true or item.quality == nil then
@@ -491,23 +679,55 @@ function ns.Classify(item, ctx)
         if type(item.price) == 'number' and item.price > 0 then result.mark = 'coin'
         elseif item.price == 0 then result.mark = 'trash' end
     end
+    if not result.mark and (#result.reasons == 0
+        or (#result.reasons == 1 and result.reasons[1].kind == 'no_sell_price')) then
+        table.insert(result.reasons, 1, { kind = 'no_rule', exception = noRuleException(item) })
+    end
     result.mark = result.mark or 'useful'
-    local gearMiss = not isGray and gearMissText(item, ctx, result)
+    local outgrown = not isGray and gearOutgrown(item, ctx, result)
+    if outgrown then
+        for i = #result.reasons, 1, -1 do
+            local k = result.reasons[i].kind
+            if k == 'no_rule' or k == 'useful' or k == 'class_cannot_use_tradeable' then
+                table.remove(result.reasons, i)
+            end
+        end
+        table.insert(result.reasons, 1, { kind = 'gear_outgrown', level = item.reqLevel })
+        result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
+            or (item.price == 0 and 'trash' or 'useful')
+    end
+    local gearMiss = not isGray and not outgrown and gearMissText(item, ctx, result)
     if gearMiss then
+        for i = #result.reasons, 1, -1 do
+            if result.reasons[i].kind == 'no_rule' then table.remove(result.reasons, i) end
+        end
         result.reasons[#result.reasons + 1] = { kind = 'gear_not_ranked', text = gearMiss }
         result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
             or (item.price == 0 and 'trash' or 'useful')
     end
+    if not isGray and not manual and not protected and result.mark == 'useful'
+        and result.reasons[1] and result.reasons[1].kind == 'no_rule'
+        and ctx.rules and ctx.rules.sellUnruled == true
+        and type(item.price) == 'number' and item.price > 0
+        and type(item.quality) == 'number' and item.quality <= 2
+        and type(item.classID) == 'number' and not result.reasons[1].exception
+        and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
+        and item.effect ~= 'yes' and not (ns.Data.food and ns.Data.food[item.id])
+        and not inEquipmentSet(item.id) then
+        result.reasons[1] = { kind = 'no_keep_reason' }
+        result.mark = 'coin'
+    end
     local price = (not isGray) and ns.AuctionPrice(item.id) or nil
     result.auctionPrice = price
     if not manual and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
-        and (result.mark == 'coin' or result.mark == 'useful' or (gearMiss and result.mark == 'trash'))
+        and (result.mark == 'coin' or result.mark == 'useful' or ((gearMiss or outgrown) and result.mark == 'trash'))
         and item.isBound ~= true and price then
         local settings = ns.DB and ns.DB.auction or {}
         if price >= math.max((type(item.price) == 'number' and item.price or 0) * (settings.factor or 2), settings.minCopper or 100) then
             result.mark = 'auction'
         end
     end
+    if withEvidence ~= false then result.otherReasons = collectEvidence(item, ctx, result) end
     return result
 end
 
