@@ -19,6 +19,8 @@ Options.TOGGLES = {
         help = 'Locks them while the merchant is open; right-click asks before selling.' },
     { section = 'Marks', path = 'show.loot', label = 'Marks in loot',
         help = 'The same icons in the loot window (with autoloot there is no window).' },
+    { section = 'Rules', path = 'rules.sellUnruled', label = 'Sell items with no rule',
+        help = 'What no rule classifies is sold, except gear, bags, openable items, ammunition, books, keys, quest items and rare or epic items.' },
     { section = 'Rules', path = 'rules.food', label = 'Outleveled food and drink',
         help = 'Coin on simple food and drink 15 or more levels above the requirement when you carry a better one. Never for hunters.' },
     { section = 'Rules', path = 'rules.ammo', label = 'Outdamaged ammunition',

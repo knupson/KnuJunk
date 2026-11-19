@@ -68,7 +68,8 @@ for _, row in ipairs(rows) do
     local item = { id = assert(tonumber(r.id)), quality = tonumber(r.quality), classID = tonumber(r.classID),
         subclassID = tonumber(r.subclassID), price = tonumber(r.price), reqLevel = tonumber(r.reqLevel),
         equipLoc = r.equipLoc, isSetPiece = r.isSetPiece == '1', effect = r.effect,
-        hasUseSpell = r.hasUseSpell == '1', hasEquipSpell = r.hasEquipSpell == '1' }
+        hasUseSpell = r.hasUseSpell == '1', hasEquipSpell = r.hasEquipSpell == '1',
+        openable = r.openable == '1' or (ns.Data.openables and ns.Data.openables[tonumber(r.id)] == true) or false }
     item.hasUseOrEquipSpell = item.hasUseSpell or item.hasEquipSpell
     -- StartQuestID completo, sin depender de que Data/Starters.lua tenga esa fila.
     if tonumber(r.startQuestID) and tonumber(r.startQuestID) > 0 then ns.Data.starters[item.id] = tonumber(r.startQuestID) end
@@ -79,7 +80,8 @@ for _, row in ipairs(rows) do
         for _, class in ipairs(classes) do
             for _, level in ipairs({ 10, 30, 60 }) do
                 local ctx = { class = class, level = level, professions = {}, overrides = {},
-                    rules = ns.Defaults.rules, questItemsInLog = {}, questLogIncomplete = false,
+                    rules = { sellUnruled = true, food = false, ammo = false, knownRecipe = false, gearNotRanked = true },
+                    questItemsInLog = {}, questLogIncomplete = false,
                     questInLog = function() return false end, isQuestDone = function() return false end }
                 local result = ns.Classify(item, ctx)
                 local winning, winningIndex = winner(result, item)

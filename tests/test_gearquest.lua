@@ -1,7 +1,7 @@
 local ID, MISS = 990091, 'Not ranked for your class.'
 local function item(fields)
     local value = { id = ID, link = 'item:' .. ID, quality = 2, price = 50,
-        classID = 2, subclassID = 7, equipLoc = 'INVTYPE_WEAPON', isBound = true, reqLevel = 1 }
+        classID = 2, subclassID = 7, equipLoc = 'INVTYPE_WEAPON', isBound = true, reqLevel = 15 }
     for key, field in pairs(fields or {}) do value[key] = field end
     return value
 end
@@ -112,7 +112,8 @@ test('GearQuest: admite anillos y armadura, excluye otras clases y sin ubicació
     gearQuest(MISS)
     eq(ns.Classify(item({classID=4,subclassID=0,equipLoc='INVTYPE_FINGER'}),context()).mark,'coin')
     eq(ns.Classify(item({classID=4,subclassID=4,equipLoc='INVTYPE_CHEST'}),context()).mark,'coin')
-    eq(ns.Classify(item({classID=15}),context()).mark,'useful')
+    eq(reason(ns.Classify(item({classID=15}),context())),nil)
+    eq(ns.Classify(item({classID=1}),context()).mark,'useful')
     local value=item(); value.equipLoc=nil
     eq(ns.Classify(value,context()).mark,'useful')
 end)
@@ -151,7 +152,7 @@ end)
 
 test('GearQuest: ReadLink conserva el enlace y el tooltip muestra el motivo', function()
     gearQuest(MISS)
-    FAKE.items[ID]={name='Espada',quality=2,price=50,classID=2,subclassID=7,equipLoc='INVTYPE_WEAPON'}
+    FAKE.items[ID]={name='Espada',quality=2,price=50,classID=2,subclassID=7,equipLoc='INVTYPE_WEAPON',reqLevel=15}
     local link=FAKE.linkOf(ID)
     eq(ns.Player.ReadLink(ID).link,link)
     eq(ns.Player.ReadLink('item:' .. ID .. ':0:0:0:0:0:123').link,'item:' .. ID .. ':0:0:0:0:0:123')

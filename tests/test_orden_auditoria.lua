@@ -61,9 +61,15 @@ test('orden: tooltip no_rule y También en ambos idiomas, sin icono en evidencia
         for _, locale in ipairs({'esES','esMX','enUS'}) do
             FAKE.locale = locale; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
             FAKE.items[ID] = {name='Prueba',quality=2,classID=15,subclassID=0,price=10}
+            ns.DB.rules.sellUnruled = false
             ns.Player.Invalidate()
             local lines = ns.Tooltip.Lines(FAKE.linkOf(ID))
             eq(lines[2].text, locale == 'enUS' and 'No rule for this item: not sold by default' or 'Sin regla para este ítem: por defecto no se vende')
+            ns.DB.rules.sellUnruled = true
+            ns.Player.Invalidate()
+            lines = ns.Tooltip.Lines(FAKE.linkOf(ID))
+            local soldText = locale == 'enUS' and 'No rule for this item: sold by default' or 'Sin regla para este ítem: por defecto se vende'
+            eq(lines[2].text:sub(-#soldText), soldText)
             -- Override gana; diario vacío y efecto son evidencias inferiores.
             FAKE.items[ID].classID = 12; FAKE.items[ID].spell = true
             ns.DB.overrides[ID] = 'keep'; ns.Player.Invalidate()

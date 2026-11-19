@@ -88,14 +88,20 @@ test('Tooltip: gris agrega una linea con moneda en dorado', function()
     ok(entry.text:find('UI-GoldIcon', 1, true), 'misma textura que Marks')
 end)
 
-test('Tooltip: item sin regla explica que por defecto no se vende', function()
+test('Tooltip: item sin regla explica que por defecto se vende o no según la opción', function()
     addItem(100, { quality = 1, price = 5 })
     local processor = withProcessor()
     ns.Tooltip.Hook()
     local tooltip = newTooltip(100)
     run(processor, tooltip, {})
     eq(#tooltip.lines, 1)
-    line(tooltip, 1, 'Sin regla para este ítem: por defecto no se vende')
+    line(tooltip, 1, 'Sin regla para este ítem: por defecto se vende', { 1, 0.82, 0 })
+    ns.DB.rules.sellUnruled = false
+    ns.Player.Invalidate()
+    local kept = newTooltip(100)
+    run(processor, kept, {})
+    eq(#kept.lines, 1)
+    line(kept, 1, 'Sin regla para este ítem: por defecto no se vende', { 1, 1, 1 })
 end)
 
 -- Regla del 2026-11-17: el tooltip dice por que un item de mision no lleva moneda (mision activa

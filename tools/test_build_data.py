@@ -314,7 +314,12 @@ class FilterTest(unittest.TestCase):
                           'RequiredSkill': '0', 'RequiredSkillRank': '0', 'RequiredLevel': '0',
                           'ItemLevel': '0', 'OverallQualityID': '0', 'AllowableClass': '0',
                           'AllowableRace_0': '0', 'RequiredAbility': '0', 'MinFactionID': '0',
-                          'RequiredPVPRank': '0', 'RequiredHoliday': '0'})
+                          'RequiredPVPRank': '0', 'RequiredHoliday': '0', 'Flags_0': '0'})
+
+    def test_openable_sparse_row_survives_filter(self):
+        out = build_data.filtered_row('itemsparse', self.row(Flags_0='4'), self.COLUMNS)
+        self.assertIsNotNone(out)
+        self.assertEqual(dict(zip(self.COLUMNS, out))['Flags_0'], '4')
 
     def test_special_items_keep_their_texts(self):
         book = self.row(Description_lang="A fine addition to any library's collection.")
@@ -367,6 +372,18 @@ class LocksTest(unittest.TestCase):
         self.assertIsNone(build_data.filtered_row('lock', row, columns))
         row.update(Type_7='1', _Index_7='12382')
         self.assertIsNotNone(build_data.filtered_row('lock', row, columns))
+
+    def test_openables_from_flags_0_bit_4(self):
+        openables = build_data.compute_openables([
+            {'ID': '10', 'Flags_0': '4'},
+            {'ID': '11', 'Flags_0': '12'},
+            {'ID': '12', 'Flags_0': '2'},
+        ])
+        self.assertEqual(openables, {10, 11})
+        text = build_data.render_locks_lua({1}, {3}, 'x', openables)
+        self.assertIn('ns.Data.openables', text)
+        self.assertIn('[10] = true,', text)
+        self.assertIn('[11] = true,', text)
 
 
 if __name__ == '__main__':

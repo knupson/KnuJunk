@@ -94,13 +94,16 @@ local function candidate(bag, slot)
     if ns.DB.autoSell.graysOnly and item.quality ~= 0 then return end
     local count = info.stackCount or 1
     if type(count) ~= 'number' or count < 1 then return end
-    return guid, item.price, count
+    local link = (type(info.hyperlink) == 'string' and info.hyperlink ~= '' and info.hyperlink)
+        or (type(item.link) == 'string' and item.link ~= '' and item.link)
+        or ('item:' .. tostring(item.id))
+    return guid, item.price, count, link
 end
 
 -- Cada pedido de venta queda anotado y se cuenta recién cuando el ítem ya no está en las bolsas.
 -- El servidor tarda más que un tick en sacarlo: confirmar al tick siguiente descartaba ventas
 -- reales y el resumen no salía (visto en el juego 2026-11-18).
-local attempted, reportToken = {}, 0
+local attempted, soldLinks, reportToken = {}, {}, 0
 local REPORT_DELAY = 1.5
 
 local function guidAt(bag, slot)
@@ -142,17 +145,44 @@ local function confirm()
                 if count then
                     entry.counted = true
                     sold, total = sold + 1, total + entry.price * count
+                    if type(entry.link) == 'string' and entry.link ~= '' then
+                        soldLinks[#soldLinks + 1] = entry.link
+                    end
                 end
             end
         end
     end
 end
 
+local function printSoldLinks(links)
+    if #links == 0 then return end
+    local fmt = ns.L['Sold: %s']
+    local maxLine = 249
+    local current = nil
+    for _, link in ipairs(links) do
+        if not current then
+            current = link
+        else
+            local candidateLine = current .. ', ' .. link
+            if #fmt:format(candidateLine) <= maxLine then
+                current = candidateLine
+            else
+                ns.Print(fmt:format(current))
+                current = link
+            end
+        end
+    end
+    if current then ns.Print(fmt:format(current)) end
+end
+
 local function report()
     confirm()
     attempted = {}
+    local links = soldLinks
+    soldLinks = {}
     if sold > 0 then
         ns.Print(ns.L['KnuJunk sold %d items for %s']:format(sold, ns.FormatMoney(total)))
+        printSoldLinks(links)
     end
     sold, total = 0, 0
     if repairAfterSales then
@@ -165,7 +195,7 @@ end
 local function scheduleReport()
     reportToken = reportToken + 1
     local token = reportToken
-    if #attempted == 0 then sold, total = 0, 0; return end
+    if #attempted == 0 then sold, total, soldLinks = 0, 0, {}; return end
     if C_Timer and type(C_Timer.After) == 'function' then
         C_Timer.After(REPORT_DELAY, function() if token == reportToken then report() end end)
     else
@@ -189,7 +219,7 @@ local function tick()
     local entry = queue[cursor]
     if not entry or attempts >= maximum() then finish(); return end
     cursor = cursor + 1
-    local guid, price, count = candidate(entry.bag, entry.slot)
+    local guid, price, count, link = candidate(entry.bag, entry.slot)
     if guid == entry.guid then
         local use = api('UseContainerItem')
         if type(use) == 'function' then
@@ -198,7 +228,7 @@ local function tick()
             local ok, value = pcall(use, entry.bag, entry.slot)
             ownCall = false
             if ok and value ~= false then
-                attempted[#attempted + 1] = { bag = entry.bag, slot = entry.slot, guid = guid, price = price, count = count }
+                attempted[#attempted + 1] = { bag = entry.bag, slot = entry.slot, guid = guid, price = price, count = count, link = link }
             end
         end
     end
@@ -292,7 +322,7 @@ frame:SetScript('OnEvent', function(_, event)
         opened, deferred = true, false
         queue, cursor = {}, 1
         sold, total, reported, bursts, attempts, pending = 0, 0, {}, {}, 0, nil
-        attempted, reportToken = {}, reportToken + 1
+        attempted, soldLinks, reportToken = {}, {}, reportToken + 1
         repairDeferred, repairAfterSales, repairRetried = false, false, false
         repairSkipped = safe(IsShiftKeyDown) ~= false
         installHook()
@@ -320,7 +350,7 @@ function AutoSell.ResetState()
     opened, ownCall, deferred, ticker = false, false, false, nil
     queue, cursor, sold, total, reported, bursts = {}, 1, 0, 0, {}, {}
     attempts, pending = 0, nil
-    attempted, reportToken = {}, reportToken + 1
+    attempted, soldLinks, reportToken = {}, {}, reportToken + 1
     repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
     installHook()
 end

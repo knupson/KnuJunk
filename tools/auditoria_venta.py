@@ -22,7 +22,7 @@ spec.loader.exec_module(build_data)
 TABLES = {
     'item': ['ID', 'ClassID', 'SubclassID'],
     'itemsparse': ['ID', 'Display_lang', 'OverallQualityID', 'SellPrice', 'RequiredLevel', 'Bonding', 'StartQuestID',
-                   'ItemSet', 'InventoryType'],
+                   'ItemSet', 'InventoryType', 'Flags_0', 'AllowableClass'],
     'itemxitemeffect': ['ItemID', 'ItemEffectID'],
     'itemeffect': ['ID', 'SpellID', 'TriggerType'],
 }
@@ -50,7 +50,7 @@ SUBCLASSES = {
     18: {0: 'Sin subclase declarada en ItemSubClass'},
 }
 NORMAL_COLUMNS = ['id', 'name', 'classID', 'subclassID', 'quality', 'price', 'reqLevel', 'bonding', 'startQuestID',
-                  'isSetPiece', 'equipLoc', 'hasUseSpell', 'hasEquipSpell', 'effect']
+                  'isSetPiece', 'equipLoc', 'hasUseSpell', 'hasEquipSpell', 'effect', 'openable']
 
 
 def read_csv(path):
@@ -127,7 +127,8 @@ def normalize(folder):
                 s.get('OverallQualityID', ''), s.get('SellPrice', ''), s.get('RequiredLevel', ''), s.get('Bonding', ''),
                 s.get('StartQuestID', ''), int(int(s.get('ItemSet', '0')) > 0), s.get('InventoryType', ''),
                 int('0' in kinds[id_]), int('1' in kinds[id_]),
-                'yes' if kinds[id_] else 'unknown' if id_ in missing_effects else 'no'])))
+                'yes' if kinds[id_] else 'unknown' if id_ in missing_effects else 'no',
+                int((int(s.get('Flags_0', '0') or '0') & 0x4) != 0)])))
     diagnostics = {'item_without_sparse': len(seen - set(sparse)), 'sparse_without_item': len(set(sparse) - seen),
                    'missing_effect_item_ids': sorted(map(int, missing_effects)),
                    'missing_effect_in_item': len(missing_effects & seen)}
@@ -149,7 +150,8 @@ def md(text):
 
 def report(items_path, audit_path, report_path, build, both=False, fixture=False):
     items = {int(r['id']): r for r in read_csv(items_path)}
-    states = {id_: {'marks': set(), 'no_rule': False, 'contexts': set()} for id_ in items}
+    states = {id_: {'marks': set(), 'no_rule': False, 'no_keep_reason': False,
+                    'coin_winners': set(), 'contexts': set()} for id_ in items}
     contexts = 0
     for row in read_csv(audit_path):
         state = states[int(row['id'])]
@@ -158,8 +160,14 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
         state['contexts'].add(row['context'])
         state['marks'].add(row['mark'])
         state['no_rule'] |= row['winner_reason'] == 'no_rule'
+        state['no_keep_reason'] |= row['winner_reason'] == 'no_keep_reason'
+        if row['mark'] == 'coin':
+            state['coin_winners'].add(row['winner_reason'])
         contexts += 1
     totals, marks, groups, unruled = collections.Counter(), collections.Counter(), {}, collections.defaultdict(list)
+    default_sold, leaks = [], []
+    specific_sell = {'gray', 'class_cannot_use', 'book_other_class', 'book_known',
+                     'quest_not_active', 'quest_done', 'gear_not_ranked'}
     keep_marks = {'useful', 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction'}
     for id_, item in items.items():
         state = states[id_]
@@ -175,6 +183,16 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
         groups.setdefault(key, collections.Counter())[category] += 1
         if state['no_rule']:
             unruled[key + (int(item['quality']),)].append(item)
+        if state['no_keep_reason']:
+            default_sold.append(item)
+        if 'coin' in m:
+            class_id = int(item['classID'])
+            quality = int(item['quality']) if item['quality'] != '' else -1
+            openable = item.get('openable') == '1'
+            use_effect = class_id == 0 and item.get('effect') == 'yes'
+            non_specific = bool(state['coin_winners'] - specific_sell)
+            if non_specific and (class_id in (1, 6, 11, 12, 13) or openable or quality >= 3 or use_effect):
+                leaks.append((item, sorted(state['coin_winners'])))
     positive = sum(bool(i['price']) and int(i['price']) > 0 for i in items.values())
     lines = ['# Auditoría de venta', '', 'Build: `%s` (wowf).%s' % (build, ' **Fixture de prueba; no es la base completa.**' if fixture else ''),
         '', 'Ítems: %d. Con SellPrice > 0: %d. Contextos evaluados: %d.' % (len(items), positive, contexts), '',
@@ -201,7 +219,7 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
         for table, data in manifest['tables'].items():
             lines.append('| %s | %d | [CSV de wago.tools](%s) |' % (table, data['rows'], data['url']))
         lines += ['', '`ItemSparse` trae `SellPrice`, `Display_lang`, `OverallQualityID`, `RequiredLevel`, '
-            '`Bonding`, `StartQuestID`, `ItemSet` e `InventoryType`. `Item` trae `ID`, `ClassID` y `SubclassID`. '
+            '`Bonding`, `StartQuestID`, `ItemSet`, `InventoryType`, `Flags_0` y `AllowableClass`. `Item` trae `ID`, `ClassID` y `SubclassID`. '
             '`ItemXItemEffect` trae `ItemID` e `ItemEffectID`; `ItemEffect` trae `ID`, `SpellID` y `TriggerType`.', '',
             'Filas Item sin ItemSparse: %d; se conservan como pendientes. Filas ItemSparse sin Item: %d. '
             'Ítems referenciados con enlace a ItemEffect ausente: %s; de ellos, %d están en Item.' % (
@@ -216,6 +234,26 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
         '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
     for key, counts in sorted(groups.items()):
         lines.append('| %s | %s |' % (group_name(key), ' | '.join(str(counts[c]) for c in ('coin', 'keep', 'no_rule', 'trash', 'mixed', 'pending'))))
+    lines += ['', '## Chequeo de fugas', '',
+        'Ítems que terminan en `coin` (en cualquier contexto) sin una regla específica de venta '
+        '(`gray`, `class_cannot_use`, `book_other_class`, `book_known`, `quest_not_active`, `quest_done`, `gear_not_ranked`) '
+        'y pertenecen a: clases 1, 6, 11, 12, 13; abribles (`Flags_0 & 0x4`); calidad >= 3; o consumibles (clase 0) con efecto de uso: '
+        '**%d filas**.' % len(leaks)]
+    if leaks:
+        lines += ['', '| ID | Nombre | Clase/subclase | Calidad | Precio de venta | Ganador |',
+            '| ---: | --- | --- | ---: | ---: | --- |']
+        for item, winners in sorted(leaks, key=lambda pair: int(pair[0]['id'])):
+            lines.append('| %s |' % ' | '.join(md(v) for v in (
+                item['id'], item['name'], group_name((int(item['classID']), int(item['subclassID']))),
+                item['quality'], item['price'], ', '.join(winners))))
+    lines += ['', '## Se vende por defecto', '',
+        'Lista completa: %d ítems cuyo ganador es `no_keep_reason`.' % len(default_sold), '',
+        '| ID | Nombre | Clase/subclase | Calidad | Precio de venta |',
+        '| ---: | --- | --- | ---: | ---: |']
+    for item in sorted(default_sold, key=lambda r: int(r['id'])):
+        lines.append('| %s |' % ' | '.join(md(v) for v in (
+            item['id'], item['name'], group_name((int(item['classID']), int(item['subclassID']))),
+            item['quality'], item['price'])))
     lines += ['', '## Sin regla (no_rule)', '', 'Lista completa: %d ítems con ganador no_rule en al menos un contexto.' % sum(map(len, unruled.values()))]
     for (class_, subclass, quality), entries in sorted(unruled.items()):
         lines += ['', '### %s, calidad %d' % (group_name((class_, subclass)), quality), '',
@@ -227,7 +265,8 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     summary = {'build': build, 'items': len(items), 'positive_price': positive, 'contexts': contexts,
-               'categories': dict(totals), 'marks': dict(marks), 'no_rule': sum(map(len, unruled.values()))}
+               'categories': dict(totals), 'marks': dict(marks), 'no_keep_reason': len(default_sold),
+               'leaks': len(leaks), 'no_rule': sum(map(len, unruled.values()))}
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return summary
 

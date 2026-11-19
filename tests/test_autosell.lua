@@ -43,8 +43,9 @@ test('venta: cerrar cancela el ticker y resume sólo lo vendido', function()
     item(0, 1); item(0, 2)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Fire('MERCHANT_CLOSED'); FAKE.Advance(3)
-    eq(#FAKE.used, 1); eq(#FAKE.messages, 1)
+    eq(#FAKE.used, 1); eq(#FAKE.messages, 2)
     ok(FAKE.messages[1]:find('KnuJunk vendió 1 ítems por 10c', 1, true))
+    ok(FAKE.messages[2]:find('Vendido: ' .. FAKE.linkOf(1001), 1, true))
 end)
 
 test('venta: límite predeterminado de doce y reinicio por visita', function()
@@ -54,7 +55,7 @@ test('venta: límite predeterminado de doce y reinicio por visita', function()
     FAKE.Fire('MERCHANT_CLOSED')
     for bag = 0, 1 do for slot = 1, 8 do item(bag, slot) end end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5)
-    eq(#FAKE.used, 24); eq(#FAKE.messages, 2)
+    eq(#FAKE.used, 24); eq(#FAKE.messages, 8)
 end)
 
 test('venta: respeta máximo configurable y límites de la opción', function()
@@ -156,8 +157,9 @@ test('venta: resumen usa dinero del juego y cantidad de la pila', function()
     end
     GetCoinTextureString = function(money) eq(money, 37035); return 'monedas del juego' end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
-    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por monedas del juego', 1, true))
-    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 1)
+    eq(#FAKE.messages, 2); ok(FAKE.messages[1]:find('1 ítems por monedas del juego', 1, true))
+    ok(FAKE.messages[2]:find('Vendido: ' .. FAKE.linkOf(1001), 1, true))
+    FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 2)
 end)
 
 test('venta: nada vendido no imprime resumen', function()
@@ -196,7 +198,7 @@ end)
 
 test('venta: llamadas propias nunca denuncian al addon en la pila', function()
     stack('Scrap'); item(0, 1); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
-    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('KnuJunk vendió', 1, true))
+    eq(#FAKE.messages, 2); ok(FAKE.messages[1]:find('KnuJunk vendió', 1, true))
 end)
 
 test('venta: clic aislado de bolsas no alerta, tres en un segundo sí y una vez', function()
@@ -264,7 +266,7 @@ test('venta: fallback global vende sin C_Container.UseContainerItem', function()
     item(0, 1); C_Container.UseContainerItem = nil
     UseContainerItem = function(bag, slot) FAKE.used[#FAKE.used + 1] = {bag, slot}; FAKE.bags[bag .. ':' .. slot] = nil end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2)
-    eq(#FAKE.used, 1); eq(#FAKE.messages, 1)
+    eq(#FAKE.used, 1); eq(#FAKE.messages, 2)
 end)
 
 test('venta: bloqueo propio prevalece aunque IsLocked diga falso', function()
@@ -333,7 +335,7 @@ test('regresión 5: confirma GUID desaparecido al tick siguiente, sin resumen an
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     eq(FAKE.bags['0:1'], nil); eq(#FAKE.messages, 0)
-    FAKE.Advance(2); eq(#FAKE.messages, 1)
+    FAKE.Advance(2); eq(#FAKE.messages, 2)
     ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
@@ -342,7 +344,7 @@ test('regresión 5: BAG_UPDATE_DELAYED confirma GUID cambiado antes del cierre',
     C_Container.UseContainerItem = function() FAKE.guids['0:1'] = 'reemplazo' end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Fire('BAG_UPDATE_DELAYED')
-    FAKE.Fire("MERCHANT_CLOSED"); FAKE.Advance(2); eq(#FAKE.messages, 1)
+    FAKE.Fire("MERCHANT_CLOSED"); FAKE.Advance(2); eq(#FAKE.messages, 2)
     ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
@@ -357,7 +359,7 @@ test('regresión 5: una reducción parcial sólo suma el precio de las unidades 
     C_Container.UseContainerItem = function() count = 3 end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21); eq(#FAKE.messages, 0)
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
-    eq(#FAKE.messages, 1)
+    eq(#FAKE.messages, 2)
     ok(FAKE.messages[1]:find('1 ítems por 14c', 1, true))
 end)
 
@@ -370,7 +372,7 @@ test('regresión 5: rechazos consumen sólo el límite de intentos; resumen sól
     end
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(5)
     eq(#FAKE.used, 3); ok(FAKE.bags['0:1']); ok(FAKE.bags['0:3']); ok(FAKE.bags['0:4'])
-    eq(#FAKE.messages, 1)
+    eq(#FAKE.messages, 2)
     ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
@@ -387,7 +389,7 @@ test('cerrar justo después de pedir la venta: si el ítem desapareció, se cuen
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
-    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+    eq(#FAKE.messages, 2); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)
 
 test('dinero: sólo unidades distintas de cero (en el juego salía «0o 30p 48c»)', function()
@@ -404,5 +406,5 @@ test('venta lenta del servidor: el ítem sigue en la bolsa varios ticks y igual 
     eq(#FAKE.used, 1); ok(FAKE.bags['0:1']); eq(#FAKE.messages, 0)
     FAKE.bags['0:1'] = nil; FAKE.guids['0:1'] = nil
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
-    eq(#FAKE.messages, 1); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+    eq(#FAKE.messages, 2); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
 end)

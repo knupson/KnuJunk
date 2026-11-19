@@ -144,7 +144,18 @@ function Tooltip.Lines(link, bound, bag, slot)
     local L = ns.L
 
     local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
-        recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true }
+        recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true,
+        no_keep_reason = true, gear_outgrown = true, book_other_class = true, book_known = true }
+    local noRuleKeys = {
+        gear = 'No rule for this item: not sold by default (gear)',
+        bag = 'No rule for this item: not sold by default (bag)',
+        openable = 'No rule for this item: not sold by default (openable)',
+        rare_or_epic = 'No rule for this item: not sold by default (rare or epic)',
+        ammo = 'No rule for this item: not sold by default (ammunition)',
+        book = 'No rule for this item: not sold by default (book or recipe)',
+        quest = 'No rule for this item: not sold by default (quest)',
+        key = 'No rule for this item: not sold by default (key)',
+    }
     local neutral = (mark == nil or mark == 'useful' or mark == 'trash' or mark == 'auction')
     local noPrice = not (type(item.price) == 'number' and item.price > 0)
     local informational = false
@@ -184,7 +195,10 @@ function Tooltip.Lines(link, bound, bag, slot)
         local kind = reason.kind
         local neutral = informational or neutral
         if kind == 'no_rule' then
-            add(L['No rule for this item: not sold by default'], WHITE)
+            local key = reason.exception and noRuleKeys[reason.exception] or 'No rule for this item: not sold by default'
+            add(L[key], WHITE)
+        elseif kind == 'book_unknown' and neutral then
+            add(L['Your class book, not learned'], WHITE)
         elseif kind == 'quest_log_incomplete' then
             add(L['The quest log could not be read completely'], WHITE)
         elseif kind == 'quest_repeatable' then
@@ -232,6 +246,14 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['No active quest needs it'], GOLD, 'coin')
             elseif kind == 'class_cannot_use' then
                 add(L["Your class can't use %s"]:format(subclassName(reason.subclassName or item.subclassName, reason.classID, reason.subclassID)), GOLD, 'coin')
+            elseif kind == 'no_keep_reason' then
+                add(L['No rule for this item: sold by default'], GOLD, 'coin')
+            elseif kind == 'gear_outgrown' then
+                add(L['Level %d gear: too low for you']:format(reason.level or item.reqLevel or 0), GOLD, 'coin')
+            elseif kind == 'book_other_class' then
+                add(L['Book for another class'], GOLD, 'coin')
+            elseif kind == 'book_known' then
+                add(L['You already know this spell'], GOLD, 'coin')
             end
         elseif kind == 'class_reagent' and neutral then
             -- Reactivo de hechizo de clase: neutro y sin icono. Tu clase: el primer hechizo con nombre
@@ -296,7 +318,7 @@ function Tooltip.Lines(link, bound, bag, slot)
         or (item.quality == 0 and (mark == 'coin' or mark == 'trash') and 'gray')
         or (mark == 'quest' and 'quest_active')
     for i, reason in ipairs(reasons) do
-        if reason.kind == 'gear_not_ranked' or (winningKind and reason.kind == winningKind) then winner = i end
+        if reason.kind == 'gear_not_ranked' or reason.kind == 'gear_outgrown' or (winningKind and reason.kind == winningKind) then winner = i end
     end
     if winner then renderReason(reasons[winner]) end
     for i, reason in ipairs(reasons) do if i ~= winner then renderReason(reason) end end
