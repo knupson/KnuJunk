@@ -2,14 +2,14 @@ local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
 ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, loot = true }, overrides = {} }
-ns.Defaults.rules = { sellUnruled = true, food = false, ammo = false, knownRecipe = false, gearNotRanked = true }
-ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful' }
+ns.Defaults.rules = { sellUnruled = true, armorBelow = true, food = true, ammo = true, knownRecipe = true, gearNotRanked = true }
+ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful', 'unruled' }
 -- Paleta de 4 colores (decision del user 2026-11-18): el color dice que hacer, la forma por que.
--- Verde = te sirve, naranja = le sirve a otro, amarillo = plata, rojo = tirar.
-local GREEN, ORANGE, YELLOW, RED = {111/255,211/255,106/255}, {1,154/255,60/255}, {1,210/255,60/255}, {232/255,90/255,74/255}
+-- Verde = te sirve, naranja = le sirve a otro, amarillo = plata, rojo = tirar; gris = sin regla.
+local GREEN, ORANGE, YELLOW, RED, GREY = {111/255,211/255,106/255}, {1,154/255,60/255}, {1,210/255,60/255}, {232/255,90/255,74/255}, {160/255,160/255,160/255}
 ns.IconColors = {
     protected = GREEN, quest = GREEN, hammer_mine = GREEN, useful = GREEN,
-    hammer_other = ORANGE, auction = YELLOW, coin = YELLOW, trash = RED,
+    hammer_other = ORANGE, auction = YELLOW, coin = YELLOW, trash = RED, unruled = GREY,
 }
 -- Colores por defecto de versiones anteriores: un color guardado identico a uno de estos se
 -- considera "nunca tocado" y pasa al nuevo valor por defecto.
@@ -118,6 +118,14 @@ frame:SetScript('OnEvent', function(_, event, name)
             show.hammer = nil
         end
         if type(KnuJunkDB.icons) == 'table' then ns.MigrateIconColors(KnuJunkDB.icons.colors) end
+        -- Una sola vez: comida, munición y recetas aprendidas pasan a venderse por defecto
+        -- (decisión del dueño: el default es monetizar). Después se respeta lo que elija.
+        if (tonumber(KnuJunkDB.rulesVersion) or 0) < 2 then
+            if type(KnuJunkDB.rules) == 'table' then
+                KnuJunkDB.rules.food, KnuJunkDB.rules.ammo, KnuJunkDB.rules.knownRecipe = true, true, true
+            end
+            KnuJunkDB.rulesVersion = 2
+        end
         merge(KnuJunkDB, ns.Defaults)
         ns.DB = KnuJunkDB
     elseif event == 'PLAYER_LOGIN' then

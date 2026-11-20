@@ -134,6 +134,17 @@ Categorías excluyentes: no_rule significa guardado en todos los contextos y sin
 
 Ítems que terminan en `coin` (en cualquier contexto) sin una regla específica de venta (`gray`, `class_cannot_use`, `book_other_class`, `book_known`, `quest_not_active`, `quest_done`, `gear_not_ranked`) y pertenecen a: clases 1, 6, 11, 12, 13; abribles (`Flags_0 & 0x4`); calidad >= 3; o consumibles (clase 0) con efecto de uso: **0 filas**.
 
+## Armadura inferior a la puesta
+
+Pasada adicional en niveles 30 y 60 suponiendo equipado en las 8 ranuras de armadura el mejor tipo que cada clase puede usar a ese nivel (guerrero/paladín malla al 30 y placas al 60; cazador/chamán cuero al 30 y malla al 60; pícaro/druida cuero; sacerdote/mago/brujo tela): **1002 ítems** vendidos con ganador `armor_below_equipped` (tela: 448, cuero: 368, malla: 186).
+
+| Perfil (ligado) | Nivel 30 | Nivel 60 |
+| --- | ---: | ---: |
+| Guerrero / Paladín (malla al 30, placas al 60) | 816 | 782 |
+| Cazador / Chamán (cuero al 30, malla al 60) | 448 | 596 |
+| Pícaro / Druida (cuero al 30 y 60) | 448 | 327 |
+| Sacerdote / Mago / Brujo (tela) | 0 | 0 |
+
 ## Se vende por defecto
 
 Lista completa: 172 ítems cuyo ganador es `no_keep_reason`.

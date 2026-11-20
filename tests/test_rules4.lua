@@ -11,10 +11,16 @@ local function ammo() return {id=2512,quality=1,price=5,classID=6,subclassID=2,e
 local function recipe() return {id=2406,quality=1,price=5,classID=9,effect='no',knownRecipe=true,isBound=true} end
 
 test('Tanda4: defaults y migración conservan preferencias', function()
-    for _,k in ipairs({'food','ammo','knownRecipe'}) do eq(ns.Defaults.rules[k],false); eq(ns.DB.rules[k],false) end
-    KnuJunkDB={rules={food=true},show={coin=false}}
+    for _,k in ipairs({'food','ammo','knownRecipe'}) do eq(ns.Defaults.rules[k],true); eq(ns.DB.rules[k],true) end
+    -- Instalación vieja (sin rulesVersion) con las reglas guardadas apagadas: se prenden una vez.
+    KnuJunkDB={rules={food=false,ammo=false,knownRecipe=false},show={coin=false}}
     FAKE.Fire('ADDON_LOADED','KnuJunk')
-    eq(ns.DB.rules.food,true); eq(ns.DB.rules.ammo,false); eq(ns.DB.rules.knownRecipe,false); eq(ns.DB.show.coin,false)
+    eq(ns.DB.rules.food,true); eq(ns.DB.rules.ammo,true); eq(ns.DB.rules.knownRecipe,true); eq(ns.DB.show.coin,false)
+    eq(ns.DB.rulesVersion,2)
+    -- Ya migrada: lo que apagó el jugador se respeta.
+    KnuJunkDB={rulesVersion=2,rules={food=false}}
+    FAKE.Fire('ADDON_LOADED','KnuJunk')
+    eq(ns.DB.rules.food,false); eq(ns.DB.rules.ammo,true)
 end)
 
 local function inventory()
@@ -40,6 +46,9 @@ test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
     local real=UnitClass
     local builds=0
     UnitClass=function(...) builds=builds+1; return real(...) end
+    local saved={food=ns.DB.rules.food,ammo=ns.DB.rules.ammo,knownRecipe=ns.DB.rules.knownRecipe,armorBelow=ns.DB.rules.armorBelow}
+    ns.DB.rules.food,ns.DB.rules.ammo,ns.DB.rules.knownRecipe,ns.DB.rules.armorBelow=false,false,false,false
+    ns.Player.Invalidate()
     local good,err=pcall(function()
         ns.Player.GetContext(); eq(builds,1)
         for _,event in ipairs({'BAG_UPDATE_DELAYED','SPELLS_CHANGED','LEARNED_SPELL_IN_TAB',
@@ -55,6 +64,7 @@ test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
         eq(builds,before+1)
     end)
     UnitClass=real
+    for k,v in pairs(saved) do ns.DB.rules[k]=v end
     if not good then error(err,0) end
 end)
 

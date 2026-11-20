@@ -508,7 +508,7 @@ test('no invalidado con relectura parcial: pendiente valido, aviso y moneda reti
     local again = ns.Player.ReadItem(0, 4) -- no debe fallar
     eq(again.effect, 'unknown')
     eq(ns.Classify(again, ns.Player.GetContext()).mark, 'useful', 'sin moneda de clase')
-    ok(coinShown(), 'ícono útil visible'); eq(button.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
+    ok(coinShown(), 'ícono sin regla visible'); eq(button.KnuJunkMark.texture,ns.Marks.TEXTURES.unruled)
     eq(ns.Player.ReadLink(FAKE.linkOf(99790)).effect, 'unknown', 'otra lectura tampoco falla')
     phase = 'effect'
     FAKE.Advance(5) -- reintento por timer

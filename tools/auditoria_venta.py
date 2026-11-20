@@ -169,6 +169,23 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
     specific_sell = {'gray', 'class_cannot_use', 'book_other_class', 'book_known',
                      'quest_not_active', 'quest_done', 'gear_not_ranked'}
     keep_marks = {'useful', 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction'}
+    equipped_path = audit_path.with_name(audit_path.stem + '_equipada.csv')
+    armor_below_items = set()
+    armor_below_by_subclass = collections.Counter()
+    armor_below_by_context = collections.Counter()
+    equipped_coin_winners = collections.defaultdict(set)
+    if equipped_path.exists():
+        for row in read_csv(equipped_path):
+            id_ = int(row['id'])
+            if row['mark'] == 'coin':
+                equipped_coin_winners[id_].add(row['winner_reason'])
+                if row['winner_reason'] == 'armor_below_equipped':
+                    armor_below_items.add(id_)
+                    cls, lvl, bind = row['context'].split(':')
+                    if bind == 'ligado':
+                        armor_below_by_context['%s:%s' % (cls, lvl)] += 1
+        for id_ in armor_below_items:
+            armor_below_by_subclass[int(items[id_]['subclassID'])] += 1
     for id_, item in items.items():
         state = states[id_]
         expected = 54 if both and item['classID'] in ('2', '4') else 27
@@ -185,14 +202,15 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
             unruled[key + (int(item['quality']),)].append(item)
         if state['no_keep_reason']:
             default_sold.append(item)
-        if 'coin' in m:
+        coin_winners = state['coin_winners'] | equipped_coin_winners.get(id_, set())
+        if coin_winners:
             class_id = int(item['classID'])
             quality = int(item['quality']) if item['quality'] != '' else -1
             openable = item.get('openable') == '1'
             use_effect = class_id == 0 and item.get('effect') == 'yes'
-            non_specific = bool(state['coin_winners'] - specific_sell)
+            non_specific = bool(coin_winners - specific_sell)
             if non_specific and (class_id in (1, 6, 11, 12, 13) or openable or quality >= 3 or use_effect):
-                leaks.append((item, sorted(state['coin_winners'])))
+                leaks.append((item, sorted(coin_winners)))
     positive = sum(bool(i['price']) and int(i['price']) > 0 for i in items.values())
     lines = ['# Auditoría de venta', '', 'Build: `%s` (wowf).%s' % (build, ' **Fixture de prueba; no es la base completa.**' if fixture else ''),
         '', 'Ítems: %d. Con SellPrice > 0: %d. Contextos evaluados: %d.' % (len(items), positive, contexts), '',
@@ -246,6 +264,23 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
             lines.append('| %s |' % ' | '.join(md(v) for v in (
                 item['id'], item['name'], group_name((int(item['classID']), int(item['subclassID']))),
                 item['quality'], item['price'], ', '.join(winners))))
+    lines += ['', '## Armadura inferior a la puesta', '',
+        'Pasada adicional en niveles 30 y 60 suponiendo equipado en las 8 ranuras de armadura '
+        'el mejor tipo que cada clase puede usar a ese nivel (guerrero/paladín malla al 30 y placas al 60; '
+        'cazador/chamán cuero al 30 y malla al 60; pícaro/druida cuero; sacerdote/mago/brujo tela): '
+        '**%d ítems** vendidos con ganador `armor_below_equipped` '
+        '(tela: %d, cuero: %d, malla: %d).' % (
+            len(armor_below_items), armor_below_by_subclass[1], armor_below_by_subclass[2], armor_below_by_subclass[3]), '',
+        '| Perfil (ligado) | Nivel 30 | Nivel 60 |',
+        '| --- | ---: | ---: |',
+        '| Guerrero / Paladín (malla al 30, placas al 60) | %d | %d |' % (
+            armor_below_by_context['PALADIN:30'], armor_below_by_context['PALADIN:60']),
+        '| Cazador / Chamán (cuero al 30, malla al 60) | %d | %d |' % (
+            armor_below_by_context['HUNTER:30'], armor_below_by_context['HUNTER:60']),
+        '| Pícaro / Druida (cuero al 30 y 60) | %d | %d |' % (
+            armor_below_by_context['ROGUE:30'], armor_below_by_context['ROGUE:60']),
+        '| Sacerdote / Mago / Brujo (tela) | %d | %d |' % (
+            armor_below_by_context['MAGE:30'], armor_below_by_context['MAGE:60'])]
     lines += ['', '## Se vende por defecto', '',
         'Lista completa: %d ítems cuyo ganador es `no_keep_reason`.' % len(default_sold), '',
         '| ID | Nombre | Clase/subclase | Calidad | Precio de venta |',
@@ -266,7 +301,7 @@ def report(items_path, audit_path, report_path, build, both=False, fixture=False
     report_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     summary = {'build': build, 'items': len(items), 'positive_price': positive, 'contexts': contexts,
                'categories': dict(totals), 'marks': dict(marks), 'no_keep_reason': len(default_sold),
-               'leaks': len(leaks), 'no_rule': sum(map(len, unruled.values()))}
+               'armor_below_equipped': len(armor_below_items), 'leaks': len(leaks), 'no_rule': sum(map(len, unruled.values()))}
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return summary
 

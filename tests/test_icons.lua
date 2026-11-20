@@ -225,7 +225,7 @@ test('íconos: leyendas y colores en ambos idiomas',function()
 end)
 
 test('íconos: generador entrega TGA 32x32 RGBA sin compresión',function()
-    for _, kind in ipairs({'protected','quest','auction','coin','trash','useful','fondo'}) do
+    for _, kind in ipairs({'protected','quest','auction','coin','trash','useful','unruled','fondo'}) do
         local file=assert(io.open('media/'..kind..'.tga','rb'))
         local data=file:read('*a'); file:close()
         eq(#data,18+32*32*4)
@@ -233,12 +233,19 @@ test('íconos: generador entrega TGA 32x32 RGBA sin compresión',function()
         eq(h[1],0); eq(h[2],0); eq(h[3],2)
         eq(h[13]+256*h[14],32); eq(h[15]+256*h[16],32)
         eq(h[17],32); eq(h[18],40)
+        local nonZero,transparent=0,0
+        for offset=19,#data,4 do
+            local alpha=data:byte(offset+3)
+            if alpha>0 then nonZero=nonZero+1 else transparent=transparent+1 end
+        end
+        ok(nonZero>0,kind..' tiene píxeles visibles')
+        ok(transparent>0,kind..' tiene fondo transparente')
     end
 end)
 
 test('íconos: leyenda de cada marca y motivos conservados',function()
     local labels={protected='Protected',quest='Active quest',hammer_mine='Your profession material',
-        hammer_other='Other profession material',coin='Sell',trash='Trash (cannot be sold)',useful='Useful'}
+        hammer_other='Other profession material',coin='Sell',trash='Trash (cannot be sold)',useful='Useful',unruled='No rule'}
     bag()
     local saved=ns.Classify
     local success,err=pcall(function()
@@ -365,4 +372,116 @@ test('íconos: los colores por defecto viejos migran a la paleta de 4 colores; l
     eq(colors.trash[1], 232/255); eq(colors.trash[2], 90/255)
     eq(colors.coin[1], 0.1); eq(colors.coin[2], 0.2); eq(colors.coin[3], 0.3)
     ns.MigrateIconColors(nil)
+end)
+
+test('íconos: unruled está después de useful en IconKinds y cada tipo tiene textura y color', function()
+    local usefulIndex, unruledIndex
+    for index, kind in ipairs(ns.IconKinds) do
+        if kind == 'useful' then usefulIndex = index end
+        if kind == 'unruled' then unruledIndex = index end
+        ok(type(ns.Marks.TEXTURES[kind]) == 'string' and ns.Marks.TEXTURES[kind] ~= '', 'textura de ' .. kind)
+        local c = ns.IconColors[kind]
+        ok(type(c) == 'table' and type(c[1]) == 'number' and type(c[2]) == 'number' and type(c[3]) == 'number', 'color de ' .. kind)
+        eq(ns.Defaults.show[kind], true, 'default show.' .. kind)
+    end
+    ok(usefulIndex and unruledIndex == usefulIndex + 1, 'unruled inmediatamente después de useful')
+    for channel = 1, 3 do
+        eq(ns.IconColors.unruled[channel], 160/255)
+        eq(ns.DB.icons.colors.unruled[channel], 160/255)
+    end
+end)
+
+test('íconos: markOf distingue no_rule (unruled) de útil por regla y respeta quest y protected', function()
+    local markOf = ns.Marks.markOf
+    eq(ns.Marks.MarkOf, markOf)
+    eq(markOf(nil), nil)
+    -- no_rule con o sin excepción muestra unruled, mientras result.mark sigue siendo useful.
+    for _, exc in ipairs({ false, 'gear', 'bag', 'openable', 'rare_or_epic', 'ammo', 'book', 'quest', 'key' }) do
+        local r = { mark = 'useful', reasons = { { kind = 'no_rule', exception = exc or nil } } }
+        eq(markOf(r), 'unruled')
+        eq(r.mark, 'useful')
+    end
+    -- Casos reales del clasificador donde ninguna regla decide (p. ej. pieza rara de equipo o bolsa).
+    local gearRes = ns.Classify(item({ classID = 2, subclassID = 7, equipLoc = 'INVTYPE_WEAPON', quality = 3, reqLevel = 35 }), context())
+    eq(gearRes.mark, 'useful')
+    eq(gearRes.reasons[1].kind, 'no_rule')
+    eq(markOf(gearRes), 'unruled')
+    -- Útil por una regla explícita conserva el tilde verde 'useful'.
+    for _, kind in ipairs({ 'useful', 'book_unknown', 'future_level', 'key', 'lockbox', 'library_book', 'reputation_token' }) do
+        eq(markOf({ mark = 'useful', reasons = { { kind = kind } } }), 'useful', kind)
+    end
+    local effRes = ns.Classify(item({ effect = 'yes', hasUseOrEquipSpell = true }), context())
+    eq(effRes.mark, 'useful'); eq(effRes.reasons[1].kind, 'useful'); eq(markOf(effRes), 'useful')
+    local futureRes = ns.Classify(item({ classID = 2, subclassID = 7, quality = 2, reqLevel = 50 }), context({ class = 'MAGE', level = 20 }))
+    eq(futureRes.mark, 'useful'); eq(futureRes.reasons[1].kind, 'future_level'); eq(markOf(futureRes), 'useful')
+    -- Quest y protected siguen ganando.
+    eq(markOf({ mark = 'protected', quest = true, reasons = { { kind = 'no_rule' } } }), 'protected')
+    eq(markOf({ mark = 'quest', reasons = { { kind = 'no_rule' } } }), 'quest')
+    eq(markOf({ mark = 'useful', quest = true, reasons = { { kind = 'no_rule' } } }), 'quest')
+end)
+
+test('íconos: bolsa, Verdict, botín y Baganator pintan unruled y show.unruled = false lo oculta', function()
+    local button = bag({ classID = 1, quality = 1, price = 10 }) -- bolsa: no_rule (bag)
+    ns.Marks.Update(button, 0, 1)
+    ok(button.KnuJunkMark:IsShown())
+    eq(button.KnuJunkMark.texture, ns.Marks.TEXTURES.unruled)
+    eq(button.KnuJunkMark.vertex[1], 160/255)
+    local verdictMark, waiting, result = ns.Marks.Verdict(0, 1, ID)
+    eq(verdictMark, 'unruled'); eq(waiting, false); eq(result.mark, 'useful')
+
+    local lootButton = CreateFrame('Button')
+    ns.Marks.UpdateLink(lootButton, FAKE.linkOf(ID))
+    ok(lootButton.KnuJunkMark:IsShown())
+    eq(lootButton.KnuJunkMark.texture, ns.Marks.TEXTURES.unruled)
+
+    local state = FAKE.InstallBaganator(); ns.Bags.InstallAll()
+    local widget = state.widgets.knujunk_icon.onInit(CreateFrame('Button'))
+    eq(state.widgets.knujunk_icon.onUpdate(widget, { itemID = ID, itemLocation = { bagID = 0, slotIndex = 1 } }), true)
+    eq(widget.Icon.texture, ns.Marks.TEXTURES.unruled)
+
+    ns.Options.Set('show.unruled', false)
+    ns.Marks.Update(button, 0, 1)
+    eq(button.KnuJunkMark:IsShown(), false)
+    eq(ns.Marks.Verdict(0, 1, ID), nil)
+    ns.Marks.UpdateLink(lootButton, FAKE.linkOf(ID))
+    eq(lootButton.KnuJunkMark:IsShown(), false)
+    eq(state.widgets.knujunk_icon.onUpdate(widget, { itemID = ID, itemLocation = { bagID = 0, slotIndex = 1 } }), false)
+end)
+
+test('íconos: opciones y leyenda de tooltip de Sin regla / No rule en ambos idiomas', function()
+    ColorPickerFrame = { GetColorRGB = function() return .5, .5, .5 end, SetColorRGB = function() end }
+    local savedL = ns.L
+    local success, err = pcall(function()
+        for _, locale in ipairs({ 'esES', 'esMX', 'enUS' }) do
+            FAKE.locale = locale
+            assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+            ns.Options.ResetState()
+            local panel = ns.Options.Build(); panel:SetSize(650, 500); panel:Show()
+            local check = panel.checks['show.unruled']
+            local swatch = panel.swatches.unruled
+            ok(check, 'casilla show.unruled')
+            ok(swatch, 'selector de color unruled')
+            ok(check.help, 'ayuda en show.unruled')
+            eq(check.label:GetText(), locale == 'enUS' and 'No rule' or 'Sin regla')
+            local expectedHelp = locale == 'enUS'
+                and 'No rule decides it: not sold automatically. Hover to see why (gear, bag, openable...). Press the key to lock or release it.'
+                or 'Ninguna regla lo decide: no se vende solo. Pasá el mouse para ver por qué (equipo, bolsa, se abre...). Con la tecla lo trabás o lo soltás.'
+            eq(check.help:GetText(), expectedHelp)
+            ok(not check.help:GetText():find('→', 1, true) and not check.help:GetText():find('…', 1, true))
+
+            -- Tooltip para ítem sin regla: leyenda gris «Sin regla» / «No rule».
+            bag({ classID = 1, quality = 1, price = 10 })
+            local lines = ns.Tooltip.Lines(FAKE.linkOf(ID))
+            eq(lines[1].text, ns.L['Icon: %s']:format(locale == 'enUS' and 'No rule' or 'Sin regla'))
+            eq(lines[1].r, 160/255); eq(lines[1].g, 160/255); eq(lines[1].b, 160/255)
+
+            -- Tooltip para ítem útil por regla: leyenda verde «Útil» / «Useful».
+            bag({ classID = 15, quality = 1, price = 10, spell = true })
+            local usefulLines = ns.Tooltip.Lines(FAKE.linkOf(ID))
+            eq(usefulLines[1].text, ns.L['Icon: %s']:format(locale == 'enUS' and 'Useful' or 'Útil'))
+            eq(usefulLines[1].r, 111/255); eq(usefulLines[1].g, 211/255); eq(usefulLines[1].b, 106/255)
+        end
+    end)
+    ns.L, FAKE.locale = savedL, nil
+    if not success then error(err) end
 end)

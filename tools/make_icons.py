@@ -36,6 +36,10 @@ def shape(kind, x, y):
                 or rect(x,y,8,12,24,28) and not (rect(x,y,12,15,13,25) or rect(x,y,19,15,20,25)))
     if kind == 'useful':
         return line(x,y,6,17,13,24,2.5) or line(x,y,13,24,27,8,2.5)
+    if kind == 'unruled':
+        arc = 2.9 <= math.hypot(x-16, y-10.5) <= 7.1 and (y <= 10.5 or (x >= 16 and y <= 14))
+        return (arc or line(x,y,11,10.5,11,11.5,2.1) or line(x,y,19.5,14,16,16.8,2.1)
+                or line(x,y,16,16.8,16,18.8,2.1) or math.hypot(x-16,y-26.8) <= 2.4)
     if kind == 'coin':
         radius = math.hypot(x-16,y-16)
         return (10 <= radius <= 13 or radius <= 8) and not rect(x,y,15,11,17,21)
@@ -44,7 +48,7 @@ def shape(kind, x, y):
 
 def generate():
     ROOT.mkdir(exist_ok=True)
-    for kind in ('protected', 'quest', 'auction', 'trash', 'useful', 'coin', 'fondo'):
+    for kind in ('protected', 'quest', 'auction', 'trash', 'useful', 'unruled', 'coin', 'fondo'):
         data = bytearray()
         # Supersampling geométrico: bordes con alfa suave incluso a 14 px.
         for y in range(SIZE):

@@ -386,6 +386,30 @@ local function sortedKeys(set)
     return table.concat(list, ',')
 end
 
+local ARMOR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10 }
+
+local function readEquippedArmor()
+    local equipped, parts = {}, {}
+    local inv = type(GetInventoryItemID) == 'function' and GetInventoryItemID or nil
+    local instant = type(GetItemInfoInstant) == 'function' and GetItemInfoInstant
+        or (type(C_Item) == 'table' and type(C_Item.GetItemInfoInstant) == 'function' and C_Item.GetItemInfoInstant) or nil
+    for i, slot in ipairs(ARMOR_SLOTS) do
+        local sub = false
+        if inv and instant then
+            local ok, id = pcall(inv, 'player', slot)
+            if ok and type(id) == 'number' and id > 0 then
+                local good, _, _, _, _, _, classID, subclassID = pcall(instant, id)
+                if good and classID == 4 and type(subclassID) == 'number' and subclassID >= 1 and subclassID <= 4 then
+                    sub = subclassID
+                end
+            end
+        end
+        equipped[slot] = sub
+        parts[i] = slot .. ':' .. tostring(sub)
+    end
+    return equipped, table.concat(parts, ',')
+end
+
 local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
@@ -396,6 +420,7 @@ local function buildContext()
         if good and type(value) == 'number' and value > 0 then level = value end
     end
     local questItems, incomplete, found = buildQuestItems()
+    local equippedArmor, armorSig = readEquippedArmor()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
     -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
     if ns.Questie and type(ns.Questie.Pending) == 'function' and ns.Questie.Pending() then incomplete = true end
@@ -403,6 +428,7 @@ local function buildContext()
         class = class,
         level = level,
         professions = professions,
+        equippedArmor = equippedArmor,
         isQuestDone = isQuestDone,
         questInLog = questInLogFor(found),
         questItemsInLog = questItems,
@@ -416,7 +442,7 @@ local function buildContext()
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids), tostring(optionalRevision),
-        ctx.bagStock.signature or '' }, '|')
+        ctx.bagStock.signature or '', armorSig }, '|')
     return ctx
 end
 
@@ -926,7 +952,8 @@ frame:SetScript('OnEvent', function(_, event, arg1)
         or event == 'LEARNED_SPELL_IN_TAB' or event == 'PLAYER_EQUIPMENT_CHANGED'
         or event == 'UNIT_INVENTORY_CHANGED'
     if optionalEvent then
-        if not optionalEnabled or (event == 'UNIT_INVENTORY_CHANGED' and arg1 ~= 'player') then return end
+        local enabled = optionalEnabled or (event == 'PLAYER_EQUIPMENT_CHANGED' and rules and rules.armorBelow)
+        if not enabled or (event == 'UNIT_INVENTORY_CHANGED' and arg1 ~= 'player') then return end
         optionalRevision = optionalRevision + 1
     end
     -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo

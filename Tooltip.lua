@@ -145,7 +145,8 @@ function Tooltip.Lines(link, bound, bag, slot)
 
     local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
         recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true,
-        no_keep_reason = true, gear_outgrown = true, book_other_class = true, book_known = true }
+        no_keep_reason = true, gear_outgrown = true, armor_below_equipped = true, book_other_class = true, book_known = true }
+    local armorTypes = { [1] = 'cloth', [2] = 'leather', [3] = 'mail', [4] = 'plate' }
     local noRuleKeys = {
         gear = 'No rule for this item: not sold by default (gear)',
         bag = 'No rule for this item: not sold by default (bag)',
@@ -170,17 +171,18 @@ function Tooltip.Lines(link, bound, bag, slot)
     local names = {
         protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
         hammer_other = 'Other profession material', auction = 'Auction', coin = 'Sell',
-        trash = 'Trash (cannot be sold)', useful = 'Useful',
+        trash = 'Trash (cannot be sold)', useful = 'Useful', unruled = 'No rule',
     }
     local function money(value)
         if type(value) ~= 'number' then return L['unknown price'] end
         value = math.floor(value)
         return string.format(L['%dg %ds %dc'], math.floor(value / 10000), math.floor(value / 100) % 100, value % 100)
     end
-    if mark and names[mark] then
-        local label = L[names[mark]]
-        if mark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
-        add(L['Icon: %s']:format(label), ns.Marks.Color(mark))
+    local iconMark = ns.Marks and ns.Marks.MarkOf and ns.Marks.MarkOf(result) or mark
+    if iconMark and names[iconMark] then
+        local label = L[names[iconMark]]
+        if iconMark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
+        add(L['Icon: %s']:format(label), ns.Marks.Color(iconMark))
     end
 
     if mark == 'quest' and (result.reasonMark == 'hammer_mine' or result.reasonMark == 'hammer_other') then
@@ -250,6 +252,10 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['No rule for this item: sold by default'], GOLD, 'coin')
             elseif kind == 'gear_outgrown' then
                 add(L['Level %d gear: too low for you']:format(reason.level or item.reqLevel or 0), GOLD, 'coin')
+            elseif kind == 'armor_below_equipped' then
+                local itemType = L[armorTypes[reason.subclassID or item.subclassID] or ''] or tostring(reason.subclassID or item.subclassID)
+                local wornType = L[armorTypes[reason.equipped] or ''] or tostring(reason.equipped)
+                add(L['%s armor: you wear %s there']:format(itemType, wornType), GOLD, 'coin')
             elseif kind == 'book_other_class' then
                 add(L['Book for another class'], GOLD, 'coin')
             elseif kind == 'book_known' then
@@ -318,7 +324,7 @@ function Tooltip.Lines(link, bound, bag, slot)
         or (item.quality == 0 and (mark == 'coin' or mark == 'trash') and 'gray')
         or (mark == 'quest' and 'quest_active')
     for i, reason in ipairs(reasons) do
-        if reason.kind == 'gear_not_ranked' or reason.kind == 'gear_outgrown' or (winningKind and reason.kind == winningKind) then winner = i end
+        if reason.kind == 'gear_not_ranked' or reason.kind == 'gear_outgrown' or reason.kind == 'armor_below_equipped' or (winningKind and reason.kind == winningKind) then winner = i end
     end
     if winner then renderReason(reasons[winner]) end
     for i, reason in ipairs(reasons) do if i ~= winner then renderReason(reason) end end
