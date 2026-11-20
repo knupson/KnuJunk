@@ -34,11 +34,15 @@ Options.TOGGLES = {
 }
 
 local ICON_LABELS = { protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
-    hammer_other = 'Other profession material', auction = 'Auction', coin = 'Coin', trash = 'Trash (cannot be sold)', useful = 'Useful' }
+    hammer_other = 'Other profession material', auction = 'Auction', coin = 'Coin', trash = 'Trash (cannot be sold)',
+    useful = 'Useful', unruled = 'No rule' }
+local ICON_HELPS = {
+    unruled = 'No rule decides it: not sold automatically. Hover to see why (gear, bag, openable...). Press the key to lock or release it.',
+}
 for index, kind in ipairs(ns.IconKinds) do
-    table.insert(Options.TOGGLES, 3 + index, { section = 'Icons', path = 'show.' .. kind, label = ICON_LABELS[kind], help = nil })
+    table.insert(Options.TOGGLES, 3 + index, { section = 'Icons', path = 'show.' .. kind, label = ICON_LABELS[kind], help = ICON_HELPS[kind] })
 end
-table.insert(Options.TOGGLES, 12, { section = 'Icons', path = 'icons.background', label = 'Dark background behind the icon', help = 'Helps distinguish the icon from the item.' })
+table.insert(Options.TOGGLES, 3 + #ns.IconKinds + 1, { section = 'Icons', path = 'icons.background', label = 'Dark background behind the icon', help = 'Helps distinguish the icon from the item.' })
 Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.enabled', label = 'Automatic selling',
     help = 'Opening a merchant sells only items with a coin icon. Never protected items.' }
 Options.TOGGLES[#Options.TOGGLES + 1] = { section = 'General', path = 'autoSell.graysOnly', label = 'Grays only',

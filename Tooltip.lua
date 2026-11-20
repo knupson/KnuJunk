@@ -171,17 +171,18 @@ function Tooltip.Lines(link, bound, bag, slot)
     local names = {
         protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
         hammer_other = 'Other profession material', auction = 'Auction', coin = 'Sell',
-        trash = 'Trash (cannot be sold)', useful = 'Useful',
+        trash = 'Trash (cannot be sold)', useful = 'Useful', unruled = 'No rule',
     }
     local function money(value)
         if type(value) ~= 'number' then return L['unknown price'] end
         value = math.floor(value)
         return string.format(L['%dg %ds %dc'], math.floor(value / 10000), math.floor(value / 100) % 100, value % 100)
     end
-    if mark and names[mark] then
-        local label = L[names[mark]]
-        if mark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
-        add(L['Icon: %s']:format(label), ns.Marks.Color(mark))
+    local iconMark = ns.Marks and ns.Marks.MarkOf and ns.Marks.MarkOf(result) or mark
+    if iconMark and names[iconMark] then
+        local label = L[names[iconMark]]
+        if iconMark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
+        add(L['Icon: %s']:format(label), ns.Marks.Color(iconMark))
     end
 
     if mark == 'quest' and (result.reasonMark == 'hammer_mine' or result.reasonMark == 'hammer_other') then

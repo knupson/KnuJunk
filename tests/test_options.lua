@@ -35,7 +35,7 @@ local function openPanel()
     return panel
 end
 
-local PATHS = { 'enabled','protectKeep','show.loot','show.protected','show.quest','show.hammer_mine','show.hammer_other','show.auction','show.coin','show.trash','show.useful','icons.background','rules.sellUnruled','rules.armorBelow','rules.food','rules.ammo','rules.knownRecipe','rules.gearNotRanked','autoSell.enabled','autoSell.graysOnly','autoRepair.enabled','autoRepair.guild','lootAdvisor.enabled' }
+local PATHS = { 'enabled','protectKeep','show.loot','show.protected','show.quest','show.hammer_mine','show.hammer_other','show.auction','show.coin','show.trash','show.useful','show.unruled','icons.background','rules.sellUnruled','rules.armorBelow','rules.food','rules.ammo','rules.knownRecipe','rules.gearNotRanked','autoSell.enabled','autoSell.graysOnly','autoRepair.enabled','autoRepair.guild','lootAdvisor.enabled' }
 
 local function lookup(path)
     local value = ns.DB
@@ -55,7 +55,7 @@ test('los interruptores incluyen protección del vendedor, en orden y con ayuda'
         local toggle = ns.Options.TOGGLES[index]
         eq(toggle.path, path)
         ok(toggle.label, 'texto de ' .. path)
-        if path:match('^show%.') and path ~= 'show.loot' then eq(toggle.help, nil)
+        if path:match('^show%.') and path ~= 'show.loot' and path ~= 'show.unruled' then eq(toggle.help, nil)
         else ok(toggle.help, 'ayuda de ' .. path) end
     end
 end)
@@ -177,7 +177,7 @@ test('pestañas: tecla y colores comparten la fila con su etiqueta', function()
     eq(panel.bindingButton.points[1][5], panel.bindingLabel.points[1][5])
     for _, kind in ipairs(ns.IconKinds) do
         local check, swatch = panel.checks['show.' .. kind], panel.swatches[kind]
-        eq(check.help, nil)
+        eq(check.help ~= nil, kind == 'unruled')
         eq(swatch:GetParent(), check.row)
         eq(check.label:GetParent(), check.row)
         eq(swatch.points[1][2], check.points[1][2])

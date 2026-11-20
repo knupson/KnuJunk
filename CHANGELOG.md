@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Ícono propio «Sin regla» (`unruled`, signo de pregunta «?» en gris `#A0A0A0`) cuando ninguna regla decide sobre el ítem (`reasons[1].kind == 'no_rule'`), separado del tilde verde «Útil» sin cambiar el veredicto del clasificador. Archivo nuevo `media/unruled.tga`: hay que reiniciar el juego una vez (WoW sólo ve archivos nuevos al iniciar).
+
 - Regla `armor_below_equipped` (`rules.armorBelow`, activada por defecto en Reglas): vende armadura común o poco común de tela, cuero o malla en las 8 ranuras de armadura cuando llevás equipado un tipo superior en esa ranura, excluyendo ítems verdes si tenés Encantamiento (también en `gear_outgrown`).
 
 - Comida y bebida superadas, munición superada y recetas aprendidas pasan a estar prendidas por defecto; las instalaciones existentes se prenden una sola vez (`rulesVersion = 2`) y después se respeta lo que elija el jugador.
