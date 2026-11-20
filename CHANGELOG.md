@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Regla `armor_below_equipped` (`rules.armorBelow`, activada por defecto en Reglas): vende armadura común o poco común de tela, cuero o malla en las 8 ranuras de armadura cuando llevás equipado un tipo superior en esa ranura, excluyendo ítems verdes si tenés Encantamiento (también en `gear_outgrown`).
+
 - Comida y bebida superadas, munición superada y recetas aprendidas pasan a estar prendidas por defecto; las instalaciones existentes se prenden una sola vez (`rulesVersion = 2`) y después se respeta lo que elija el jugador.
 
 - Venta por defecto (`no_keep_reason`, opción `rules.sellUnruled` activada por defecto) con excepciones respaldadas por datos y sufijos en el tooltip (`openables` en `Data/Locks.lua`, equipo, bolsas, munición, libros/recetas, misión, llaves y calidad rara/épica), reglas para equipo de nivel superado (`gear_outgrown`) y libros de clase (`classBooks` en `Data/Recipes.lua`), enlaces vendidos en el resumen de auto-venta y auditoría actualizada con chequeo de fugas.

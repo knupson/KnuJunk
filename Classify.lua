@@ -469,6 +469,24 @@ local function classify(item, ctx)
     return result
 end
 
+local armorSlots = {
+    INVTYPE_HEAD = 1, INVTYPE_SHOULDER = 3, INVTYPE_CHEST = 5, INVTYPE_ROBE = 5,
+    INVTYPE_WAIST = 6, INVTYPE_LEGS = 7, INVTYPE_FEET = 8, INVTYPE_WRIST = 9, INVTYPE_HAND = 10,
+    ['1'] = 1, ['3'] = 3, ['5'] = 5, ['20'] = 5, ['6'] = 6, ['7'] = 7, ['8'] = 8, ['9'] = 9, ['10'] = 10,
+}
+
+local function armorBelowReason(item, ctx)
+    if (ctx.rules and ctx.rules.armorBelow == false) or item.isSetPiece
+        or item.classID ~= ITEM_CLASS_ARMOR
+        or type(item.subclassID) ~= 'number' or item.subclassID < 1 or item.subclassID > 3
+        or type(item.quality) ~= 'number' or item.quality <= 0 or item.quality > 2
+        or (item.quality == 2 and ctx.professions and ctx.professions[333]) then return nil end
+    local slot = item.equipLoc and armorSlots[item.equipLoc]
+    local equipped = slot and type(ctx.equippedArmor) == 'table' and ctx.equippedArmor[slot]
+    if type(equipped) ~= 'number' or equipped < 1 or equipped > 4 or equipped <= item.subclassID then return nil end
+    return { kind = 'armor_below_equipped', subclassID = item.subclassID, equipped = equipped }
+end
+
 -- Evidencia informativa: no toca el item, el contexto ni el veredicto. Se ejecuta después
 -- de decidir, incluso si una protección hizo retornar antes de las reglas inferiores.
 local function collectEvidence(item, ctx, result)
@@ -524,11 +542,14 @@ local function collectEvidence(item, ctx, result)
     if effect ~= 'yes' and effect ~= 'no' and effect ~= 'unknown' then effect = item.hasUseOrEquipSpell and 'yes' or 'no' end
     if effect == 'yes' and not seen.useful then add({ kind = 'effect' }) end
     if not item.isSetPiece and type(item.quality) == 'number' and item.quality > 0 and item.quality <= 2
+        and not (item.quality == 2 and ctx.professions and ctx.professions[333])
         and (item.classID == ITEM_CLASS_WEAPON or item.classID == ITEM_CLASS_ARMOR)
         and type(item.reqLevel) == 'number' and item.reqLevel > 0
         and type(ctx.level) == 'number' and item.reqLevel + 10 <= ctx.level then
         add({ kind = 'gear_outgrown', level = item.reqLevel })
     end
+    local below = armorBelowReason(item, ctx)
+    if below then add(below) end
     return other
 end
 
@@ -588,6 +609,7 @@ end
 local function gearOutgrown(item, ctx, result)
     if result.mark ~= 'useful' or result.uncertain or ctx.questLogIncomplete or item.effect == 'unknown'
         or item.isSetPiece or type(item.quality) ~= 'number' or item.quality <= 0 or item.quality > 2
+        or (item.quality == 2 and ctx.professions and ctx.professions[333])
         or (item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR)
         or type(item.reqLevel) ~= 'number' or item.reqLevel <= 0
         or type(ctx.level) ~= 'number' or item.reqLevel + 10 > ctx.level
@@ -598,6 +620,18 @@ local function gearOutgrown(item, ctx, result)
     end
     if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return false end
     return true
+end
+
+local function armorBelowEquipped(item, ctx, result)
+    if result.mark ~= 'useful' or result.uncertain or ctx.questLogIncomplete or item.effect == 'unknown' then return nil end
+    local reason = armorBelowReason(item, ctx)
+    if not reason then return nil end
+    for _, r in ipairs(result.reasons) do
+        if r.kind ~= 'useful' and r.kind ~= 'no_rule' and r.kind ~= 'no_sell_price'
+            and r.kind ~= 'class_cannot_use_tradeable' and r.kind ~= 'future_level' then return nil end
+    end
+    if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return nil end
+    return reason
 end
 
 local function gearMissText(item, ctx, result)
@@ -696,7 +730,19 @@ function ns.Classify(item, ctx, withEvidence)
         result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
             or (item.price == 0 and 'trash' or 'useful')
     end
-    local gearMiss = not isGray and not outgrown and gearMissText(item, ctx, result)
+    local armorBelow = not isGray and not outgrown and armorBelowEquipped(item, ctx, result)
+    if armorBelow then
+        for i = #result.reasons, 1, -1 do
+            local k = result.reasons[i].kind
+            if k == 'no_rule' or k == 'useful' or k == 'class_cannot_use_tradeable' or k == 'future_level' then
+                table.remove(result.reasons, i)
+            end
+        end
+        table.insert(result.reasons, 1, armorBelow)
+        result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
+            or (item.price == 0 and 'trash' or 'useful')
+    end
+    local gearMiss = not isGray and not outgrown and not armorBelow and gearMissText(item, ctx, result)
     if gearMiss then
         for i = #result.reasons, 1, -1 do
             if result.reasons[i].kind == 'no_rule' then table.remove(result.reasons, i) end
@@ -720,7 +766,7 @@ function ns.Classify(item, ctx, withEvidence)
     local price = (not isGray) and ns.AuctionPrice(item.id) or nil
     result.auctionPrice = price
     if not manual and not result.uncertain and not ctx.questLogIncomplete and item.effect ~= 'unknown'
-        and (result.mark == 'coin' or result.mark == 'useful' or ((gearMiss or outgrown) and result.mark == 'trash'))
+        and (result.mark == 'coin' or result.mark == 'useful' or ((gearMiss or outgrown or armorBelow) and result.mark == 'trash'))
         and item.isBound ~= true and price then
         local settings = ns.DB and ns.DB.auction or {}
         if price >= math.max((type(item.price) == 'number' and item.price or 0) * (settings.factor or 2), settings.minCopper or 100) then

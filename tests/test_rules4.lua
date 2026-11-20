@@ -46,8 +46,8 @@ test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
     local real=UnitClass
     local builds=0
     UnitClass=function(...) builds=builds+1; return real(...) end
-    local saved={food=ns.DB.rules.food,ammo=ns.DB.rules.ammo,knownRecipe=ns.DB.rules.knownRecipe}
-    ns.DB.rules.food,ns.DB.rules.ammo,ns.DB.rules.knownRecipe=false,false,false
+    local saved={food=ns.DB.rules.food,ammo=ns.DB.rules.ammo,knownRecipe=ns.DB.rules.knownRecipe,armorBelow=ns.DB.rules.armorBelow}
+    ns.DB.rules.food,ns.DB.rules.ammo,ns.DB.rules.knownRecipe,ns.DB.rules.armorBelow=false,false,false,false
     ns.Player.Invalidate()
     local good,err=pcall(function()
         ns.Player.GetContext(); eq(builds,1)

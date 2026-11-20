@@ -92,6 +92,7 @@ class AuditoriaTests(unittest.TestCase):
         self.assertIn('Ítems: 7. Con SellPrice > 0: 5. Contextos evaluados: 216.', text)
         self.assertIn('## Chequeo de fugas', text)
         self.assertIn('**0 filas**.', text)
+        self.assertIn('## Armadura inferior a la puesta', text)
         self.assertIn('## Se vende por defecto', text)
         self.assertIn('Lista completa: 1 ítems cuyo ganador es `no_keep_reason`.', text)
         self.assertIn('Lista completa: 1 ítems con ganador no_rule en al menos un contexto.', text)

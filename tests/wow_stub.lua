@@ -179,6 +179,7 @@ local function installClient()
     FAKE.questLog = {}      -- { {questID=, isHeader=, objectives={ {text=, type=} } } }
     FAKE.items = {}         -- [id] = { name=, quality=, price=, classID=, subclassID=, equipLoc=, setID=, spell=, tooltip={textos} (sin tooltip: nombre + "Tipo") }
     FAKE.bags = {}          -- ['bag:slot'] = itemID
+    FAKE.equipped = {}      -- [slot] = itemID
     FAKE.bound = {}         -- ['bag:slot'] = true|false (isBound de GetContainerItemInfo; nil = sin el campo)
     FAKE.addons = {}        -- [carpeta] = true si el addon esta cargado
     C_AddOns = { IsAddOnLoaded = function(name) return FAKE.addons[name] == true end }
@@ -312,6 +313,14 @@ local function installClient()
         if not d then return nil end
         return d.name, linkOf(id), d.quality, 1, d.reqLevel or 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
+    end
+    GetItemInfoInstant = function(key)
+        local id, d = itemOf(key)
+        if not d then return nil end
+        return id, 'Tipo', d.subType, d.equipLoc or '', 'icon', d.classID, d.subclassID
+    end
+    GetInventoryItemID = function(unit, slot)
+        if unit == 'player' then return FAKE.equipped[slot] end
     end
     GetItemSpell = function(key)
         local _, d = itemOf(key)

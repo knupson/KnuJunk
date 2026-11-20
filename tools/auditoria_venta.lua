@@ -60,7 +60,20 @@ local rows = readCSV(input)
 local header = table.remove(rows, 1)
 local out = assert(io.open(output, 'wb'))
 out:write('id,class,subclass,quality,price,context,mark,winner_reason,other_reasons\n')
+local equippedOutput = output:gsub('%.csv$', '') .. '_equipada.csv'
+local outEquipped = assert(io.open(equippedOutput, 'wb'))
+outEquipped:write('id,class,subclass,quality,price,context,mark,winner_reason\n')
 local classes = { 'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID' }
+local equippedByTier = {}
+for tier = 1, 4 do
+    equippedByTier[tier] = { [1] = tier, [3] = tier, [5] = tier, [6] = tier, [7] = tier, [8] = tier, [9] = tier, [10] = tier }
+end
+local bestArmor = {
+    WARRIOR = { [30] = 3, [60] = 4 }, PALADIN = { [30] = 3, [60] = 4 },
+    HUNTER = { [30] = 2, [60] = 3 }, SHAMAN = { [30] = 2, [60] = 3 },
+    ROGUE = { [30] = 2, [60] = 2 }, DRUID = { [30] = 2, [60] = 2 },
+    PRIEST = { [30] = 1, [60] = 1 }, MAGE = { [30] = 1, [60] = 1 }, WARLOCK = { [30] = 1, [60] = 1 },
+}
 local count = 0
 for _, row in ipairs(rows) do
     local r = {}
@@ -80,7 +93,7 @@ for _, row in ipairs(rows) do
         for _, class in ipairs(classes) do
             for _, level in ipairs({ 10, 30, 60 }) do
                 local ctx = { class = class, level = level, professions = {}, overrides = {},
-                    rules = { sellUnruled = true, food = false, ammo = false, knownRecipe = false, gearNotRanked = true },
+                    rules = { sellUnruled = true, armorBelow = true, food = false, ammo = false, knownRecipe = false, gearNotRanked = true },
                     questItemsInLog = {}, questLogIncomplete = false,
                     questInLog = function() return false end, isQuestDone = function() return false end }
                 local result = ns.Classify(item, ctx)
@@ -88,15 +101,26 @@ for _, row in ipairs(rows) do
                 local secondary = {}
                 for i, reason in ipairs(result.reasons) do if i ~= winningIndex then secondary[#secondary + 1] = reason end end
                 for _, reason in ipairs(result.otherReasons or {}) do secondary[#secondary + 1] = reason end
+                local ctxName = class .. ':' .. level .. ':' .. (item.isBound and 'ligado' or 'libre')
                 local values = { item.id, item.classID, item.subclassID, item.quality or '', item.price or '',
-                    class .. ':' .. level .. ':' .. (item.isBound and 'ligado' or 'libre'), result.mark or 'pending',
+                    ctxName, result.mark or 'pending',
                     winning, kinds(secondary) }
                 for i, value in ipairs(values) do values[i] = csv(value) end
                 out:write(table.concat(values, ','), '\n')
+                if item.classID == 4 and level ~= 10 then
+                    ctx.equippedArmor = equippedByTier[bestArmor[class][level]]
+                    local eqResult = ns.Classify(item, ctx, false)
+                    local eqWinning = winner(eqResult, item)
+                    local eqValues = { item.id, item.classID, item.subclassID, item.quality or '', item.price or '',
+                        ctxName, eqResult.mark or 'pending', eqWinning }
+                    for i, value in ipairs(eqValues) do eqValues[i] = csv(value) end
+                    outEquipped:write(table.concat(eqValues, ','), '\n')
+                end
                 count = count + 1
             end
         end
     end
 end
 out:close()
+outEquipped:close()
 print(('Auditoría: %d ítems, %d contextos evaluados'):format(#rows, count))

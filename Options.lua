@@ -21,6 +21,8 @@ Options.TOGGLES = {
         help = 'The same icons in the loot window (with autoloot there is no window).' },
     { section = 'Rules', path = 'rules.sellUnruled', label = 'Sell items with no rule',
         help = 'What no rule classifies is sold, except gear, bags, openable items, ammunition, books, keys, quest items and rare or epic items.' },
+    { section = 'Rules', path = 'rules.armorBelow', label = 'Armor below what you wear',
+        help = 'Sells white or green cloth, leather or mail armor when you already wear a higher armor type in that slot. Ignores cloaks, rings and shields. Does not sell green items if you have Enchanting.' },
     { section = 'Rules', path = 'rules.food', label = 'Outleveled food and drink',
         help = 'Coin on simple food and drink 15 or more levels above the requirement when you carry a better one. Never for hunters.' },
     { section = 'Rules', path = 'rules.ammo', label = 'Outdamaged ammunition',
