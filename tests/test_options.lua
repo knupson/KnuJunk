@@ -273,10 +273,10 @@ test('Set con el mismo valor o con una ruta desconocida no toca nada', function(
     end)
 end)
 
-test('las reglas opcionales arrancan apagadas en el panel', function()
+test('las reglas de comida, munición y recetas arrancan prendidas en el panel', function()
     local panel = openPanel()
     for _, path in ipairs({ 'rules.food', 'rules.ammo', 'rules.knownRecipe' }) do
-        eq(panel.checks[path]:GetChecked(), false, path)
+        eq(panel.checks[path]:GetChecked(), true, path)
     end
     for _, path in ipairs({ 'enabled', 'show.coin', 'show.hammer_mine', 'show.loot' }) do
         eq(panel.checks[path]:GetChecked(), true, path)
