@@ -649,19 +649,25 @@ local function gearMissText(item, ctx, result)
     local root = rawget(_G, 'GQ')
     if type(root) ~= 'table' or type(root.Data) ~= 'table'
         or type(root.Data.GearScoreMissText) ~= 'function' then return end
+    -- Desde acá GearQuest está: se anota por qué no decide, para que el tooltip lo diga.
+    local function skip(state, extra)
+        result.gearQuest = { state = state, gqLevel = extra and extra.gqLevel, gqClass = extra and extra.gqClass }
+    end
     if inEquipmentSet(item.id) then return end
     -- GearScoreMissText también devuelve texto («not scoring this item», Data.lua:7370-7375) cuando
     -- el ítem no está en su base o la base no cargó: eso no prueba que no te sirva. Sólo cuenta si
     -- GearQuest tiene filas para el ítem.
-    if type(root.Data.GetEntriesByItemId) ~= 'function' then return end
+    if type(root.Data.GetEntriesByItemId) ~= 'function' then return skip('api') end
     local okEntries, entries = pcall(root.Data.GetEntriesByItemId, root.Data, item.id)
-    if not okEntries or type(entries) ~= 'table' or next(entries) == nil then return end
+    if not okEntries then return skip('error') end
+    if type(entries) ~= 'table' or next(entries) == nil then return skip('unknown_item') end
     -- Mismo criterio que el tooltip de GearQuest (Data.lua:7279-7281): si EntryForItemLink da una
     -- fila puntuada para este enlace, el ítem TE SIRVE, aunque GearScoreMissText devuelva un texto
     -- de diagnóstico. Sin esa API, o si falla, no se decide nada.
-    if type(root.Data.EntryForItemLink) ~= 'function' then return end
+    if type(root.Data.EntryForItemLink) ~= 'function' then return skip('api') end
     local okEntry, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
-    if not okEntry or entry ~= nil then return end
+    if not okEntry then return skip('error') end
+    if entry ~= nil then return skip('ranked') end
     -- GearQuest puede simular otra clase, especialización o nivel (Preview.lua:929-979,
     -- Core.lua:621): con simulación activa o perfil distinto al personaje real, no se decide nada.
     local function gq(method)
@@ -670,13 +676,19 @@ local function gearMissText(item, ctx, result)
         return value, ok
     end
     local preview, okPreview = gq('IsPreviewEnabled')
-    if not okPreview or preview ~= false then return end
+    if not okPreview then return skip('error') end
+    if preview ~= false then return skip('simulating') end
     local level, okLevel = gq('GetEffectiveLevel')
-    if not okLevel or type(ctx.level) ~= 'number' or level ~= ctx.level then return end
+    if not okLevel or type(ctx.level) ~= 'number' or level ~= ctx.level then
+        return skip('level', { gqLevel = okLevel and level or nil })
+    end
     local class, okClass = gq('GetEffectiveClass')
-    if not okClass or type(ctx.class) ~= 'string' or class ~= ctx.class then return end
+    if not okClass or type(ctx.class) ~= 'string' or class ~= ctx.class then
+        return skip('class', { gqClass = okClass and class or nil })
+    end
     local success, text = pcall(root.Data.GearScoreMissText, root.Data, item.link)
     if success and type(text) == 'string' and text ~= '' then return text end
+    return skip(success and 'no_text' or 'error')
 end
 
 -- La moneda automatica siempre acredita un precio de venta conocido y positivo.
@@ -750,6 +762,10 @@ function ns.Classify(item, ctx, withEvidence)
         result.reasons[#result.reasons + 1] = { kind = 'gear_not_ranked', text = gearMiss }
         result.mark = type(item.price) == 'number' and item.price > 0 and 'coin'
             or (item.price == 0 and 'trash' or 'useful')
+    elseif result.gearQuest and result.gearQuest.state == 'ranked' and result.mark == 'useful'
+        and result.reasons[1] and result.reasons[1].kind == 'no_rule' then
+        -- GearQuest la puntúa para vos: es una razón para guardarla (tilde verde), no «sin regla».
+        result.reasons[1] = { kind = 'gear_ranked' }
     end
     if not isGray and not manual and not protected and result.mark == 'useful'
         and result.reasons[1] and result.reasons[1].kind == 'no_rule'

@@ -40,3 +40,62 @@ test('aviso GearQuest: mensaje en el chat sólo con simulación prendida', funct
     eq(#FAKE.messages, before)
     GQ = nil
 end)
+
+local function gqStub(fields)
+    local stub = {
+        Data = {
+            GetEntriesByItemId = function() return { { pipelineScore = 10 } } end,
+            EntryForItemLink = function() return { pipelineScore = 10 } end,
+            GearScoreMissText = function() return 'Sin puesto a tu nivel.' end,
+        },
+        IsPreviewEnabled = function() return false end,
+        GetEffectiveLevel = function() return 27 end,
+        GetEffectiveClass = function() return 'PALADIN' end,
+    }
+    for k, v in pairs(fields or {}) do stub.Data[k] = v end
+    return stub
+end
+
+local function belt()
+    return { id = 15528, link = 'item:15528', quality = 2, price = 918, classID = 4, subclassID = 3,
+        equipLoc = 'INVTYPE_WAIST', reqLevel = 21, isBound = true }
+end
+
+local function ctx27()
+    return { class = 'PALADIN', level = 27, professions = {}, overrides = {}, questItemsInLog = {},
+        questInLog = function() return false end, isQuestDone = function() return false end,
+        rules = { sellUnruled = true, gearNotRanked = true, armorBelow = true } }
+end
+
+test('GearQuest puntúa el ítem: tilde verde con motivo gear_ranked, no «sin regla»', function()
+    GQ = gqStub()
+    local r = ns.Classify(belt(), ctx27())
+    GQ = nil
+    eq(r.mark, 'useful')
+    eq(r.reasons[1].kind, 'gear_ranked')
+end)
+
+test('GearQuest sin filas del ítem: queda sin regla y anota el motivo', function()
+    GQ = gqStub({ GetEntriesByItemId = function() return {} end })
+    local r = ns.Classify(belt(), ctx27())
+    GQ = nil
+    eq(r.reasons[1].kind, 'no_rule')
+    eq(r.gearQuest.state, 'unknown_item')
+end)
+
+test('GearQuest con otro nivel: anota el nivel que usa', function()
+    GQ = gqStub({ EntryForItemLink = function() return nil end })
+    GQ.GetEffectiveLevel = function() return 30 end
+    local r = ns.Classify(belt(), ctx27())
+    GQ = nil
+    eq(r.gearQuest.state, 'level')
+    eq(r.gearQuest.gqLevel, 30)
+end)
+
+test('GearQuest sin puesto y mismo personaje: monedita gear_not_ranked', function()
+    GQ = gqStub({ EntryForItemLink = function() return nil end })
+    local r = ns.Classify(belt(), ctx27())
+    GQ = nil
+    eq(r.mark, 'coin')
+    eq(r.reasons[#r.reasons].kind, 'gear_not_ranked')
+end)
