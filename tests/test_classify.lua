@@ -389,7 +389,7 @@ local function withClassReagents(map, fn)
     if not success then error(err, 0) end
 end
 
-test('reactivo de clase propia o ajena -> sin moneda ni marca, motivo class_reagent', function()
+test('reactivo de clase: propia se guarda, ajena se vende', function()
     withData({}, {}, function()
         withClassReagents({ [9000] = { 'MAGE', 'PRIEST', spells = { MAGE = { 130 }, PRIEST = { 1706 } } } }, function()
             local reagent = item { quality = 1, price = 5 }
@@ -397,11 +397,16 @@ test('reactivo de clase propia o ajena -> sin moneda ni marca, motivo class_reag
             eq(own.mark, 'useful'); ok(not hasReason(own, 'gray'), 'sin motivo gris')
             local reason = hasReason(own, 'class_reagent')
             eq(reason.own, true); eq(reason.spells[1], 130); eq(reason.classes[1], 'MAGE')
+            -- Otra clase: no te sirve, se vende (decision del user 2026-11-21).
             local other = ns.Classify(reagent, ctx { class = 'WARRIOR' })
-            eq(other.mark, 'useful')
-            local otherReason = hasReason(other, 'class_reagent')
-            eq(otherReason.own, false); eq(otherReason.spells, nil)
+            eq(other.mark, 'coin')
+            local otherReason = hasReason(other, 'class_reagent_other')
             eq(otherReason.classes[1], 'MAGE'); eq(otherReason.classes[2], 'PRIEST')
+            ok(not hasReason(other, 'class_reagent'), 'sin el motivo neutro')
+            eq(ns.Classify(item { quality = 1, price = 0 }, ctx { class = 'WARRIOR' }).mark, 'useful', 'sin precio se guarda')
+            eq(ns.Classify(reagent, ctx { class = nil }).mark, 'useful', 'clase desconocida se guarda')
+            local unread = ns.Classify(reagent, ctx { class = 'WARRIOR', questLogIncomplete = true })
+            eq(unread.mark, 'useful'); ok(hasReason(unread, 'quest_log_incomplete'), 'diario sin leer')
             local quest = ns.Classify(item { classID = 12 }, ctx { class = 'WARRIOR' })
             eq(quest.mark, 'useful', 'tampoco quest_not_active')
             local sold = ns.Classify(reagent, ctx { overrides = { [9000] = 'sell' } })

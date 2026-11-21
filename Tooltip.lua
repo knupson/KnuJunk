@@ -153,7 +153,8 @@ function Tooltip.Lines(link, bound, bag, slot)
 
     local saleReasons = { gray = true, food_outgrown = true, ammo_outgrown = true,
         recipe_known = true, quest_done = true, quest_not_active = true, class_cannot_use = true,
-        no_keep_reason = true, gear_outgrown = true, armor_below_equipped = true, book_other_class = true, book_known = true }
+        no_keep_reason = true, gear_outgrown = true, armor_below_equipped = true, book_other_class = true, book_known = true,
+        class_reagent_other = true }
     local armorTypes = { [1] = 'cloth', [2] = 'leather', [3] = 'mail', [4] = 'plate' }
     local noRuleKeys = {
         gear = 'Gear: kept',
@@ -319,6 +320,8 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['%s armor: you wear %s there']:format(itemType, wornType), GOLD, 'coin')
             elseif kind == 'book_other_class' then
                 add(L['Book for another class'], GOLD, 'coin')
+            elseif kind == 'class_reagent_other' then
+                add(L['%s reagent: not your class, sold']:format(classList(reason.classes)), GOLD, 'coin')
             elseif kind == 'book_known' then
                 add(L['You already know this spell'], GOLD, 'coin')
             end

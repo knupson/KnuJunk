@@ -127,3 +127,25 @@ test('debug: muestra lo que lee C_Traits', function()
     ok(text:find('specIndex=3', 1, true), 'specIndex')
     clearTraits()
 end)
+
+test('reactivo de otra clase: el tooltip dice que se vende (esES y enUS)', function()
+    local savedL = ns.L
+    local good, err = pcall(function()
+        FAKE.items[17058] = { name = 'Aceite de pescado', quality = 1, price = 42, classID = 7, subclassID = 11 }
+        FAKE.class = 'PALADIN'
+        for _, locale in ipairs({ 'esES', 'enUS' }) do
+            FAKE.locale = locale; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+            ns.Player.Invalidate()
+            local text = {}
+            for _, line in ipairs(ns.Tooltip.Lines(FAKE.linkOf(17058))) do text[#text + 1] = line.text end
+            local expected = locale == 'enUS' and ' reagent: not your class, sold' or ': no es de tu clase, se vende'
+            ok(table.concat(text, '\n'):find(expected, 1, true), table.concat(text, '\n'))
+        end
+        FAKE.class = 'SHAMAN'; ns.Player.Invalidate()
+        local text = {}
+        for _, line in ipairs(ns.Tooltip.Lines(FAKE.linkOf(17058))) do text[#text + 1] = line.text end
+        ok(not table.concat(text, '\n'):find('se vende', 1, true) and not table.concat(text, '\n'):find('sold', 1, true), 'chamán lo guarda')
+    end)
+    ns.L, FAKE.locale = savedL, nil
+    if not good then error(err, 0) end
+end)
