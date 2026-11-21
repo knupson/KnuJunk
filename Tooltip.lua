@@ -202,7 +202,17 @@ function Tooltip.Lines(link, bound, bag, slot)
             -- Con GearQuest simulando otro personaje KnuJunk no usa su ranking: decirlo y cómo salir.
             if reason.exception == 'gear' and not informational and ns.GearQuestSimulating() then
                 add(L['GearQuest is simulating another character: type /gq set off so KnuJunk can judge your gear'], { 1, 0.82, 0.24 })
+            elseif reason.exception == 'gear' and not informational and result.gearQuest then
+                local gqs = result.gearQuest
+                local why = gqs.state == 'unknown_item' and L['GearQuest has no data for this item']
+                    or gqs.state == 'level' and L['GearQuest uses level %s, you are %s']:format(tostring(gqs.gqLevel), tostring(ns.Player and ns.Player.GetContext and ns.Player.GetContext().level))
+                    or gqs.state == 'class' and L['GearQuest uses another class (%s)']:format(tostring(gqs.gqClass))
+                    or gqs.state == 'error' and L['GearQuest gave an error']
+                    or L['GearQuest gave no verdict']
+                add(L['Why GearQuest did not decide: %s']:format(why), { 0.6, 0.6, 0.6 })
             end
+        elseif kind == 'gear_ranked' then
+            add(L['GearQuest ranks it for you: keep it'], WHITE)
         elseif kind == 'book_unknown' and neutral then
             add(L['Your class book, not learned'], WHITE)
         elseif kind == 'quest_log_incomplete' then
