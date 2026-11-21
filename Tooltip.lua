@@ -208,6 +208,15 @@ function Tooltip.Lines(link, bound, bag, slot)
                     or gqs.state == 'level' and L['GearQuest uses level %s, you are %s']:format(tostring(gqs.gqLevel), tostring(ns.Player and ns.Player.GetContext and ns.Player.GetContext().level))
                     or gqs.state == 'class' and L['GearQuest uses another class (%s)']:format(tostring(gqs.gqClass))
                     or gqs.state == 'error' and L['GearQuest gave an error']
+                    or gqs.state == 'rule_off' and L['the GearQuest rule is off in Options']
+                    or gqs.state == 'uncertain' and L['item data is still loading']
+                    or gqs.state == 'quest_log' and L['the quest log could not be read']
+                    or gqs.state == 'set_piece' and L['it is part of an item set']
+                    or gqs.state == 'no_link' and L['the item has no link']
+                    or gqs.state == 'slot' and L['slot not judged (%s)']:format(tostring(item.equipLoc))
+                    or gqs.state == 'future' and L['you cannot wear it yet']
+                    or gqs.state == 'no_gearquest' and L['GearQuest is not loaded']
+                    or gqs.state == 'equipment_set' and L['it is in one of your equipment sets']
                     or L['GearQuest gave no verdict']
                 add(L['Why GearQuest did not decide: %s']:format(why), { 0.6, 0.6, 0.6 })
             end
