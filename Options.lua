@@ -697,7 +697,7 @@ local function refresh(panel)
     local root = rawget(_G,'Auctionator')
     local detected = root and root.API and root.API.v1 and type(root.API.v1.GetAuctionPriceByItemID)=='function'
     panel.auctionStatus:SetText(L('Auctionator detected: %s'):format(L(detected and 'yes' or 'no')))
-    local gearQuest = rawget(_G, 'GQ')
+    local gearQuest = ns.GearQuestRoot and ns.GearQuestRoot()
     local gearDetected = type(gearQuest) == 'table' and type(gearQuest.Data) == 'table'
         and type(gearQuest.Data.GearScoreMissText) == 'function'
     panel.gearQuestStatus:SetText(L('GearQuest detected: %s'):format(L(gearDetected and 'yes' or 'no')))
