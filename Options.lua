@@ -24,7 +24,7 @@ Options.TOGGLES = {
     { section = 'Rules', path = 'rules.armorBelow', label = 'Armor below what you wear',
         help = 'Sells white or green cloth, leather or mail armor when you already wear a higher armor type in that slot. Ignores cloaks, rings and shields. Does not sell green items if you have Enchanting.' },
     { section = 'Rules', path = 'rules.gearNoRanking', label = 'Gear with no ranking (GearQuest, Pawn)',
-        help = 'Sells white or green gear that GearQuest does not know and Pawn does not mark as an upgrade. Without GearQuest or Pawn it sells every white or green piece no other rule keeps.' },
+        help = 'Gear that neither GearQuest nor Pawn (for your spec) needs and that does not beat what you wear is sold.' },
     { section = 'Rules', path = 'rules.food', label = 'Outleveled food and drink',
         help = 'Coin on simple food and drink 15 or more levels above the requirement when you carry a better one. Never for hunters.' },
     { section = 'Rules', path = 'rules.ammo', label = 'Outdamaged ammunition',

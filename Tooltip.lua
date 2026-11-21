@@ -230,8 +230,16 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['Pawn: %s upgrade for %s']:format(pct, tostring(reason.scale)), WHITE)
             end
         elseif kind == 'gear_no_ranking' then
-            add(L['No ranking says you need it: sold'], WHITE, 'coin')
+            add(L[result.mark == 'coin' and 'No ranking says you need it: sold' or 'Pawn does not mark it as an upgrade for your spec: keep it'], WHITE,
+                result.mark == 'coin' and 'coin' or nil)
             add(L[reason.pawn and 'GearQuest does not know it and Pawn does not mark it as an upgrade' or 'GearQuest does not know it'], { 0.6, 0.6, 0.6 })
+        elseif kind == 'gear_empty_slot' then
+            add(L['That slot is empty: equip it'], WHITE)
+        elseif kind == 'gear_below_equipped' then
+            add(L['Item level %d: what you wear is %d']:format(reason.level, reason.equipped), WHITE,
+                result.mark == 'coin' and 'coin' or nil)
+        elseif kind == 'gear_maybe_upgrade' then
+            add(L['Possible upgrade: item level %d versus %d equipped']:format(reason.level, reason.equipped), WHITE)
         elseif kind == 'book_unknown' and neutral then
             add(L['Your class book, not learned'], WHITE)
         elseif kind == 'quest_log_incomplete' then

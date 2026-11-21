@@ -84,7 +84,7 @@ test('armadura inferior: ranura vacía, info pendiente o equipada no armadura no
     local prevLevel = UnitLevel
     UnitLevel = function() return 18 end
     local success, err = pcall(function()
-        -- Ranura vacía. Sin la regla de equipo sin ranking, para ver sólo la de armadura.
+        -- Ranura vacía: la cadena la conserva con motivo, aunque la venta esté apagada.
         ns.DB.rules.gearNoRanking = false
         FAKE.equipped = {}
         ns.Player.Invalidate()
@@ -92,7 +92,7 @@ test('armadura inferior: ranura vacía, info pendiente o equipada no armadura no
         eq(emptyCtx.equippedArmor[5], false)
         local rEmpty = ns.Classify(item(), emptyCtx)
         eq(rEmpty.mark, 'useful')
-        eq(rEmpty.reasons[1].kind, 'no_rule')
+        eq(rEmpty.reasons[1].kind, 'gear_empty_slot')
 
         -- Ítem equipado con info pendiente (no está en FAKE.items).
         FAKE.equipped = { [5] = 888001 }
