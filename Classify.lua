@@ -635,12 +635,19 @@ local function armorBelowEquipped(item, ctx, result)
 end
 
 local function gearMissText(item, ctx, result)
-    if (ctx.rules and ctx.rules.gearNotRanked == false) or result.mark ~= 'useful'
-        or result.uncertain or ctx.questLogIncomplete or item.isSetPiece
-        or (item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR)
-        or type(item.link) ~= 'string' or item.link == ''
-        or not item.equipLoc or item.equipLoc == '' or excludedGearSlots[item.equipLoc]
-        or (type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level) then return end
+    -- Se anota por qué no decide, para que el tooltip lo diga (sólo equipo).
+    local function skip(state, extra)
+        result.gearQuest = { state = state, gqLevel = extra and extra.gqLevel, gqClass = extra and extra.gqClass }
+    end
+    if item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR then return end
+    if ctx.rules and ctx.rules.gearNotRanked == false then return skip('rule_off') end
+    if result.mark ~= 'useful' then return end
+    if result.uncertain then return skip('uncertain') end
+    if ctx.questLogIncomplete then return skip('quest_log') end
+    if item.isSetPiece then return skip('set_piece') end
+    if type(item.link) ~= 'string' or item.link == '' then return skip('no_link') end
+    if not item.equipLoc or item.equipLoc == '' or excludedGearSlots[item.equipLoc] then return skip('slot') end
+    if type(item.reqLevel) == 'number' and type(ctx.level) == 'number' and item.reqLevel > ctx.level then return skip('future') end
     -- Las protecciones del núcleo conservan su precedencia aunque su marca sea Útil.
     for _, reason in ipairs(result.reasons) do
         if reason.kind ~= 'useful' and reason.kind ~= 'no_rule' and reason.kind ~= 'no_sell_price'
@@ -648,12 +655,8 @@ local function gearMissText(item, ctx, result)
     end
     local root = rawget(_G, 'GQ')
     if type(root) ~= 'table' or type(root.Data) ~= 'table'
-        or type(root.Data.GearScoreMissText) ~= 'function' then return end
-    -- Desde acá GearQuest está: se anota por qué no decide, para que el tooltip lo diga.
-    local function skip(state, extra)
-        result.gearQuest = { state = state, gqLevel = extra and extra.gqLevel, gqClass = extra and extra.gqClass }
-    end
-    if inEquipmentSet(item.id) then return end
+        or type(root.Data.GearScoreMissText) ~= 'function' then return skip('no_gearquest') end
+    if inEquipmentSet(item.id) then return skip('equipment_set') end
     -- GearScoreMissText también devuelve texto («not scoring this item», Data.lua:7370-7375) cuando
     -- el ítem no está en su base o la base no cargó: eso no prueba que no te sirva. Sólo cuenta si
     -- GearQuest tiene filas para el ítem.
