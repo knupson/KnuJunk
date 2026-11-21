@@ -42,7 +42,7 @@ local function inventory()
     end
 end
 
-test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
+test('Tanda4: eventos opcionales OFF no reconstruyen el contexto salvo cambios de equipo', function()
     local real=UnitClass
     local builds=0
     UnitClass=function(...) builds=builds+1; return real(...) end
@@ -52,7 +52,7 @@ test('Tanda4: eventos opcionales OFF no reconstruyen el contexto', function()
     local good,err=pcall(function()
         ns.Player.GetContext(); eq(builds,1)
         for _,event in ipairs({'BAG_UPDATE_DELAYED','SPELLS_CHANGED','LEARNED_SPELL_IN_TAB',
-            'PLAYER_EQUIPMENT_CHANGED','UNIT_INVENTORY_CHANGED','TOOLTIP_DATA_UPDATE','GET_ITEM_INFO_RECEIVED'}) do
+            'TOOLTIP_DATA_UPDATE','GET_ITEM_INFO_RECEIVED'}) do
             FAKE.Fire(event,'player'); FAKE.Advance(0.25); ns.Player.GetContext()
             eq(builds,1,event)
         end

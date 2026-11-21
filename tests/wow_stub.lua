@@ -311,7 +311,7 @@ local function installClient()
     GetItemInfo = function(key)
         local id, d = itemOf(key)
         if not d then return nil end
-        return d.name, linkOf(id), d.quality, 1, d.reqLevel or 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
+        return d.name, linkOf(id), d.quality, d.itemLevel or 1, d.reqLevel or 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
     end
     GetItemInfoInstant = function(key)
@@ -321,6 +321,10 @@ local function installClient()
     end
     GetInventoryItemID = function(unit, slot)
         if unit == 'player' then return FAKE.equipped[slot] end
+    end
+    GetInventoryItemLink = function(unit, slot)
+        local id = unit == 'player' and FAKE.equipped[slot]
+        if id then return linkOf(id) end
     end
     GetItemSpell = function(key)
         local _, d = itemOf(key)
@@ -446,6 +450,8 @@ function FAKE.InstallBaganator()
     return state
 end
 function FAKE.Reset()
+    GearQuest, PawnGetAllScalesEx, PawnGetItemData, PawnIsItemAnUpgrade, PawnGetItemDataForInventorySlot = nil, nil, nil, nil, nil
+    GetNumTalentTabs, GetTalentTabInfo = nil, nil
     CanMerchantRepair, GetRepairAllCost, RepairAllItems, GetMoney, IsInGuild, CanGuildBankRepair = nil, nil, nil, nil, nil, nil
     hooksecurefunc = secureHook
     C_Timer.NewTicker = newTicker

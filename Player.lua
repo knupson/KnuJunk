@@ -410,6 +410,54 @@ local function readEquippedArmor()
     return equipped, table.concat(parts, ',')
 end
 
+local function readSpec(class)
+    local root = ns.GearQuestRoot and ns.GearQuestRoot()
+    if type(root) == 'table' and type(root.GetEffectiveSpec) == 'function'
+        and type(root.Spec) == 'table' and type(root.Spec.GetOptions) == 'function' then
+        local good, id = pcall(root.GetEffectiveSpec, root)
+        local ok, options = pcall(root.Spec.GetOptions, root.Spec, class)
+        if good and id and ok and type(options) == 'table' then
+            for _, option in ipairs(options) do
+                if option.id == id and type(option.label) == 'string' and option.label ~= '' then
+                    return option.label, 'gearquest'
+                end
+            end
+        end
+    end
+    if type(GetNumTalentTabs) ~= 'function' or type(GetTalentTabInfo) ~= 'function' then return end
+    local good, tabs = pcall(GetNumTalentTabs)
+    if not good or type(tabs) ~= 'number' then return end
+    local most, label = 0
+    for tab = 1, tabs do
+        local ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab)
+        local name, points = first, third
+        if type(first) == 'number' then name, points = second, fifth end
+        if ok and type(name) == 'string' and name ~= '' and type(points) == 'number' and points > most then
+            most, label = points, name
+        end
+    end
+    if label then return label, 'talents' end
+end
+
+local function readEquippedLevel()
+    local levels, signature, pending = {}, {}, false
+    for slot = 1, 18 do
+        if slot ~= 4 then
+            if type(GetInventoryItemLink) == 'function' then
+                local ok, link = pcall(GetInventoryItemLink, 'player', slot)
+                if ok and link == nil then levels[slot] = false
+                elseif ok and type(GetItemInfo) == 'function' and type(link) == 'string' then
+                    local good, name, _, _, level = pcall(GetItemInfo, link)
+                    if good and name and type(level) == 'number' then levels[slot] = level end
+                end
+            end
+            signature[#signature + 1] = slot .. ':' .. tostring(levels[slot])
+            if levels[slot] == nil then pending = true end
+        end
+    end
+    return levels, table.concat(signature, ','), pending
+end
+
 local function buildContext()
     local class
     if type(UnitClass) == 'function' then class = select(2, UnitClass('player')) end
@@ -421,6 +469,8 @@ local function buildContext()
     end
     local questItems, incomplete, found = buildQuestItems()
     local equippedArmor, armorSig = readEquippedArmor()
+    local specLabel, specSource = readSpec(class)
+    local equippedLevel, levelSig, equippedLevelPending = readEquippedLevel()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
     -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
     if ns.Questie and type(ns.Questie.Pending) == 'function' and ns.Questie.Pending() then incomplete = true end
@@ -429,6 +479,10 @@ local function buildContext()
         level = level,
         professions = professions,
         equippedArmor = equippedArmor,
+        equippedLevel = equippedLevel,
+        equippedLevelPending = equippedLevelPending,
+        specLabel = specLabel,
+        specSource = specSource,
         isQuestDone = isQuestDone,
         questInLog = questInLogFor(found),
         questItemsInLog = questItems,
@@ -442,7 +496,7 @@ local function buildContext()
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids), tostring(optionalRevision),
-        ctx.bagStock.signature or '', armorSig }, '|')
+        ctx.bagStock.signature or '', armorSig, levelSig, tostring(specLabel), tostring(specSource) }, '|')
     return ctx
 end
 
@@ -629,6 +683,20 @@ function Player.DebugTooltip(link)
     local state = effectState[id]
     out[#out + 1] = string.format('lectura=%s efecto=%s intentos=%s final=%s', tostring(how),
         tostring(state and state.value), tostring(state and state.attempts), tostring(state and state.final))
+    local ctx, item = Player.GetContext(), Player.ReadLink(link)
+    local L = ns.L
+    local source = ctx.specSource == 'gearquest' and 'GearQuest' or ctx.specSource == 'talents' and L['talents'] or L['no source']
+    out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or L['none'], source)
+    local scales = ns.PawnScales(ctx)
+    out[#out + 1] = L['Visible Pawn scales: %s']:format(#scales == 0 and L['none'] or tostring(#scales))
+    for _, scale in ipairs(scales) do
+        out[#out + 1] = L['Pawn scale: %s | matches: %s']:format(tostring(scale.label), L[scale.matches and 'yes' or 'no'])
+    end
+    out[#out + 1] = L['Item level: %s']:format(tostring(item and item.itemLevel))
+    for _, slot in ipairs(item and ns.GearSlots[item.equipLoc] or {}) do
+        out[#out + 1] = L['Equipped slot %d: %s']:format(slot,
+            ctx.equippedLevel[slot] == false and L['empty'] or tostring(ctx.equippedLevel[slot]))
+    end
     return out
 end
 
@@ -780,7 +848,7 @@ function Player.ReadLink(link)
     if type(link) == 'number' then id = link
     elseif type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) end
     if not id then return nil end
-    local _, itemLink, quality, _, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
+    local _, itemLink, quality, itemLevel, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
     if quality == nil then return nil end
     local effect = itemEffect(id)
     -- Sólo el efecto exacto de restauración acreditado por la build queda exceptuado.
@@ -815,6 +883,7 @@ function Player.ReadLink(link)
         id = id,
         link = type(link) == 'string' and link or (type(itemLink) == 'string' and itemLink or nil),
         quality = quality,
+        itemLevel = type(itemLevel) == 'number' and itemLevel or nil,
         reqLevel = type(reqLevel) == 'number' and reqLevel or nil,
         price = price or 0,
         classID = classID,
@@ -945,7 +1014,8 @@ local frame = CreateFrame('Frame')
 -- evento que el cliente no conozca no debe romper la carga.
 for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
     'QUEST_TURNED_IN', 'QUEST_DATA_LOAD_RESULT', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
-    'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED' }) do
+    'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED',
+    'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 
@@ -972,6 +1042,11 @@ frame:SetScript('OnEvent', function(_, event, arg1)
         local relevant
         if event == 'TOOLTIP_DATA_UPDATE' then relevant = onTooltipDataUpdate(arg1) else relevant = onItemInfo(arg1) end
         -- Tooltips ajenos (otra instancia, ningún ítem pendiente) no reescanean las bolsas.
+        if not scanning and event == 'GET_ITEM_INFO_RECEIVED' and cache and cache.equippedLevelPending then
+            -- Los niveles equipados pueden haber quedado sin datos en el contexto anterior.
+            markDirty()
+            scheduleCheck()
+        end
         if relevant and optionalEnabled and not scanning then
             optionalRevision = optionalRevision + 1
             markDirty()
@@ -984,7 +1059,7 @@ frame:SetScript('OnEvent', function(_, event, arg1)
         or event == 'LEARNED_SPELL_IN_TAB' or event == 'PLAYER_EQUIPMENT_CHANGED'
         or event == 'UNIT_INVENTORY_CHANGED'
     if optionalEvent then
-        local enabled = optionalEnabled or (event == 'PLAYER_EQUIPMENT_CHANGED' and rules and rules.armorBelow)
+        local enabled = optionalEnabled or event == 'PLAYER_EQUIPMENT_CHANGED' or event == 'UNIT_INVENTORY_CHANGED'
         if not enabled or (event == 'UNIT_INVENTORY_CHANGED' and arg1 ~= 'player') then return end
         optionalRevision = optionalRevision + 1
     end

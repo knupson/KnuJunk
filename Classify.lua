@@ -588,10 +588,11 @@ local excludedGearSlots = {
 -- GearQuest Forever se publica como _G.GearQuest (GearQuestForever/Core.lua:11); GQ es su local.
 -- Se acepta GQ también por compatibilidad con versiones o pruebas que lo exponían así.
 -- Pawn (PawnGetItemData + PawnIsItemAnUpgrade, Pawn.lua:1370 y 3633). Devuelve:
---   nil = Pawn no está; false = Pawn dice que no es mejora; 'pending' = Pawn no tiene los datos aún;
+--   nil = Pawn no está o no tiene escalas aplicables; false = no es mejora;
+--   'pending' = Pawn no tiene los datos aún;
 --   tabla = mejora ({ scale, percent } o { best = true } si ya es tu mejor o segundo mejor).
 -- Ranuras del jugador por equipLoc (las mismas que compara Pawn, Pawn.lua:107-160).
-local PAWN_SLOTS = {
+local GEAR_SLOTS = {
     INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 },
     INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 },
     INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 },
@@ -599,15 +600,49 @@ local PAWN_SLOTS = {
     INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_SHIELD = { 17 }, INVTYPE_HOLDABLE = { 17 },
     INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
 }
+ns.GearSlots = GEAR_SLOTS
 
-local function pawnUpgrade(link, equipLoc)
+local function foldLabel(label)
+    local accents = { ['Á'] = 'á', ['É'] = 'é', ['Í'] = 'í', ['Ó'] = 'ó', ['Ú'] = 'ú', ['Ü'] = 'ü', ['Ñ'] = 'ñ' }
+    return (label:gsub('[\194-\244][\128-\191]+', accents)):lower()
+end
+
+-- Comparte el mismo filtro con los vetos y el diagnóstico.
+function ns.PawnScales(ctx)
+    local getter = rawget(_G, 'PawnGetAllScalesEx')
+    local ok, scales
+    if type(getter) == 'function' then ok, scales = pcall(getter) end
+    local visible, matches, count = {}, {}, 0
+    for _, scale in pairs(ok and type(scales) == 'table' and scales or {}) do
+        if type(scale) == 'table' and scale.IsVisible then
+            local label = scale.LocalizedName or scale.Name
+            local match = not ctx.specLabel or (type(label) == 'string'
+                and foldLabel(label):find(foldLabel(ctx.specLabel), 1, true) ~= nil)
+            visible[#visible + 1] = { name = scale.Name, label = label, matches = match }
+            if match then
+                count = count + 1
+                if scale.Name then matches[scale.Name] = true end
+                if label then matches[label] = true end
+            end
+        end
+    end
+    return visible, matches, count
+end
+
+local function pawnUpgrade(link, equipLoc, ctx)
     local getData, isUpgrade = rawget(_G, 'PawnGetItemData'), rawget(_G, 'PawnIsItemAnUpgrade')
     if type(getData) ~= 'function' or type(isUpgrade) ~= 'function' then return nil end
+    local _, matches, count = ns.PawnScales(ctx)
+    if count == 0 and (ctx.specLabel or type(rawget(_G, 'PawnGetAllScalesEx')) == 'function') then return nil end
+    local function accepts(raw, localized)
+        return matches[raw] or matches[localized] or (not ctx.specLabel and count == 0
+            and type(rawget(_G, 'PawnGetAllScalesEx')) ~= 'function')
+    end
     if type(link) ~= 'string' or link == '' then return 'pending' end
     -- Pawn devuelve nil también si no tiene los datos de lo que tenés puesto (Pawn.lua:3735/3740):
     -- sin esos datos un «no es mejora» no vale.
     local slotData = rawget(_G, 'PawnGetItemDataForInventorySlot')
-    local slots = PAWN_SLOTS[equipLoc]
+    local slots = GEAR_SLOTS[equipLoc]
     if not slots then return 'pending' end
     if type(slotData) == 'function' then
         for _, slot in ipairs(slots) do
@@ -619,10 +654,16 @@ local function pawnUpgrade(link, equipLoc)
     if not ok or type(data) ~= 'table' then return 'pending' end
     local good, info, _, best, second = pcall(isUpgrade, data)
     if not good then return 'pending' end
-    if type(info) == 'table' and type(info[1]) == 'table' then
-        return { scale = info[1].LocalizedScaleName or info[1].ScaleName, percent = info[1].PercentUpgrade }
+    for _, upgrade in ipairs(type(info) == 'table' and info or {}) do
+        if type(upgrade) == 'table' and accepts(upgrade.ScaleName, upgrade.LocalizedScaleName) then
+            return { scale = upgrade.LocalizedScaleName or upgrade.ScaleName, percent = upgrade.PercentUpgrade }
+        end
     end
-    if (type(best) == 'table' and next(best)) or (type(second) == 'table' and next(second)) then return { best = true } end
+    for _, items in ipairs({ type(best) == 'table' and best or {}, type(second) == 'table' and second or {} }) do
+        for scale, value in pairs(items) do
+            if value and accepts(scale) then return { best = true } end
+        end
+    end
     return false
 end
 
@@ -673,7 +714,7 @@ local function gearOutgrown(item, ctx, result)
     end
     if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return false end
     -- Pawn dice que es mejora (o todavía no sabe): no se vende por nivel bajo.
-    local pawn = pawnUpgrade(item.link, item.equipLoc)
+    local pawn = pawnUpgrade(item.link, item.equipLoc, ctx)
     if type(pawn) == 'table' or pawn == 'pending' then return false end
     return true
 end
@@ -687,7 +728,7 @@ local function armorBelowEquipped(item, ctx, result)
             and r.kind ~= 'class_cannot_use_tradeable' and r.kind ~= 'future_level' then return nil end
     end
     if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return nil end
-    local pawn = pawnUpgrade(item.link, item.equipLoc)
+    local pawn = pawnUpgrade(item.link, item.equipLoc, ctx)
     if type(pawn) == 'table' or pawn == 'pending' then return nil end
     return reason
 end
@@ -837,21 +878,41 @@ function ns.Classify(item, ctx, withEvidence)
     elseif not isGray and not manual and not protected and not result.doubt and result.mark == 'useful'
         and result.reasons[1] and result.reasons[1].kind == 'no_rule' and result.reasons[1].exception == 'gear'
         and not ns.GearQuestSimulating() then
-        -- Equipo que GearQuest no conoce (o sin GearQuest): decide Pawn si está; si no, se vende lo
-        -- blanco o verde. El dueño: «la idea del addon es que resuelva dudas, no que las genere».
         local state = result.gearQuest and result.gearQuest.state
-        if state == nil or state == 'no_gearquest' or state == 'unknown_item' then
-            local pawn = pawnUpgrade(item.link, item.equipLoc)
+        if (state == 'no_gearquest' or state == 'unknown_item') and not inEquipmentSet(item.id) then
+            local pawn = pawnUpgrade(item.link, item.equipLoc, ctx)
+            local canSell = type(item.quality) == 'number' and item.quality >= 1 and item.quality <= 2
+                and type(item.price) == 'number' and item.price > 0
+                and ctx.rules and ctx.rules.gearNoRanking == true
             if type(pawn) == 'table' then
                 result.reasons[1] = { kind = 'pawn_upgrade', scale = pawn.scale, percent = pawn.percent, best = pawn.best }
             elseif pawn == 'pending' then
                 result.doubt = true
-            elseif pawn == false or pawn == nil then
-                if type(item.quality) == 'number' and item.quality >= 1 and item.quality <= 2
-                    and type(item.price) == 'number' and item.price > 0
-                    and ctx.rules and ctx.rules.gearNoRanking == true and not inEquipmentSet(item.id) then
-                    result.reasons[1] = { kind = 'gear_no_ranking', pawn = pawn == false }
-                    result.mark = 'coin'
+            elseif pawn == false then
+                result.reasons[1] = { kind = 'gear_no_ranking', pawn = true }
+                if canSell then result.mark = 'coin' end
+            else
+                local slots = GEAR_SLOTS[item.equipLoc]
+                -- Armas: la de dos manos sólo va en la derecha (la izquierda queda vacía a propósito), y
+                -- la de una mano va a la izquierda sólo si la clase puede usar dos armas en Classic.
+                if item.equipLoc == 'INVTYPE_2HWEAPON' then slots = { 16 }
+                elseif item.equipLoc == 'INVTYPE_WEAPON' and ctx.class ~= 'WARRIOR' and ctx.class ~= 'ROGUE'
+                    and ctx.class ~= 'HUNTER' then slots = { 16 } end
+                local lowest, empty, unknown
+                for _, slot in ipairs(slots or {}) do
+                    local level = ctx.equippedLevel and ctx.equippedLevel[slot]
+                    if level == false then empty = true
+                    elseif type(level) ~= 'number' then unknown = true
+                    elseif not lowest or level < lowest then lowest = level end
+                end
+                if empty then result.reasons[1] = { kind = 'gear_empty_slot' }
+                elseif not slots or unknown or type(item.itemLevel) ~= 'number' or not lowest then
+                    result.doubt = true
+                else
+                    local below = item.itemLevel <= lowest
+                    result.reasons[1] = { kind = below and 'gear_below_equipped' or 'gear_maybe_upgrade',
+                        level = item.itemLevel, equipped = lowest }
+                    if below and canSell then result.mark = 'coin' end
                 end
             end
         end
