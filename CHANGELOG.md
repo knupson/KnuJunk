@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1-beta
+
+- Funciona solo, sin GearQuest ni Pawn: el cliente de Forever no trae `GetItemInfo` y otras funciones de ítem como globales (las creaba GearQuest); sin GearQuest no había marcas ni líneas en el tooltip. Ahora se usa `C_Item` cuando falta la global.
+- Especialización sin GearQuest: se lee la rama de talentos con más puntos con `C_Traits`, como la ventana de talentos de Forever (probado en el juego). Con Pawn sólo cuenta la escala de tu rama.
+- `/knu junk debug` muestra la lectura de talentos.
+
 ## 0.1.0-beta
 
 - Equipo de otra especialización: se guarda por GearQuest o Pawn sólo con doble spec informada por el cliente; en Forever se obtiene a nivel 40 según guías, todavía sin verificar en el juego.
