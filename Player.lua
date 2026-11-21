@@ -410,6 +410,43 @@ local function readEquippedArmor()
     return equipped, table.concat(parts, ',')
 end
 
+-- Suma de rangos de la rama `tab` con GetTalentInfo (rango = 5.o valor; `group` opcional), o nil.
+local function summedRanks(tab, group)
+    if type(GetNumTalents) ~= 'function' or type(GetTalentInfo) ~= 'function' then return nil end
+    local ok, count = pcall(GetNumTalents, tab, group)
+    if not ok or type(count) ~= 'number' then ok, count = pcall(GetNumTalents, tab) end
+    if not ok or type(count) ~= 'number' or count <= 0 then return nil end
+    local total = 0
+    for index = 1, count do
+        local good, _, _, _, _, rank = pcall(GetTalentInfo, tab, index, false, false, group)
+        if not good or type(rank) ~= 'number' then good, _, _, _, _, rank = pcall(GetTalentInfo, tab, index) end
+        if good and type(rank) == 'number' and rank > 0 and rank <= 10 then total = total + rank end
+    end
+    return total
+end
+
+-- Nombre y puntos de la rama `tab` (del grupo `group`, o el activo). Acepta las dos formas de
+-- GetTalentTabInfo (vieja: nombre, icono, puntos; nueva: id, nombre, descripcion, icono, puntos) y
+-- las firmas (tab), (tab, grupo) y (tab, false, false, grupo). Si los puntos no vienen, los suma
+-- talento por talento. nil si no hay nombre.
+function Player.TalentTab(tab, group)
+    if type(GetTalentTabInfo) ~= 'function' then return nil end
+    local calls = group and { { tab, false, false, group }, { tab, group } } or { { tab } }
+    local found
+    for _, args in ipairs(calls) do
+        local ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, unpack(args))
+        if ok then
+            local name, points = first, third
+            if type(first) == 'number' then name, points = second, fifth end
+            if type(name) == 'string' and name ~= '' then
+                if type(points) == 'number' and points > 0 then return name, points end
+                found = found or name
+            end
+        end
+    end
+    if found then return found, summedRanks(tab, group) or 0 end
+end
+
 local function readSpec(class)
     local root = ns.GearQuestRoot and ns.GearQuestRoot()
     if type(root) == 'table' and type(root.GetEffectiveSpec) == 'function'
@@ -429,12 +466,8 @@ local function readSpec(class)
     if not good or type(tabs) ~= 'number' then return end
     local most, label = 0
     for tab = 1, tabs do
-        local ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab)
-        local name, points = first, third
-        if type(first) == 'number' then name, points = second, fifth end
-        if ok and type(name) == 'string' and name ~= '' and type(points) == 'number' and points > most then
-            most, label = points, name
-        end
+        local name, points = Player.TalentTab(tab)
+        if name and points > most then most, label = points, name end
     end
     if label then return label, 'talents' end
 end
@@ -456,20 +489,9 @@ local function readOffSpec(class, mainLabel)
     local good, tabs = pcall(GetNumTalentTabs)
     if not good or type(tabs) ~= 'number' then return nil, nil, groups, active end
     local other = active == 1 and 2 or 1
-    local function tabInfo(tab, wrath)
-        local ok, first, second, third, fourth, fifth
-        if wrath then ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab, false, false, other)
-        else ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab, other) end
-        local name, points = first, third
-        if type(first) == 'number' then name, points = second, fifth end
-        if ok and type(name) == 'string' and name ~= '' and type(points) == 'number' and points > 0 then
-            return name, points
-        end
-    end
     local label, most = nil, 0
     for tab = 1, tabs do
-        local name, points = tabInfo(tab, true)
-        if not name then name, points = tabInfo(tab, false) end
+        local name, points = Player.TalentTab(tab, other)
         if name and points > most then label, most = name, points end
     end
     if not label or (mainLabel and ns.FoldSpecLabel(label) == ns.FoldSpecLabel(mainLabel)) then
@@ -741,6 +763,17 @@ function Player.DebugTooltip(link)
     local L = ns.L
     local source = ctx.specSource == 'gearquest' and 'GearQuest' or ctx.specSource == 'talents' and L['talents'] or L['no source']
     out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or L['none'], source)
+    -- Lectura cruda y en el momento (sin caché) de cada rama, para diagnosticar clientes nuevos.
+    local tabsOk, tabs = pcall(GetNumTalentTabs or function() return nil end)
+    out[#out + 1] = 'GetNumTalentTabs=' .. tostring(tabsOk and tabs)
+    for tab = 1, (tabsOk and type(tabs) == 'number' and tabs or 0) do
+        local raw = { pcall(GetTalentTabInfo or function() return nil end, tab) }
+        local parts = {}
+        for i = 1, 6 do parts[i] = tostring(raw[i + 1]) end
+        local name, points = Player.TalentTab(tab)
+        out[#out + 1] = string.format('GetTalentTabInfo(%d)=%s -> %s %s', tab, table.concat(parts, ', '),
+            tostring(name), tostring(points))
+    end
     out[#out + 1] = L['Talent groups: %s | active: %s']:format(tostring(ctx.talentGroups), tostring(ctx.activeTalentGroup))
     out[#out + 1] = L['Other spec: %s | GearQuest id: %s']:format(ctx.offSpecLabel or L['none'], ctx.offSpecId or L['none'])
     local ranked = item and ns.GearQuestOffSpecRanked(item, ctx)
@@ -1079,7 +1112,8 @@ local frame = CreateFrame('Frame')
 for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
     'QUEST_TURNED_IN', 'QUEST_DATA_LOAD_RESULT', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
     'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED',
-    'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED', 'ACTIVE_TALENT_GROUP_CHANGED' }) do
+    'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED', 'ACTIVE_TALENT_GROUP_CHANGED', 'PLAYER_LOGIN',
+    'PLAYER_ENTERING_WORLD' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 

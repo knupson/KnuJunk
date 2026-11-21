@@ -36,3 +36,37 @@ test('sin globales de ítem: la global, si existe, gana sobre C_Item', function(
     eq(ns.API.GetItemCount(1), 9)
     GetItemCount, C_Item.GetItemCount = saved, nil
 end)
+
+test('sin GearQuest: rama sin puntos en GetTalentTabInfo suma GetTalentInfo', function()
+    GearQuest = nil
+    GetNumTalentTabs = function() return 3 end
+    GetTalentTabInfo = function(tab) return tab, ({ 'Sagrado', 'Protección', 'Reprensión' })[tab], 'desc', 'icon', 0 end
+    GetNumTalents = function() return 2 end
+    GetTalentInfo = function(tab, index) return 't', 'icon', 1, index, tab == 3 and 5 or 0, 5 end
+    ns.Player.Invalidate()
+    eq(ns.Player.GetContext().specLabel, 'Reprensión'); eq(ns.Player.GetContext().specSource, 'talents')
+    GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+end)
+
+test('sin GearQuest: al entrar al mundo se vuelve a leer la especialización', function()
+    GearQuest = nil
+    GetNumTalentTabs = function() return 3 end
+    local points = 0
+    GetTalentTabInfo = function(tab) return ({ 'Sagrado', 'Protección', 'Reprensión' })[tab], 'icon', tab == 3 and points or 0 end
+    ns.Player.Invalidate()
+    eq(ns.Player.GetContext().specLabel, nil)
+    points = 19
+    FAKE.Fire('PLAYER_ENTERING_WORLD')
+    eq(ns.Player.GetContext().specLabel, 'Reprensión')
+    GetNumTalentTabs, GetTalentTabInfo = nil, nil
+end)
+
+test('debug: muestra la lectura cruda de cada rama de talentos', function()
+    FAKE.items[991701] = { name = 'Hacha', quality = 0, price = 10, classID = 2 }
+    GetNumTalentTabs = function() return 1 end
+    GetTalentTabInfo = function() return 'Reprensión', 'icon', 19 end
+    local text = table.concat(ns.Player.DebugTooltip('item:991701'), '\n')
+    ok(text:find('GetTalentTabInfo(1)=Reprensión, icon, 19', 1, true), text)
+    ok(text:find('-> Reprensión 19', 1, true), 'resultado')
+    GetNumTalentTabs, GetTalentTabInfo = nil, nil
+end)
