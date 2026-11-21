@@ -252,3 +252,48 @@ test('sin dudas: Pawn «mejora» frena también el equipo de nivel bajo', functi
     ok(r.mark ~= 'coin', 'no se vende por nivel bajo')
     eq(r.reasons[1].kind, 'pawn_upgrade')
 end)
+
+local function rankedStub(arrow)
+    local stub = gqStub()
+    stub.Data.GearScoreTooltipLine = function() return 'Puesto n.º 22 para tu nivel' end
+    stub.Data.GearScoreContext = function() return {} end
+    stub.Data.GearScoreArrowDelta = function() return arrow end
+    stub.Log = { RankListContext = function() return 'Waist' end }
+    return stub
+end
+
+local function belt16659()
+    return { id = 16659, link = 'item:16659', quality = 2, price = 835, classID = 4, subclassID = 2,
+        equipLoc = 'INVTYPE_WAIST', reqLevel = 20, isBound = true, effect = 'yes', hasUseOrEquipSpell = true }
+end
+
+test('Cinturón de equilibrista: «Equipar:» no lo guarda; puesto peor que lo puesto (-9) se vende', function()
+    GearQuest = rankedStub(-9)
+    local r = ns.Classify(belt16659(), ctx27())
+    GearQuest = nil
+    eq(r.mark, 'coin'); eq(r.reasons[1].kind, 'gear_worse_than_equipped'); eq(r.reasons[1].delta, -9)
+end)
+
+test('GearQuest: puesto mejor que lo puesto se guarda con el delta; sin comparación, se guarda', function()
+    GearQuest = rankedStub(5)
+    local r = ns.Classify(belt16659(), ctx27())
+    eq(r.mark, 'useful'); eq(r.reasons[1].kind, 'gear_ranked'); eq(r.reasons[1].delta, 5)
+    GearQuest = rankedStub(nil)
+    r = ns.Classify(belt16659(), ctx27())
+    GearQuest = nil
+    eq(r.mark, 'useful'); eq(r.reasons[1].kind, 'gear_ranked')
+end)
+
+test('GearQuest: tooltip de peor que lo puesto en castellano', function()
+    local savedL, savedClassify = ns.L, ns.Classify
+    FAKE.locale = 'esES'; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+    FAKE.items[16659] = { name = 'Cinturón de equilibrista', quality = 2, price = 835, classID = 4, subclassID = 2 }
+    local good, err = pcall(function()
+        ns.Classify = function() return { mark = 'coin', reasons = { { kind = 'gear_worse_than_equipped', delta = -9 } } } end
+        local text = {}
+        for _, l in ipairs(ns.Tooltip.Lines(FAKE.linkOf(16659))) do text[#text + 1] = l.text end
+        ok(table.concat(text, '\n'):find('GearQuest: no supera lo que tenés puesto (-9): se vende', 1, true), 'línea')
+    end)
+    ns.Classify, ns.L, FAKE.locale = savedClassify, savedL, nil
+    if not good then error(err, 0) end
+end)

@@ -95,7 +95,7 @@ class AuditoriaTests(unittest.TestCase):
         self.assertIn('## Armadura inferior a la puesta', text)
         self.assertIn('## Se vende por defecto', text)
         self.assertIn('Lista completa: 1 ítems cuyo ganador es `no_keep_reason`.', text)
-        self.assertIn('Lista completa: 1 ítems con ganador no_rule en al menos un contexto.', text)
+        self.assertIn('Lista completa: 2 ítems con ganador no_rule en al menos un contexto.', text)
         for id_ in (990801, 990806):
             self.assertIn('| %d |' % id_, text)
         self.assertNotIn('| 990802 |', text)
