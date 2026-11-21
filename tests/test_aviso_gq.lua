@@ -157,3 +157,98 @@ test('GearQuest con fila y línea de puesto: se guarda', function()
     GearQuest = nil
     eq(r.reasons[1].kind, 'gear_ranked')
 end)
+
+local function ring()
+    return { id = 17692, link = 'item:17692', quality = 2, price = 881, classID = 4, subclassID = 0,
+        equipLoc = 'INVTYPE_FINGER', isBound = true, effect = 'no' }
+end
+local function ctxNR()
+    local c = ctx27(); c.rules.gearNoRanking = true; return c
+end
+local function pawn(info, best)
+    PawnGetItemData = function() return { Link = 'item:17692' } end
+    PawnIsItemAnUpgrade = function() return info, nil, best end
+end
+local function noPawn() PawnGetItemData, PawnIsItemAnUpgrade = nil, nil end
+
+test('sin dudas: anillo que GearQuest no conoce y Pawn marca como mejora se guarda con su motivo', function()
+    GearQuest = gqStub({ GetEntriesByItemId = function() return {} end })
+    pawn({ { ScaleName = 'p', LocalizedScaleName = 'Protección', PercentUpgrade = 0.88 } })
+    local r = ns.Classify(ring(), ctxNR())
+    GearQuest = nil; noPawn()
+    eq(r.mark, 'useful'); eq(r.reasons[1].kind, 'pawn_upgrade'); eq(r.reasons[1].scale, 'Protección')
+    eq(ns.Marks.MarkOf(r), 'useful')
+end)
+
+test('sin dudas: Pawn dice que no es mejora => se vende (gear_no_ranking)', function()
+    GearQuest = gqStub({ GetEntriesByItemId = function() return {} end })
+    pawn(nil, nil)
+    local r = ns.Classify(ring(), ctxNR())
+    GearQuest = nil; noPawn()
+    eq(r.mark, 'coin'); eq(r.reasons[1].kind, 'gear_no_ranking'); eq(r.reasons[1].pawn, true)
+end)
+
+test('sin dudas: Pawn sin datos todavía no deja vender; ya es lo mejor => se guarda', function()
+    GearQuest = gqStub({ GetEntriesByItemId = function() return {} end })
+    PawnGetItemData = function() return nil end; PawnIsItemAnUpgrade = function() return nil end
+    eq(ns.Classify(ring(), ctxNR()).mark, 'useful')
+    pawn(nil, { p = true })
+    local r = ns.Classify(ring(), ctxNR())
+    GearQuest = nil; noPawn()
+    eq(r.reasons[1].kind, 'pawn_upgrade'); eq(r.reasons[1].best, true)
+end)
+
+test('sin dudas: raro, opción apagada, simulación o error de GearQuest no venden', function()
+    GearQuest = gqStub({ GetEntriesByItemId = function() return {} end })
+    local blue = ring(); blue.quality = 3
+    eq(ns.Classify(blue, ctxNR()).mark, 'useful')
+    local off = ctxNR(); off.rules.gearNoRanking = false
+    eq(ns.Classify(ring(), off).mark, 'useful')
+    GearQuest.IsPreviewEnabled = function() return true end
+    eq(ns.Classify(ring(), ctxNR()).mark, 'useful')
+    GearQuest = gqStub({ GetEntriesByItemId = function() error('x') end })
+    eq(ns.Classify(ring(), ctxNR()).mark, 'useful')
+    GearQuest = nil
+end)
+
+test('sin dudas: tooltip de la venta y de Pawn en castellano', function()
+    local savedL = ns.L
+    FAKE.locale = 'esES'; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+    local savedClassify = ns.Classify
+    FAKE.items[17692] = { name = 'Anillo de cuerno', quality = 2, price = 881, classID = 4, subclassID = 0 }
+    local good, err = pcall(function()
+        ns.Classify = function() return { mark = 'coin', reasons = { { kind = 'gear_no_ranking', pawn = true } } } end
+        local text = {}
+        for _, l in ipairs(ns.Tooltip.Lines(FAKE.linkOf(17692))) do text[#text + 1] = l.text end
+        text = table.concat(text, '\n')
+        ok(text:find('Ningún ranking dice que te sirva: se vende', 1, true), 'línea de venta')
+        ok(text:find('GearQuest no lo conoce y Pawn no lo marca como mejora', 1, true), 'línea de por qué')
+        ns.Classify = function() return { mark = 'useful', reasons = { { kind = 'pawn_upgrade', scale = 'Protección', percent = 0.88 } } } end
+        text = {}
+        for _, l in ipairs(ns.Tooltip.Lines(FAKE.linkOf(17692))) do text[#text + 1] = l.text end
+        ok(table.concat(text, '\n'):find('Pawn: mejora 88% para Protección', 1, true), 'línea de Pawn')
+    end)
+    ns.Classify, ns.L, FAKE.locale = savedClassify, savedL, nil
+    if not good then error(err, 0) end
+end)
+
+test('sin dudas: Pawn sin datos de lo que tenés puesto no autoriza la venta y marca duda', function()
+    GearQuest = gqStub({ GetEntriesByItemId = function() return {} end })
+    pawn(nil, nil)
+    PawnGetItemDataForInventorySlot = function() return nil, true end -- ranura ocupada, datos sin cargar
+    local r = ns.Classify(ring(), ctxNR())
+    PawnGetItemDataForInventorySlot = nil
+    GearQuest = nil; noPawn()
+    eq(r.mark, 'useful'); eq(r.doubt, true); eq(ns.Marks.MarkOf(r), 'unruled')
+end)
+
+test('sin dudas: Pawn «mejora» frena también el equipo de nivel bajo', function()
+    pawn({ { LocalizedScaleName = 'Sagrado', PercentUpgrade = 0.2 } })
+    local weapon = { id = 991300, link = 'item:991300', quality = 2, price = 100, classID = 2, subclassID = 7,
+        equipLoc = 'INVTYPE_WEAPON', reqLevel = 5, isBound = true, effect = 'no' }
+    local c = ctx27(); c.level = 20
+    local r = ns.Classify(weapon, c)
+    noPawn()
+    ok(r.mark ~= 'coin', 'no se vende por nivel bajo')
+    eq(r.reasons[1].kind, 'pawn_upgrade')
+end)

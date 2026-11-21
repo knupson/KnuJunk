@@ -148,14 +148,14 @@ function Tooltip.Lines(link, bound, bag, slot)
         no_keep_reason = true, gear_outgrown = true, armor_below_equipped = true, book_other_class = true, book_known = true }
     local armorTypes = { [1] = 'cloth', [2] = 'leather', [3] = 'mail', [4] = 'plate' }
     local noRuleKeys = {
-        gear = 'No rule for this item: not sold by default (gear)',
-        bag = 'No rule for this item: not sold by default (bag)',
-        openable = 'No rule for this item: not sold by default (openable)',
-        rare_or_epic = 'No rule for this item: not sold by default (rare or epic)',
-        ammo = 'No rule for this item: not sold by default (ammunition)',
-        book = 'No rule for this item: not sold by default (book or recipe)',
-        quest = 'No rule for this item: not sold by default (quest)',
-        key = 'No rule for this item: not sold by default (key)',
+        gear = 'Gear: kept',
+        bag = 'Bag: kept (equip it if it is bigger than one of yours)',
+        openable = 'Openable: open it before selling it',
+        rare_or_epic = 'Rare or epic: kept (worth more than the vendor pays)',
+        ammo = 'Ammunition: kept',
+        book = 'Book or recipe: kept',
+        quest = 'Quest item: kept',
+        key = 'Key: kept',
     }
     local neutral = (mark == nil or mark == 'useful' or mark == 'trash' or mark == 'auction')
     local noPrice = not (type(item.price) == 'number' and item.price > 0)
@@ -171,7 +171,7 @@ function Tooltip.Lines(link, bound, bag, slot)
     local names = {
         protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
         hammer_other = 'Other profession material', auction = 'Auction', coin = 'Sell',
-        trash = 'Trash (cannot be sold)', useful = 'Useful', unruled = 'No rule',
+        trash = 'Trash (cannot be sold)', useful = 'Useful', unruled = 'Missing data',
     }
     local function money(value)
         if type(value) ~= 'number' then return L['unknown price'] end
@@ -198,6 +198,7 @@ function Tooltip.Lines(link, bound, bag, slot)
         local neutral = informational or neutral
         if kind == 'no_rule' then
             local key = reason.exception and noRuleKeys[reason.exception] or 'No rule for this item: not sold by default'
+            if result.doubt then key = 'The game has not sent all the data for this item yet: not decided' end
             add(L[key], WHITE)
             -- Con GearQuest simulando otro personaje KnuJunk no usa su ranking: decirlo y cómo salir.
             if reason.exception == 'gear' and not informational and ns.GearQuestSimulating() then
@@ -222,6 +223,15 @@ function Tooltip.Lines(link, bound, bag, slot)
             end
         elseif kind == 'gear_ranked' then
             add(L['GearQuest ranks it for you: keep it'], WHITE)
+        elseif kind == 'pawn_upgrade' then
+            if reason.best then add(L['Pawn: already one of your best items'], WHITE)
+            else
+                local pct = type(reason.percent) == 'number' and string.format('%d%%', math.floor(reason.percent * 100 + 0.5)) or '?'
+                add(L['Pawn: %s upgrade for %s']:format(pct, tostring(reason.scale)), WHITE)
+            end
+        elseif kind == 'gear_no_ranking' then
+            add(L['No ranking says you need it: sold'], WHITE, 'coin')
+            add(L[reason.pawn and 'GearQuest does not know it and Pawn does not mark it as an upgrade' or 'GearQuest does not know it'], { 0.6, 0.6, 0.6 })
         elseif kind == 'book_unknown' and neutral then
             add(L['Your class book, not learned'], WHITE)
         elseif kind == 'quest_log_incomplete' then

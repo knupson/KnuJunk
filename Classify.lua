@@ -587,6 +587,45 @@ local excludedGearSlots = {
 -- Sin GearQuest: no puntuado. Con GearQuest en simulación o con error: se trata como puntuado (no se vende).
 -- GearQuest Forever se publica como _G.GearQuest (GearQuestForever/Core.lua:11); GQ es su local.
 -- Se acepta GQ también por compatibilidad con versiones o pruebas que lo exponían así.
+-- Pawn (PawnGetItemData + PawnIsItemAnUpgrade, Pawn.lua:1370 y 3633). Devuelve:
+--   nil = Pawn no está; false = Pawn dice que no es mejora; 'pending' = Pawn no tiene los datos aún;
+--   tabla = mejora ({ scale, percent } o { best = true } si ya es tu mejor o segundo mejor).
+-- Ranuras del jugador por equipLoc (las mismas que compara Pawn, Pawn.lua:107-160).
+local PAWN_SLOTS = {
+    INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 },
+    INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 },
+    INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 },
+    INVTYPE_WEAPON = { 16, 17 }, INVTYPE_2HWEAPON = { 16, 17 }, INVTYPE_WEAPONMAINHAND = { 16 },
+    INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_SHIELD = { 17 }, INVTYPE_HOLDABLE = { 17 },
+    INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
+}
+
+local function pawnUpgrade(link, equipLoc)
+    local getData, isUpgrade = rawget(_G, 'PawnGetItemData'), rawget(_G, 'PawnIsItemAnUpgrade')
+    if type(getData) ~= 'function' or type(isUpgrade) ~= 'function' then return nil end
+    if type(link) ~= 'string' or link == '' then return 'pending' end
+    -- Pawn devuelve nil también si no tiene los datos de lo que tenés puesto (Pawn.lua:3735/3740):
+    -- sin esos datos un «no es mejora» no vale.
+    local slotData = rawget(_G, 'PawnGetItemDataForInventorySlot')
+    local slots = PAWN_SLOTS[equipLoc]
+    if not slots then return 'pending' end
+    if type(slotData) == 'function' then
+        for _, slot in ipairs(slots) do
+            local okSlot, equipped, had = pcall(slotData, slot, true)
+            if not okSlot or (had and type(equipped) ~= 'table') then return 'pending' end
+        end
+    end
+    local ok, data = pcall(getData, link)
+    if not ok or type(data) ~= 'table' then return 'pending' end
+    local good, info, _, best, second = pcall(isUpgrade, data)
+    if not good then return 'pending' end
+    if type(info) == 'table' and type(info[1]) == 'table' then
+        return { scale = info[1].LocalizedScaleName or info[1].ScaleName, percent = info[1].PercentUpgrade }
+    end
+    if (type(best) == 'table' and next(best)) or (type(second) == 'table' and next(second)) then return { best = true } end
+    return false
+end
+
 local function gearQuestRoot()
     local root = rawget(_G, 'GearQuest')
     if type(root) ~= 'table' then root = rawget(_G, 'GQ') end
@@ -633,6 +672,9 @@ local function gearOutgrown(item, ctx, result)
             and reason.kind ~= 'class_cannot_use_tradeable' then return false end
     end
     if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return false end
+    -- Pawn dice que es mejora (o todavía no sabe): no se vende por nivel bajo.
+    local pawn = pawnUpgrade(item.link, item.equipLoc)
+    if type(pawn) == 'table' or pawn == 'pending' then return false end
     return true
 end
 
@@ -645,6 +687,8 @@ local function armorBelowEquipped(item, ctx, result)
             and r.kind ~= 'class_cannot_use_tradeable' and r.kind ~= 'future_level' then return nil end
     end
     if inEquipmentSet(item.id) or gearQuestRanked(item, ctx) then return nil end
+    local pawn = pawnUpgrade(item.link, item.equipLoc)
+    if type(pawn) == 'table' or pawn == 'pending' then return nil end
     return reason
 end
 
@@ -668,8 +712,8 @@ local function gearMissText(item, ctx, result)
             and reason.kind ~= 'class_cannot_use_tradeable' then return end
     end
     local root = gearQuestRoot()
-    if type(root) ~= 'table' or type(root.Data) ~= 'table'
-        or type(root.Data.GearScoreMissText) ~= 'function' then return skip('no_gearquest') end
+    if type(root) ~= 'table' then return skip('no_gearquest') end
+    if type(root.Data) ~= 'table' or type(root.Data.GearScoreMissText) ~= 'function' then return skip('api') end
     if inEquipmentSet(item.id) then return skip('equipment_set') end
     -- GearScoreMissText también devuelve texto («not scoring this item», Data.lua:7370-7375) cuando
     -- el ítem no está en su base o la base no cargó: eso no prueba que no te sirva. Sólo cuenta si
@@ -752,6 +796,8 @@ function ns.Classify(item, ctx, withEvidence)
         table.insert(result.reasons, 1, { kind = 'no_rule', exception = noRuleException(item) })
     end
     result.mark = result.mark or 'useful'
+    -- Duda real: datos del juego que faltan. Es el único caso que muestra «?» (Marks.markOf).
+    result.doubt = (result.uncertain or ctx.questLogIncomplete or item.effect == 'unknown') and true or nil
     local outgrown = not isGray and gearOutgrown(item, ctx, result)
     if outgrown then
         for i = #result.reasons, 1, -1 do
@@ -788,6 +834,27 @@ function ns.Classify(item, ctx, withEvidence)
         and result.reasons[1] and result.reasons[1].kind == 'no_rule' then
         -- GearQuest la puntúa para vos: es una razón para guardarla (tilde verde), no «sin regla».
         result.reasons[1] = { kind = 'gear_ranked' }
+    elseif not isGray and not manual and not protected and not result.doubt and result.mark == 'useful'
+        and result.reasons[1] and result.reasons[1].kind == 'no_rule' and result.reasons[1].exception == 'gear'
+        and not ns.GearQuestSimulating() then
+        -- Equipo que GearQuest no conoce (o sin GearQuest): decide Pawn si está; si no, se vende lo
+        -- blanco o verde. El dueño: «la idea del addon es que resuelva dudas, no que las genere».
+        local state = result.gearQuest and result.gearQuest.state
+        if state == nil or state == 'no_gearquest' or state == 'unknown_item' then
+            local pawn = pawnUpgrade(item.link, item.equipLoc)
+            if type(pawn) == 'table' then
+                result.reasons[1] = { kind = 'pawn_upgrade', scale = pawn.scale, percent = pawn.percent, best = pawn.best }
+            elseif pawn == 'pending' then
+                result.doubt = true
+            elseif pawn == false or pawn == nil then
+                if type(item.quality) == 'number' and item.quality >= 1 and item.quality <= 2
+                    and type(item.price) == 'number' and item.price > 0
+                    and ctx.rules and ctx.rules.gearNoRanking == true and not inEquipmentSet(item.id) then
+                    result.reasons[1] = { kind = 'gear_no_ranking', pawn = pawn == false }
+                    result.mark = 'coin'
+                end
+            end
+        end
     end
     if not isGray and not manual and not protected and result.mark == 'useful'
         and result.reasons[1] and result.reasons[1].kind == 'no_rule'

@@ -62,9 +62,10 @@ test('GearQuest: subasta respeta umbrales y tolera error de Auctionator', functi
     eq(ns.Classify(item({isBound=false}),context()).mark,'coin')
 end)
 
-test('GearQuest: ausencia, API incompleta y errores conservan utilidad', function()
-    eq(ns.Classify(item(),context()).mark,'useful')
-    for _, root in ipairs({false, {}, {Data={}}, {Data=true}, {Data={GearScoreMissText=true}}}) do
+test('GearQuest: ausencia vende (sin ranking); API incompleta y errores conservan utilidad', function()
+    -- Sin GearQuest (ni Pawn) el equipo blanco o verde se vende: «el addon resuelve dudas».
+    eq(ns.Classify(item(),context()).mark,'coin')
+    for _, root in ipairs({{}, {Data={}}, {Data=true}, {Data={GearScoreMissText=true}}}) do
         GQ = root; eq(ns.Classify(item(),context()).mark,'useful')
     end
     gearQuest(MISS); GQ.Data.GearScoreMissText = function() error('sin datos') end
@@ -197,7 +198,8 @@ end)
 test('GearQuest: sin filas para el ítem (base sin cargar o ítem desconocido) el texto no cuenta', function()
     gearQuest('GearQuest is not scoring this item for your class.')
     GQ.Data.GetEntriesByItemId = function() return {} end
-    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
+    -- GearQuest no conoce el ítem: sin ranking que lo pida, se vende (gear_no_ranking).
+    eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'coin')
     GQ.Data.GetEntriesByItemId = nil
     eq(ns.Classify(item({ isBound = true, price = 50 }), context()).mark, 'useful')
     GQ.Data.GetEntriesByItemId = function() error('sin base') end

@@ -120,14 +120,14 @@ end)
 test('venta por defecto: sufijos de excepción en tooltip en castellano e inglés', function()
     local savedL = ns.L
     local suffixes = {
-        { exception = 'gear', es = 'Sin regla para este ítem: por defecto no se vende (equipo)', en = 'No rule for this item: not sold by default (gear)' },
-        { exception = 'bag', es = 'Sin regla para este ítem: por defecto no se vende (bolsa)', en = 'No rule for this item: not sold by default (bag)' },
-        { exception = 'openable', es = 'Sin regla para este ítem: por defecto no se vende (se abre)', en = 'No rule for this item: not sold by default (openable)' },
-        { exception = 'rare_or_epic', es = 'Sin regla para este ítem: por defecto no se vende (raro o épico)', en = 'No rule for this item: not sold by default (rare or epic)' },
-        { exception = 'ammo', es = 'Sin regla para este ítem: por defecto no se vende (munición)', en = 'No rule for this item: not sold by default (ammunition)' },
-        { exception = 'book', es = 'Sin regla para este ítem: por defecto no se vende (libro o receta)', en = 'No rule for this item: not sold by default (book or recipe)' },
-        { exception = 'quest', es = 'Sin regla para este ítem: por defecto no se vende (misión)', en = 'No rule for this item: not sold by default (quest)' },
-        { exception = 'key', es = 'Sin regla para este ítem: por defecto no se vende (llave)', en = 'No rule for this item: not sold by default (key)' },
+        { exception = 'gear', es = 'Equipo: se guarda', en = 'Gear: kept' },
+        { exception = 'bag', es = 'Bolsa: se guarda (equipala si es más grande que una tuya)', en = 'Bag: kept (equip it if it is bigger than one of yours)' },
+        { exception = 'openable', es = 'Se abre: abrilo antes de venderlo', en = 'Openable: open it before selling it' },
+        { exception = 'rare_or_epic', es = 'Raro o épico: se guarda (vale más que lo que paga el vendedor)', en = 'Rare or epic: kept (worth more than the vendor pays)' },
+        { exception = 'ammo', es = 'Munición: se guarda', en = 'Ammunition: kept' },
+        { exception = 'book', es = 'Libro o receta: se guarda', en = 'Book or recipe: kept' },
+        { exception = 'quest', es = 'Objeto de misión: se guarda', en = 'Quest item: kept' },
+        { exception = 'key', es = 'Llave: se guarda', en = 'Key: kept' },
     }
     local savedClassify = ns.Classify
     local success, err = pcall(function()
