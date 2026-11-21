@@ -140,3 +140,20 @@ test('GearQuest publicado como _G.GearQuest (nombre real de GearQuestForever) ta
     eq(r.mark, 'coin')
     eq(r.reasons[#r.reasons].kind, 'gear_not_ranked')
 end)
+
+test('GearQuest con fila pero sin línea de puesto (caso Fajín): monedita, no «lo puntúa»', function()
+    GearQuest = gqStub()
+    GearQuest.Data.GearScoreTooltipLine = function() return nil end
+    local r = ns.Classify(belt(), ctx27())
+    GearQuest = nil
+    eq(r.mark, 'coin')
+    eq(r.reasons[#r.reasons].kind, 'gear_not_ranked')
+end)
+
+test('GearQuest con fila y línea de puesto: se guarda', function()
+    GearQuest = gqStub()
+    GearQuest.Data.GearScoreTooltipLine = function() return 'Puesto n.º 9 para tu nivel' end
+    local r = ns.Classify(belt(), ctx27())
+    GearQuest = nil
+    eq(r.reasons[1].kind, 'gear_ranked')
+end)
