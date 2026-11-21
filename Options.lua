@@ -23,6 +23,8 @@ Options.TOGGLES = {
         help = 'What no rule classifies is sold, except gear, bags, openable items, ammunition, books, keys, quest items and rare or epic items.' },
     { section = 'Rules', path = 'rules.armorBelow', label = 'Armor below what you wear',
         help = 'Sells white or green cloth, leather or mail armor when you already wear a higher armor type in that slot. Ignores cloaks, rings and shields. Does not sell green items if you have Enchanting.' },
+    { section = 'Rules', path = 'rules.gearNoRanking', label = 'Gear with no ranking (GearQuest, Pawn)',
+        help = 'Sells white or green gear that GearQuest does not know and Pawn does not mark as an upgrade. Without GearQuest or Pawn it sells every white or green piece no other rule keeps.' },
     { section = 'Rules', path = 'rules.food', label = 'Outleveled food and drink',
         help = 'Coin on simple food and drink 15 or more levels above the requirement when you carry a better one. Never for hunters.' },
     { section = 'Rules', path = 'rules.ammo', label = 'Outdamaged ammunition',
@@ -35,9 +37,9 @@ Options.TOGGLES = {
 
 local ICON_LABELS = { protected = 'Protected', quest = 'Active quest', hammer_mine = 'Your profession material',
     hammer_other = 'Other profession material', auction = 'Auction', coin = 'Coin', trash = 'Trash (cannot be sold)',
-    useful = 'Useful', unruled = 'No rule' }
+    useful = 'Useful', unruled = 'Missing data' }
 local ICON_HELPS = {
-    unruled = 'No rule decides it: not sold automatically. Hover to see why (gear, bag, openable...). Press the key to lock or release it.',
+    unruled = 'The game has not sent all the item data yet: it is not sold until it does. Hover to see what is missing.',
 }
 for index, kind in ipairs(ns.IconKinds) do
     table.insert(Options.TOGGLES, 3 + index, { section = 'Icons', path = 'show.' .. kind, label = ICON_LABELS[kind], help = ICON_HELPS[kind] })

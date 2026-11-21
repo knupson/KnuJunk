@@ -84,7 +84,8 @@ test('armadura inferior: ranura vacía, info pendiente o equipada no armadura no
     local prevLevel = UnitLevel
     UnitLevel = function() return 18 end
     local success, err = pcall(function()
-        -- Ranura vacía.
+        -- Ranura vacía. Sin la regla de equipo sin ranking, para ver sólo la de armadura.
+        ns.DB.rules.gearNoRanking = false
         FAKE.equipped = {}
         ns.Player.Invalidate()
         local emptyCtx = ns.Player.GetContext()

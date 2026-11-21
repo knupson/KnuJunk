@@ -137,7 +137,7 @@ local function markOf(result, forLoot)
     if not result then return nil end
     if result.mark ~= 'protected' and result.quest == true then return 'quest' end
     local reasons = result.reasons
-    if result.mark == 'useful' and type(reasons) == 'table' and reasons[1] and reasons[1].kind == 'no_rule' then
+    if result.mark == 'useful' and result.doubt and type(reasons) == 'table' and reasons[1] and reasons[1].kind == 'no_rule' then
         return 'unruled'
     end
     return result.mark

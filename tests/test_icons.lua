@@ -245,7 +245,7 @@ end)
 
 test('íconos: leyenda de cada marca y motivos conservados',function()
     local labels={protected='Protected',quest='Active quest',hammer_mine='Your profession material',
-        hammer_other='Other profession material',coin='Sell',trash='Trash (cannot be sold)',useful='Useful',unruled='No rule'}
+        hammer_other='Other profession material',coin='Sell',trash='Trash (cannot be sold)',useful='Useful',unruled='Missing data'}
     bag()
     local saved=ns.Classify
     local success,err=pcall(function()
@@ -395,17 +395,22 @@ test('íconos: markOf distingue no_rule (unruled) de útil por regla y respeta q
     local markOf = ns.Marks.markOf
     eq(ns.Marks.MarkOf, markOf)
     eq(markOf(nil), nil)
-    -- no_rule con o sin excepción muestra unruled, mientras result.mark sigue siendo useful.
+    -- El «?» es sólo duda (faltan datos del juego). Sin duda, no_rule es una decisión: tilde.
     for _, exc in ipairs({ false, 'gear', 'bag', 'openable', 'rare_or_epic', 'ammo', 'book', 'quest', 'key' }) do
         local r = { mark = 'useful', reasons = { { kind = 'no_rule', exception = exc or nil } } }
+        eq(markOf(r), 'useful')
+        r.doubt = true
         eq(markOf(r), 'unruled')
         eq(r.mark, 'useful')
     end
-    -- Casos reales del clasificador donde ninguna regla decide (p. ej. pieza rara de equipo o bolsa).
+    -- Pieza rara de equipo sin ranking: se guarda con tilde, no «?».
     local gearRes = ns.Classify(item({ classID = 2, subclassID = 7, equipLoc = 'INVTYPE_WEAPON', quality = 3, reqLevel = 35 }), context())
     eq(gearRes.mark, 'useful')
     eq(gearRes.reasons[1].kind, 'no_rule')
-    eq(markOf(gearRes), 'unruled')
+    eq(markOf(gearRes), 'useful')
+    -- Efecto desconocido (datos que faltan): «?».
+    local doubtRes = ns.Classify(item({ effect = 'unknown' }), context())
+    eq(markOf(doubtRes), 'unruled')
     -- Útil por una regla explícita conserva el tilde verde 'useful'.
     for _, kind in ipairs({ 'useful', 'book_unknown', 'future_level', 'key', 'lockbox', 'library_book', 'reputation_token' }) do
         eq(markOf({ mark = 'useful', reasons = { { kind = kind } } }), 'useful', kind)
@@ -421,7 +426,10 @@ test('íconos: markOf distingue no_rule (unruled) de útil por regla y respeta q
 end)
 
 test('íconos: bolsa, Verdict, botín y Baganator pintan unruled y show.unruled = false lo oculta', function()
-    local button = bag({ classID = 1, quality = 1, price = 10 }) -- bolsa: no_rule (bag)
+    local button = bag({ classID = 1, quality = 1, price = 10 })
+    -- Ítem con datos que faltan: el clasificador marca duda.
+    local savedClassify = ns.Classify
+    ns.Classify = function() return { mark = 'useful', doubt = true, reasons = { { kind = 'no_rule' } } } end
     ns.Marks.Update(button, 0, 1)
     ok(button.KnuJunkMark:IsShown())
     eq(button.KnuJunkMark.texture, ns.Marks.TEXTURES.unruled)
@@ -446,6 +454,7 @@ test('íconos: bolsa, Verdict, botín y Baganator pintan unruled y show.unruled 
     ns.Marks.UpdateLink(lootButton, FAKE.linkOf(ID))
     eq(lootButton.KnuJunkMark:IsShown(), false)
     eq(state.widgets.knujunk_icon.onUpdate(widget, { itemID = ID, itemLocation = { bagID = 0, slotIndex = 1 } }), false)
+    ns.Classify = savedClassify
 end)
 
 test('íconos: opciones y leyenda de tooltip de Sin regla / No rule en ambos idiomas', function()
@@ -462,17 +471,20 @@ test('íconos: opciones y leyenda de tooltip de Sin regla / No rule en ambos idi
             ok(check, 'casilla show.unruled')
             ok(swatch, 'selector de color unruled')
             ok(check.help, 'ayuda en show.unruled')
-            eq(check.label:GetText(), locale == 'enUS' and 'No rule' or 'Sin regla')
+            eq(check.label:GetText(), locale == 'enUS' and 'Missing data' or 'Falta información')
             local expectedHelp = locale == 'enUS'
-                and 'No rule decides it: not sold automatically. Hover to see why (gear, bag, openable...). Press the key to lock or release it.'
-                or 'Ninguna regla lo decide: no se vende solo. Pasá el mouse para ver por qué (equipo, bolsa, se abre...). Con la tecla lo trabás o lo soltás.'
+                and 'The game has not sent all the item data yet: it is not sold until it does. Hover to see what is missing.'
+                or 'El juego todavía no mandó todos los datos del ítem: no se vende hasta tenerlos. Pasá el mouse para ver qué falta.'
             eq(check.help:GetText(), expectedHelp)
             ok(not check.help:GetText():find('→', 1, true) and not check.help:GetText():find('…', 1, true))
 
-            -- Tooltip para ítem sin regla: leyenda gris «Sin regla» / «No rule».
+            -- Tooltip para ítem con datos que faltan: leyenda gris «Falta información» / «Missing data».
             bag({ classID = 1, quality = 1, price = 10 })
+            local savedClassify = ns.Classify
+            ns.Classify = function() return { mark = 'useful', doubt = true, reasons = { { kind = 'no_rule' } } } end
             local lines = ns.Tooltip.Lines(FAKE.linkOf(ID))
-            eq(lines[1].text, ns.L['Icon: %s']:format(locale == 'enUS' and 'No rule' or 'Sin regla'))
+            ns.Classify = savedClassify
+            eq(lines[1].text, ns.L['Icon: %s']:format(locale == 'enUS' and 'Missing data' or 'Falta información'))
             eq(lines[1].r, 160/255); eq(lines[1].g, 160/255); eq(lines[1].b, 160/255)
 
             -- Tooltip para ítem útil por regla: leyenda verde «Útil» / «Useful».
