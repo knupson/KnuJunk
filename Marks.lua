@@ -144,9 +144,13 @@ local function markOf(result, forLoot)
 end
 Marks.MarkOf, Marks.markOf = markOf, markOf
 
+-- Clave propia por botón para la cola de combate compartida de KnuLib (evita choques entre addons).
+local function combatKey(button) return 'KnuJunk:Marks:' .. tostring(button) end
+
 function Marks.Clear(button)
     if type(button) ~= 'table' then return end
     pending[button] = nil
+    if queued[button] then ns.KL:CancelAfterCombat(combatKey(button)) end
     queued[button] = nil
     hide(button)
     if button.KnuJunkOwned then button.KnuJunkOwned:Hide() end
@@ -235,6 +239,8 @@ local function mustDefer(button)
     return not success or (isProtected and true or false)
 end
 
+local resume -- definida más abajo; defer la usa al salir del combate
+
 local function defer(button, entry)
     pending[button] = nil
     queued[button] = nil
@@ -244,7 +250,16 @@ local function defer(button, entry)
         local success, id = pcall(slotItemID, entry.bag, entry.slot)
         entry.id = success and id or nil
     end
-    if entry.id then queued[button] = entry end
+    if not entry.id then return end
+    queued[button] = entry
+    -- Al salir del combate se retoma lo diferido (KnuLib minor 5). La función lee queued en ese
+    -- momento: si el botón se limpió o se reinició el módulo, no hace nada.
+    ns.KL:AfterCombat(function()
+        local waiting = queued[button]
+        if not waiting then return end
+        queued[button] = nil
+        pcall(resume, button, waiting)
+    end, combatKey(button))
 end
 
 -- Marca el item de bolsa `bag`/`slot` (bolsas 0-4, o el banco vivo si `owner` lo soporta) en
@@ -350,7 +365,7 @@ Marks.ConnectBank()
 -- el slot tiene que seguir teniendo el item que se esperaba y, si el adaptador del dueno sabe
 -- revalidar (spec.revalidate(boton) -> bag, slot, itemID mostrado), su vista tiene que seguir
 -- siendo una casilla viva con ese mismo item. Si algo no coincide: sin marca.
-local function resume(button, entry)
+function resume(button, entry)
     if entry.link then
         -- Por enlace: si el dueno sabe revalidar, spec.revalidate(boton) devuelve el enlace que el
         -- boton muestra AHORA (la fila de botin pudo reciclarse a otro item mientras esperaba datos);
@@ -380,15 +395,8 @@ end
 -- diferido.
 local frame = CreateFrame('Frame')
 pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
-pcall(frame.RegisterEvent, frame, 'PLAYER_REGEN_ENABLED')
 frame:SetScript('OnEvent', function(_, event, itemID, success)
     local ready = {}
-    if event == 'PLAYER_REGEN_ENABLED' then
-        for button, entry in pairs(queued) do ready[#ready + 1] = { button = button, entry = entry } end
-        for _, job in ipairs(ready) do queued[job.button] = nil end
-        for _, job in ipairs(ready) do pcall(resume, job.button, job.entry) end
-        return
-    end
     for button, entry in pairs(pending) do
         if entry.id == itemID then ready[#ready + 1] = { button = button, entry = entry } end
     end

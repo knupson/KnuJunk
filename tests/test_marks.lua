@@ -445,6 +445,22 @@ test('combate: un boton protegido sin textura nuestra no se toca; se marca al sa
     ok(visible(button), 'marcado al salir del combate')
 end)
 
+test('combate: limpiar y volver a diferir el mismo botón no acumula esperas en KnuLib', function()
+    addItem(100, { quality = 0 }); FAKE.bags['0:1'] = 100
+    local button = protectedButton()
+    FAKE.inCombat = true
+    local before = #ns.KL.combatQueue
+    for _ = 1, 10 do
+        ns.Marks.Update(button, 0, 1, 'generic')
+        ns.Marks.Clear(button)
+    end
+    ns.Marks.Update(button, 0, 1, 'generic')
+    eq(#ns.KL.combatQueue, before + 1)
+    FAKE.inCombat = false
+    FAKE.Fire('PLAYER_REGEN_ENABLED')
+    ok(visible(button), 'marcado al salir del combate')
+end)
+
 test('combate: lo diferido se revalida (el slot cambio) y UpdateLink tambien se difiere', function()
     addItem(100, { quality = 0 }); addItem(101, { quality = 1, classID = 2, subclassID = 0, spell = true })
     FAKE.bags['0:1'] = 100

@@ -78,16 +78,6 @@ ns.PROFESSIONS = {
     [356] = true, -- Pesca
 }
 
--- Completa en target lo que falte según source, sin pisar valores del usuario.
-local function merge(target, source)
-    for key, value in pairs(source) do
-        if type(value) == 'table' then
-            if type(target[key]) ~= 'table' then target[key] = {} end
-            merge(target[key], value)
-        elseif target[key] == nil then target[key] = value end
-    end
-end
-
 -- Cada cambio de enabled/show/rules/overrides (por comando o por el panel de opciones) pasa por aca:
 -- ensucia el contexto del jugador, pide repintar las bolsas (Loot esta registrado en Bags, asi que la
 -- ventana de botin abierta tambien se repinta) y, si el panel de opciones esta abierto, lo actualiza.
@@ -98,15 +88,11 @@ function ns.Changed()
     if ns.Options and ns.Options.RefreshIfShown then ns.Options.RefreshIfShown() end
 end
 
-local loginHandlers, loggedIn = {}, false
--- Registra fn para PLAYER_LOGIN; si el login ya pasó, la corre en el acto.
-function ns.OnLogin(fn)
-    if loggedIn then fn() else loginHandlers[#loginHandlers + 1] = fn end
-end
+-- Registra fn para PLAYER_LOGIN; si el login ya pasó, la corre en el acto (KnuLib minor 5).
+function ns.OnLogin(fn) KL:OnLogin(fn) end
 
 local frame = CreateFrame('Frame')
 frame:RegisterEvent('ADDON_LOADED')
-frame:RegisterEvent('PLAYER_LOGIN')
 frame:SetScript('OnEvent', function(_, event, name)
     if event == 'ADDON_LOADED' then
         if name ~= 'KnuJunk' then return end
@@ -127,11 +113,7 @@ frame:SetScript('OnEvent', function(_, event, name)
             end
             KnuJunkDB.rulesVersion = 2
         end
-        merge(KnuJunkDB, ns.Defaults)
+        KL:ApplyDefaults(KnuJunkDB, ns.Defaults)
         ns.DB = KnuJunkDB
-    elseif event == 'PLAYER_LOGIN' then
-        loggedIn = true
-        for _, fn in ipairs(loginHandlers) do fn() end
-        loginHandlers = {}
     end
 end)

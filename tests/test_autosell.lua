@@ -133,6 +133,19 @@ test('venta: combate al abrir espera hasta salir', function()
     FAKE.Advance(.21); eq(#FAKE.used, 1)
 end)
 
+test('venta: si la API de combate falla, se retoma cuando vuelve (respaldo sin KnuLib)', function()
+    item(0, 1)
+    local original = InCombatLockdown
+    InCombatLockdown = function() error('API fallida') end
+    local good, err = pcall(function()
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(2); eq(#FAKE.used, 0)
+    end)
+    InCombatLockdown = original
+    if not good then error(err, 0) end
+    FAKE.inCombat = false; FAKE.Fire('PLAYER_REGEN_ENABLED')
+    FAKE.Advance(.21); eq(#FAKE.used, 1)
+end)
+
 test('venta: cerrar en combate descarta la venta diferida', function()
     item(0, 1); FAKE.inCombat = true; FAKE.Fire('MERCHANT_SHOW')
     FAKE.Fire('MERCHANT_CLOSED'); FAKE.inCombat = false

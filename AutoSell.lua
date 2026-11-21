@@ -10,6 +10,8 @@ local attempts, pending = 0, nil
 local repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
 local repairWarned = false -- aviso de «otro addon repara» una vez por sesión
 local repairRequested -- costo pedido en esta reparación, para confirmarlo después
+-- Retoma ventas y reparación al salir del combate (cola de KnuLib minor 5); definida abajo.
+local scheduleResume
 
 local function safe(fn, ...)
     if type(fn) ~= 'function' then return nil end
@@ -42,7 +44,7 @@ local function repair()
     if not opened or repairSkipped or not options or options.enabled ~= true or ns.DB.enabled == false then return end
     if safe(IsShiftKeyDown) ~= false then return end
     if type(InCombatLockdown) ~= 'function' then return end
-    if combat() then repairDeferred = true; return end
+    if combat() then repairDeferred = true; scheduleResume(); return end
     repairDeferred = false
     if safe(CanMerchantRepair) ~= true or type(RepairAllItems) ~= 'function' then return end
     local cost, canRepair = repairCost()
@@ -271,6 +273,7 @@ local function tick()
     if combat() then
         deferred = true
         if ticker then ticker:Cancel(); ticker = nil end
+        scheduleResume()
         return
     end
     local entry = queue[cursor]
@@ -294,7 +297,7 @@ end
 
 local function start()
     if not opened or not enabled() then return end
-    if combat() then deferred = true; return end
+    if combat() then deferred = true; scheduleResume(); return end
     deferred = false
     queue, cursor = {}, 1
     for bag = 0, 4 do
@@ -369,6 +372,23 @@ local function installHook()
     if pcall(hooksecurefunc, C_Container, 'UseContainerItem', observe) then hookedContainer = C_Container end
 end
 
+-- Sólo si el vendedor sigue abierto: al cerrarlo se limpian las banderas y esto no hace nada.
+local function resumeAfterCombat()
+    if not opened then return end
+    if repairDeferred then repair() end
+    if not deferred then return end
+    -- Retomar la cola original sin volver a vender ranuras ya procesadas.
+    deferred = false
+    if #queue == 0 then start()
+    elseif C_Timer and type(C_Timer.NewTicker) == 'function' then ticker = safe(C_Timer.NewTicker, .2, tick) end
+end
+-- pcall: si InCombatLockdown falla, KnuLib propaga el error; ante la duda no se agenda nada.
+-- Si falla, queda el respaldo por PLAYER_REGEN_ENABLED (abajo) para cuando la API se recupere.
+local scheduleFailed = false
+function scheduleResume()
+    scheduleFailed = not pcall(ns.KL.AfterCombat, ns.KL, resumeAfterCombat, 'KnuJunk:AutoSell')
+end
+
 local frame = CreateFrame('Frame')
 for _, event in ipairs({ 'MERCHANT_SHOW', 'MERCHANT_CLOSED', 'PLAYER_REGEN_ENABLED', 'PLAYER_LEAVING_WORLD', 'BAG_UPDATE_DELAYED' }) do
     frame:RegisterEvent(event)
@@ -391,13 +411,11 @@ frame:SetScript('OnEvent', function(_, event)
         opened, deferred = false, false
         repairDeferred, repairAfterSales = false, false
         if ticker then finish() end
-    elseif event == 'PLAYER_REGEN_ENABLED' and opened then
-        if repairDeferred then repair() end
-        if not deferred then return end
-        -- Retomar la cola original sin volver a vender ranuras ya procesadas.
-        deferred = false
-        if #queue == 0 then start()
-        elseif C_Timer and type(C_Timer.NewTicker) == 'function' then ticker = safe(C_Timer.NewTicker, .2, tick) end
+    elseif event == 'PLAYER_REGEN_ENABLED' then
+        -- Sólo respaldo: lo normal lo retoma la cola de KnuLib.
+        if not scheduleFailed then return end
+        scheduleFailed = false
+        if combat() then scheduleResume() else resumeAfterCombat() end
     end
 end)
 installHook()
@@ -410,5 +428,6 @@ function AutoSell.ResetState()
     attempted, soldLinks, reportToken = {}, {}, reportToken + 1
     repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
     repairWarned = false
+    scheduleFailed = false
     installHook()
 end
