@@ -149,6 +149,43 @@ function Marks.Clear(button)
     pending[button] = nil
     queued[button] = nil
     hide(button)
+    if button.KnuJunkOwned then button.KnuJunkOwned:Hide() end
+end
+
+-- Cuántos tenés ya (bolsas y banco) de un ítem que no se apila; nil si se apila o no se sabe.
+-- En lo que se apila (tela, hierbas) siempre tenés más y el número sería ruido.
+function Marks.OwnedCount(link)
+    if type(link) ~= 'string' then return nil end
+    local id = tonumber(link:match('item:(%d+)'))
+    if not id or type(GetItemInfo) ~= 'function' or type(GetItemCount) ~= 'function' then return nil end
+    local ok, name, _, _, _, _, _, _, stack = pcall(GetItemInfo, link)
+    if not ok or not name or stack ~= 1 then return nil end
+    local okBags, bags = pcall(GetItemCount, id)
+    local okAll, all = pcall(GetItemCount, id, true)
+    if not okBags or type(bags) ~= 'number' then return nil end
+    if not okAll or type(all) ~= 'number' or all < bags then all = bags end
+    return all, bags, all - bags
+end
+
+-- Botín: «xN» abajo a la izquierda si ya tenés ese ítem (pedido del dueño: saber si duplica).
+function Marks.UpdateOwned(button, link)
+    if type(button) ~= 'table' then return end
+    local show = enabled() and not (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.owned == false)
+    local count = show and Marks.OwnedCount(link)
+    local text = button.KnuJunkOwned
+    if not count or count <= 0 then
+        if text then text:Hide() end
+        return
+    end
+    if not text then
+        if type(button.CreateFontString) ~= 'function' then return end
+        text = button:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal')
+        text:SetPoint('BOTTOMLEFT', button, 'BOTTOMLEFT', 2, 2)
+        button.KnuJunkOwned = text
+    end
+    text:SetText('x' .. count)
+    text:SetTextColor(1, 210/255, 60/255)
+    text:Show()
 end
 
 -- Cuerpo de Update: puede lanzar error (lecturas del cliente); el llamador lo aisla con pcall.

@@ -41,6 +41,7 @@ ns.Defaults.autoSell = { enabled = true, graysOnly = false, max = 12 }
 ns.Defaults.autoRepair = { enabled = true, guild = false }
 ns.Defaults.ui = { tab = 'General' }
 for _, kind in ipairs(ns.IconKinds) do ns.Defaults.show[kind] = true end
+ns.Defaults.show.owned = true
 ns.Print = KL:NewPrinter('Junk')
 
 -- Dinero legible: usa el formato del juego si existe; si no, sólo las unidades distintas de cero
