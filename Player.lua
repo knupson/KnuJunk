@@ -827,7 +827,7 @@ function Player.DebugTooltip(link)
     local ctx, item = Player.GetContext(), Player.ReadLink(link)
     local L = ns.L
     local source = ctx.specSource == 'gearquest' and 'GearQuest' or ctx.specSource == 'talents' and L['talents'] or L['no source']
-    out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or L['none'], source)
+    out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or (ctx.specIndex and ('#' .. ctx.specIndex)) or L['none'], source)
     local traitIndex, traitName, traitRows = Player.TraitSpec()
     out[#out + 1] = string.format('C_Traits: rama=%s nombre=%s puntos=%s', tostring(traitIndex), tostring(traitName),
         traitRows and table.concat(traitRows, ' ') or 'sin datos')
