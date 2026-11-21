@@ -380,9 +380,27 @@ test('regresión 5: confirmación ilegible y cierre con intento pendiente no inv
     item(0, 1)
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
     C_Item.GetItemGUID = function() error('sin datos') end
+    -- Ilegible de verdad: tampoco se puede saber si el lugar quedó vacío.
+    local savedInfo = C_Container.GetContainerItemInfo
+    C_Container.GetContainerItemInfo = function() error('sin datos') end
     FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
+    C_Container.GetContainerItemInfo = savedInfo
     eq(#FAKE.messages, 0)
     FAKE.Fire('MERCHANT_CLOSED'); eq(#FAKE.messages, 0)
+end)
+
+test('vendido y lugar vacío con GetItemGUID que falla (cliente real): se cuenta y sale el resumen', function()
+    item(0, 1)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(.21)
+    local savedGUID = C_Item.GetItemGUID
+    C_Item.GetItemGUID = function(loc)
+        if not FAKE.bags[loc.bag .. ':' .. loc.slot] then error('invalid item location') end
+        return savedGUID(loc)
+    end
+    FAKE.Fire('BAG_UPDATE_DELAYED'); FAKE.Advance(2)
+    C_Item.GetItemGUID = savedGUID
+    eq(#FAKE.messages, 2); ok(FAKE.messages[1]:find('1 ítems por 10c', 1, true))
+    eq(ns.AutoSell.LastVisit.counted, 1)
 end)
 
 test('cerrar justo después de pedir la venta: si el ítem desapareció, se cuenta (se vendió)', function()

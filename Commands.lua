@@ -93,6 +93,12 @@ function Commands.Handle(args)
         manual(sub, rest)
     elseif sub == 'status' then
         Commands.Status()
+    elseif sub == 'debug' and rest:lower() == 'venta' then
+        local v = ns.AutoSell.LastVisit or {}
+        local api = C_Item and type(C_Item.GetItemGUID) == 'function'
+        ns.Print(string.format('Última venta: pedidos=%s contados=%s ilegibles=%s vendidos=%s total=%s | GetItemGUID=%s DoesItemExist=%s',
+            tostring(v.attempted), tostring(v.counted), tostring(v.unreadable), tostring(v.sold), tostring(v.total),
+            tostring(api), tostring(C_Item and type(C_Item.DoesItemExist) == 'function')))
     elseif sub == 'debug' then
         local lines = ns.Player.DebugTooltip(rest)
         if not lines then say('Usage: /knu junk debug [item link]') return end

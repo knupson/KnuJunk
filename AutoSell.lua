@@ -106,8 +106,25 @@ end
 local attempted, soldLinks, reportToken = {}, {}, 0
 local REPORT_DELAY = 1.5
 
+-- Lugar vacío = legible y sin ítem. Después de vender, GetItemGUID sobre un lugar vacío puede
+-- lanzar error («invalid item location»): antes eso contaba como ilegible y la venta nunca se
+-- confirmaba, así que el resumen no salía (visto en el juego 2026-11-21).
+local function slotEmpty(bag, slot, loc)
+    if loc and C_Item and type(C_Item.DoesItemExist) == 'function' then
+        local ok, exists = pcall(C_Item.DoesItemExist, loc)
+        if ok and exists == false then return true end
+    end
+    local getInfo = api('GetContainerItemInfo')
+    if type(getInfo) == 'function' then
+        local ok, info = pcall(getInfo, bag, slot)
+        if ok and info == nil then return true end
+    end
+    return false
+end
+
 local function guidAt(bag, slot)
     local loc = safe(ItemLocation and ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
+    if slotEmpty(bag, slot, loc) then return nil, true end
     if not loc or not (C_Item and type(C_Item.GetItemGUID) == 'function') then return nil, false end
     local ok, guid = pcall(C_Item.GetItemGUID, loc)
     if not ok then return nil, false end
@@ -175,8 +192,19 @@ local function printSoldLinks(links)
     if current then ns.Print(fmt:format(current)) end
 end
 
+-- Diagnóstico de la última visita (/knu junk debug venta).
+AutoSell.LastVisit = {}
+
 local function report()
     confirm()
+    local counted, unreadable = 0, 0
+    for _, entry in ipairs(attempted) do
+        if entry.counted then counted = counted + 1 else
+            local _, readable = guidAt(entry.bag, entry.slot)
+            if not readable then unreadable = unreadable + 1 end
+        end
+    end
+    AutoSell.LastVisit = { attempted = #attempted, counted = counted, unreadable = unreadable, sold = sold, total = total }
     attempted = {}
     local links = soldLinks
     soldLinks = {}
