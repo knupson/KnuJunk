@@ -70,3 +70,60 @@ test('debug: muestra la lectura cruda de cada rama de talentos', function()
     ok(text:find('-> Reprensión 19', 1, true), 'resultado')
     GetNumTalentTabs, GetTalentTabInfo = nil, nil
 end)
+
+-- Cliente de Forever: sin GetNumTalentTabs; las ramas salen de C_Traits (como la ventana de talentos).
+local function traits(spent)
+    C_ClassTalents = { GetActiveConfigID = function() return 77 end }
+    C_Traits = {
+        GetConfigInfo = function(config) eq(config, 77); return { treeIDs = { 5 } } end,
+        GetGroupDisplayInfoByTreeID = function(tree) eq(tree, 5); return { { groupID = 11 }, { groupID = 12 }, { groupID = 13 } } end,
+        GetGroupCurrencyInfo = function(config, ids)
+            local out = {}
+            for i, id in ipairs(ids) do out[i] = { traitNodeGroupID = id, currencyInfos = { { spent = spent[i] } } } end
+            return out
+        end,
+    }
+end
+local function clearTraits() C_ClassTalents, C_Traits, PawnCommon, PawnGetSpecializationInfoForClassID = nil, nil, nil, nil end
+
+test('sin GearQuest ni GetNumTalentTabs: C_Traits da la rama con más puntos', function()
+    GearQuest, GetNumTalentTabs = nil, nil
+    traits({ 0, 2, 19 }); ns.Player.Invalidate()
+    local c = ns.Player.GetContext()
+    eq(c.specIndex, 3); eq(c.specSource, 'talents'); eq(c.specLabel, nil)
+    PawnGetSpecializationInfoForClassID = function(classID, index) return index, ({ 'Sagrado', 'Protección', 'Reprensión' })[index] end
+    ns.Player.Invalidate(); eq(ns.Player.GetContext().specLabel, 'Reprensión')
+    traits({ 10, 10, 0 }); ns.Player.Invalidate(); eq(ns.Player.GetContext().specIndex, nil)
+    traits({ 0, 0, 0 }); ns.Player.Invalidate(); eq(ns.Player.GetContext().specIndex, nil)
+    C_Traits.GetGroupCurrencyInfo = function() error('sin datos') end
+    ns.Player.Invalidate(); eq(ns.Player.GetContext().specIndex, nil)
+    clearTraits()
+end)
+
+test('sin nombre de rama: Pawn coincide por SpecID y sólo cuenta la escala de tu rama', function()
+    GearQuest, GetNumTalentTabs = nil, nil
+    FAKE.class = 'PALADIN'
+    local savedUnitClass = UnitClass
+    UnitClass = function() return 'Paladín', 'PALADIN', 2 end
+    traits({ 0, 2, 19 }); ns.Player.Invalidate()
+    PawnCommon = { Scales = { prot = { ClassID = 2, SpecID = 2 }, ret = { ClassID = 2, SpecID = 3 }, holy = { ClassID = 2, SpecID = 1 } } }
+    PawnGetAllScalesEx = function()
+        return { { Name = 'prot', LocalizedName = 'Paladín: Protección', IsVisible = true },
+            { Name = 'ret', LocalizedName = 'Paladín: Reprensión', IsVisible = true },
+            { Name = 'holy', LocalizedName = 'Paladín: Sagrado', IsVisible = true } }
+    end
+    local visible, matches, count = ns.PawnScales(ns.Player.GetContext())
+    eq(count, 1); ok(matches.ret, 'Reprensión'); ok(not matches.prot, 'no Protección'); eq(#visible, 3)
+    UnitClass, PawnGetAllScalesEx = savedUnitClass, nil
+    clearTraits()
+end)
+
+test('debug: muestra lo que lee C_Traits', function()
+    FAKE.items[991702] = { name = 'Hacha', quality = 0, price = 10, classID = 2 }
+    GetNumTalentTabs = nil
+    traits({ 0, 2, 19 }); ns.Player.Invalidate()
+    local text = table.concat(ns.Player.DebugTooltip('item:991702'), '\n')
+    ok(text:find('C_Traits: rama=3 nombre=nil puntos=1=0 2=2 3=19', 1, true), text)
+    ok(text:find('specIndex=3', 1, true), 'specIndex')
+    clearTraits()
+end)

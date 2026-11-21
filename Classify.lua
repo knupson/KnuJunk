@@ -613,6 +613,18 @@ end
 ns.FoldSpecLabel = foldLabel
 
 -- Comparte el mismo filtro con los vetos y el diagnóstico.
+-- true si la escala de Pawn `name` es de la rama activa (ctx.specIndex) de tu clase: Pawn guarda
+-- ClassID y SpecID en cada escala (PawnCommon.Scales) y en Forever SpecID es el orden de la rama de
+-- talentos (paladin: 1 Sagrado, 2 Proteccion, 3 Reprension; KnuUI/PawnSpec.lua, probado en el juego).
+local function specIDMatches(name, ctx)
+    if not ctx.specIndex or type(name) ~= 'string' then return false end
+    local common = rawget(_G, 'PawnCommon')
+    local scale = type(common) == 'table' and type(common.Scales) == 'table' and common.Scales[name]
+    if type(scale) ~= 'table' or scale.SpecID == nil then return false end
+    local classID = type(UnitClass) == 'function' and select(3, UnitClass('player')) or nil
+    return scale.SpecID == ctx.specIndex and (classID == nil or scale.ClassID == nil or scale.ClassID == classID)
+end
+
 function ns.PawnScales(ctx)
     local getter = rawget(_G, 'PawnGetAllScalesEx')
     local ok, scales
@@ -621,12 +633,13 @@ function ns.PawnScales(ctx)
     for _, scale in pairs(ok and type(scales) == 'table' and scales or {}) do
         if type(scale) == 'table' and scale.IsVisible then
             local label = scale.LocalizedName or scale.Name
-            local main = not ctx.specLabel or (type(label) == 'string'
-                and foldLabel(label):find(foldLabel(ctx.specLabel), 1, true) ~= nil)
+            local main = not (ctx.specLabel or ctx.specIndex) or specIDMatches(scale.Name, ctx)
+                or (ctx.specLabel and type(label) == 'string'
+                and foldLabel(label):find(foldLabel(ctx.specLabel), 1, true) ~= nil) or false
             local other = ctx.offSpecLabel and type(scale.LocalizedName) == 'string'
                 and foldLabel(scale.LocalizedName):find(foldLabel(ctx.offSpecLabel), 1, true) ~= nil
             local match = main or other or false
-            local isOffSpec = other and (not ctx.specLabel or not main) or nil
+            local isOffSpec = other and (not (ctx.specLabel or ctx.specIndex) or not main) or nil
             visible[#visible + 1] = { name = scale.Name, label = label, matches = match, offspec = isOffSpec }
             if match then
                 count = count + 1
@@ -646,10 +659,10 @@ local function pawnUpgrade(link, equipLoc, ctx, offOnly)
     local getData, isUpgrade = rawget(_G, 'PawnGetItemData'), rawget(_G, 'PawnIsItemAnUpgrade')
     if type(getData) ~= 'function' or type(isUpgrade) ~= 'function' then return nil end
     local _, matches, count, offspec = ns.PawnScales(ctx)
-    if count == 0 and (ctx.specLabel or type(rawget(_G, 'PawnGetAllScalesEx')) == 'function') then return nil end
+    if count == 0 and (ctx.specLabel or ctx.specIndex or type(rawget(_G, 'PawnGetAllScalesEx')) == 'function') then return nil end
     local function accepts(raw, localized)
         if offOnly then return offspec[raw] or offspec[localized] end
-        return matches[raw] or matches[localized] or (not ctx.specLabel and count == 0
+        return matches[raw] or matches[localized] or (not (ctx.specLabel or ctx.specIndex) and count == 0
             and type(rawget(_G, 'PawnGetAllScalesEx')) ~= 'function')
     end
     if type(link) ~= 'string' or link == '' then return 'pending' end

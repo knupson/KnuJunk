@@ -447,6 +447,68 @@ function Player.TalentTab(tab, group)
     if found then return found, summedRanks(tab, group) or 0 end
 end
 
+-- Rama activa en el cliente de Forever: no hay GetNumTalentTabs (probado en el juego 2026-11-21). La
+-- ventana de talentos lee las ramas con C_Traits: GetGroupDisplayInfoByTreeID da las 3 en orden y
+-- GetGroupCurrencyInfo los puntos gastados (mismo metodo que KnuUI/PawnSpec.lua, probado en el juego).
+-- Devuelve indice (1..3), nombre (si el cliente lo da) y las filas leidas; indice nil sin puntos o empate.
+function Player.TraitSpec()
+    local traits = rawget(_G, 'C_Traits')
+    if type(traits) ~= 'table' or type(traits.GetConfigInfo) ~= 'function'
+        or type(traits.GetGroupDisplayInfoByTreeID) ~= 'function' or type(traits.GetGroupCurrencyInfo) ~= 'function' then
+        return nil
+    end
+    local config
+    local talents = rawget(_G, 'C_ClassTalents')
+    if type(talents) == 'table' and type(talents.GetActiveConfigID) == 'function' then
+        local ok, id = pcall(talents.GetActiveConfigID); if ok then config = id end
+    end
+    local spec = rawget(_G, 'C_SpecializationInfo')
+    if not config and type(spec) == 'table' and type(spec.GetCombatConfigIDForSpecGroup) == 'function' then
+        local group = 1
+        if type(spec.GetActiveSpecGroup) == 'function' then
+            local ok, value = pcall(spec.GetActiveSpecGroup); if ok and type(value) == 'number' then group = value end
+        end
+        local ok, id = pcall(spec.GetCombatConfigIDForSpecGroup, group); if ok then config = id end
+    end
+    if not config then return nil end
+    local ok, info = pcall(traits.GetConfigInfo, config)
+    local tree = ok and type(info) == 'table' and type(info.treeIDs) == 'table' and info.treeIDs[1]
+    if not tree then return nil end
+    local good, groups = pcall(traits.GetGroupDisplayInfoByTreeID, tree)
+    if not good or type(groups) ~= 'table' then return nil end
+    local ids, index, names = {}, {}, {}
+    for i, g in ipairs(groups) do
+        if type(g) == 'table' and g.groupID ~= nil then
+            ids[#ids + 1] = g.groupID; index[g.groupID] = i
+            names[i] = type(g.name) == 'string' and g.name ~= '' and g.name or nil
+        end
+    end
+    local fine, currencies = pcall(traits.GetGroupCurrencyInfo, config, ids)
+    if not fine or type(currencies) ~= 'table' then return nil end
+    local best, bestSpent, tie, rows = nil, 0, false, {}
+    for _, g in ipairs(currencies) do
+        local c = type(g) == 'table' and type(g.currencyInfos) == 'table' and g.currencyInfos[1]
+        local spent = type(c) == 'table' and tonumber(c.spent) or 0
+        local i = type(g) == 'table' and index[g.traitNodeGroupID]
+        if i then
+            rows[#rows + 1] = i .. '=' .. spent
+            if spent > bestSpent then best, bestSpent, tie = i, spent, false
+            elseif spent > 0 and spent == bestSpent then tie = true end
+        end
+    end
+    if tie or not best then return nil, nil, rows end
+    return best, names[best], rows
+end
+
+-- Nombre localizado de la rama `index` segun Pawn (si esta), o nil.
+local function pawnSpecName(index)
+    local getter = rawget(_G, 'PawnGetSpecializationInfoForClassID')
+    if type(getter) ~= 'function' or type(UnitClass) ~= 'function' then return nil end
+    local classID = select(3, UnitClass('player'))
+    local ok, _, name = pcall(getter, classID, index)
+    if ok and type(name) == 'string' and name ~= '' then return name end
+end
+
 local function readSpec(class)
     local root = ns.GearQuestRoot and ns.GearQuestRoot()
     if type(root) == 'table' and type(root.GetEffectiveSpec) == 'function'
@@ -461,6 +523,8 @@ local function readSpec(class)
             end
         end
     end
+    local index, name = Player.TraitSpec()
+    if index then return name or pawnSpecName(index), 'talents', index end
     if type(GetNumTalentTabs) ~= 'function' or type(GetTalentTabInfo) ~= 'function' then return end
     local good, tabs = pcall(GetNumTalentTabs)
     if not good or type(tabs) ~= 'number' then return end
@@ -539,7 +603,7 @@ local function buildContext()
     end
     local questItems, incomplete, found = buildQuestItems()
     local equippedArmor, armorSig = readEquippedArmor()
-    local specLabel, specSource = readSpec(class)
+    local specLabel, specSource, specIndex = readSpec(class)
     local offSpecLabel, offSpecId, talentGroups, activeTalentGroup = readOffSpec(class, specLabel)
     local equippedLevel, levelSig, equippedLevelPending = readEquippedLevel()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
@@ -554,6 +618,7 @@ local function buildContext()
         equippedLevelPending = equippedLevelPending,
         specLabel = specLabel,
         specSource = specSource,
+        specIndex = specIndex,
         offSpecLabel = offSpecLabel,
         offSpecId = offSpecId,
         talentGroups = talentGroups,
@@ -571,7 +636,7 @@ local function buildContext()
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids), tostring(optionalRevision),
-        ctx.bagStock.signature or '', armorSig, levelSig, tostring(specLabel), tostring(specSource),
+        ctx.bagStock.signature or '', armorSig, levelSig, tostring(specLabel), tostring(specSource), tostring(specIndex),
         tostring(offSpecLabel), tostring(offSpecId), tostring(talentGroups), tostring(activeTalentGroup) }, '|')
     return ctx
 end
@@ -763,6 +828,10 @@ function Player.DebugTooltip(link)
     local L = ns.L
     local source = ctx.specSource == 'gearquest' and 'GearQuest' or ctx.specSource == 'talents' and L['talents'] or L['no source']
     out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or L['none'], source)
+    local traitIndex, traitName, traitRows = Player.TraitSpec()
+    out[#out + 1] = string.format('C_Traits: rama=%s nombre=%s puntos=%s', tostring(traitIndex), tostring(traitName),
+        traitRows and table.concat(traitRows, ' ') or 'sin datos')
+    out[#out + 1] = 'specIndex=' .. tostring(ctx.specIndex)
     -- Lectura cruda y en el momento (sin caché) de cada rama, para diagnosticar clientes nuevos.
     local tabsOk, tabs = pcall(GetNumTalentTabs or function() return nil end)
     out[#out + 1] = 'GetNumTalentTabs=' .. tostring(tabsOk and tabs)
@@ -1113,7 +1182,7 @@ for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEP
     'QUEST_TURNED_IN', 'QUEST_DATA_LOAD_RESULT', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
     'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED',
     'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED', 'ACTIVE_TALENT_GROUP_CHANGED', 'PLAYER_LOGIN',
-    'PLAYER_ENTERING_WORLD' }) do
+    'PLAYER_ENTERING_WORLD', 'TRAIT_CONFIG_UPDATED', 'TRAIT_CONFIG_LIST_UPDATED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 
