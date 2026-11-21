@@ -132,3 +132,11 @@ test('tooltip: la línea de precio de venta (tipo 11, sin texto) no deja la lect
     C_TooltipInfo.GetHyperlink = saved
     if not good then error(err, 0) end
 end)
+
+test('GearQuest publicado como _G.GearQuest (nombre real de GearQuestForever) también decide', function()
+    GearQuest = gqStub({ EntryForItemLink = function() return nil end })
+    local r = ns.Classify(belt(), ctx27())
+    GearQuest = nil
+    eq(r.mark, 'coin')
+    eq(r.reasons[#r.reasons].kind, 'gear_not_ranked')
+end)

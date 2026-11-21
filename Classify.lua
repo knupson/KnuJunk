@@ -585,9 +585,18 @@ local excludedGearSlots = {
 }
 
 -- Sin GearQuest: no puntuado. Con GearQuest en simulación o con error: se trata como puntuado (no se vende).
+-- GearQuest Forever se publica como _G.GearQuest (GearQuestForever/Core.lua:11); GQ es su local.
+-- Se acepta GQ también por compatibilidad con versiones o pruebas que lo exponían así.
+local function gearQuestRoot()
+    local root = rawget(_G, 'GearQuest')
+    if type(root) ~= 'table' then root = rawget(_G, 'GQ') end
+    return root
+end
+ns.GearQuestRoot = gearQuestRoot
+
 local function gearQuestRanked(item, ctx)
     if type(item.link) ~= 'string' or item.link == '' then return false end
-    local root = rawget(_G, 'GQ')
+    local root = gearQuestRoot()
     if type(root) ~= 'table' or type(root.Data) ~= 'table'
         or type(root.Data.EntryForItemLink) ~= 'function' then return false end
     if type(root.IsPreviewEnabled) == 'function' then
@@ -653,7 +662,7 @@ local function gearMissText(item, ctx, result)
         if reason.kind ~= 'useful' and reason.kind ~= 'no_rule' and reason.kind ~= 'no_sell_price'
             and reason.kind ~= 'class_cannot_use_tradeable' then return end
     end
-    local root = rawget(_G, 'GQ')
+    local root = gearQuestRoot()
     if type(root) ~= 'table' or type(root.Data) ~= 'table'
         or type(root.Data.GearScoreMissText) ~= 'function' then return skip('no_gearquest') end
     if inEquipmentSet(item.id) then return skip('equipment_set') end
@@ -799,7 +808,7 @@ end
 -- true sólo si GearQuest dice que está simulando otro personaje (GQ:IsPreviewEnabled). En ese caso
 -- KnuJunk no usa su ranking para vender equipo (gearMissText y gearQuestRanked lo vetan).
 function ns.GearQuestSimulating()
-    local root = rawget(_G, 'GQ')
+    local root = gearQuestRoot()
     if type(root) ~= 'table' or type(root.IsPreviewEnabled) ~= 'function' then return false end
     local ok, value = pcall(root.IsPreviewEnabled, root)
     return ok and value == true
