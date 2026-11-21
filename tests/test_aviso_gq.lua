@@ -115,3 +115,20 @@ test('debug: /knu junk debug lista las líneas del tooltip y marca la vacía', f
     C_TooltipInfo.GetHyperlink = saved
     if not good then error(err, 0) end
 end)
+
+test('tooltip: la línea de precio de venta (tipo 11, sin texto) no deja la lectura incompleta', function()
+    local saved = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function()
+        return { lines = { { leftText = 'Anillo de cuerno', type = 22 }, { leftText = 'Se liga al recogerlo', type = 20 },
+            { leftText = 'Dedo', type = 21 }, { leftText = '+3 Aguante', type = 0 }, { leftText = '+2 Espíritu', type = 0 },
+            { leftText = '', type = 11 } } }
+    end
+    local good, err = pcall(function()
+        local lines = ns.Player.DebugTooltip('item:17692')
+        local text = table.concat(lines, '\n')
+        ok(not text:find('INCOMPLETA', 1, true), 'sin líneas incompletas')
+        ok(text:find('lectura=complete', 1, true), 'lectura completa')
+    end)
+    C_TooltipInfo.GetHyperlink = saved
+    if not good then error(err, 0) end
+end)

@@ -491,7 +491,10 @@ local function blankLineType(kind)
     local enum = type(Enum) == 'table' and type(Enum.TooltipDataLineType) == 'table' and Enum.TooltipDataLineType or nil
     local blank = enum and enum.Blank or 1
     local separator = enum and enum.Separator or 23
-    return kind == blank or kind == separator
+    -- Precio de venta: el juego no manda texto (dibuja las monedas). Visto en Forever con
+    -- /knu junk debug: «6 tipo=11 izq=""». Enum.TooltipDataLineType.SellPrice = 11 (warcraft.wiki.gg).
+    local sellPrice = enum and enum.SellPrice or 11
+    return kind == blank or kind == separator or kind == sellPrice
 end
 
 local function retrieving(text)
