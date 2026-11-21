@@ -9,6 +9,7 @@ local hookedContainer
 local attempts, pending = 0, nil
 local repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
 local repairWarned = false -- aviso de «otro addon repara» una vez por sesión
+local repairRequested -- costo pedido en esta reparación, para confirmarlo después
 
 local function safe(fn, ...)
     if type(fn) ~= 'function' then return nil end
@@ -58,6 +59,7 @@ local function repair()
     if not cost or cost <= 0 or canRepair ~= true then return end
     local guildPaid, ownPaid = 0, 0
     if options.guild == true and safe(IsInGuild) == true and safe(CanGuildBankRepair) == true then
+        repairRequested = cost
         safe(RepairAllItems, true)
         local remaining = repairCost()
         if not remaining or remaining > cost then return end
@@ -67,6 +69,7 @@ local function repair()
         local money = safe(GetMoney)
         if type(money) == 'number' then
             if money >= cost then
+                repairRequested = (repairRequested or 0) + cost
                 safe(RepairAllItems)
                 local remaining = repairCost()
                 if remaining and remaining < cost then ownPaid = cost - remaining end
@@ -76,6 +79,21 @@ local function repair()
             end
         end
     end
+    if guildPaid + ownPaid == 0 and repairRequested and repairRequested > 0 then
+        -- El servidor no actualiza el costo en el mismo instante (visto en el juego 2026-11-21:
+        -- reparó y no avisó). Se confirma un rato después con el costo que quede.
+        local requested = repairRequested
+        local check = function()
+            local remaining = repairCost()
+            if type(remaining) == 'number' and remaining < requested then
+                ns.Print(ns.L['KnuJunk repaired everything for %s']:format(ns.FormatMoney(requested - remaining)))
+            end
+        end
+        if C_Timer and type(C_Timer.After) == 'function' then C_Timer.After(1, check) else check() end
+        repairRequested = nil
+        return
+    end
+    repairRequested = nil
     if guildPaid + ownPaid > 0 then
         local amount = ns.FormatMoney(guildPaid + ownPaid)
         if guildPaid > 0 and ownPaid > 0 then
