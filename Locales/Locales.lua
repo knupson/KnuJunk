@@ -98,6 +98,7 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ['What no rule classifies is sold, except gear, bags, openable items, ammunition, books, keys, quest items and rare or epic items.'] = 'Lo que ninguna regla clasifica se vende, salvo equipo, bolsas, lo que se abre, munición, libros, llaves, misión y lo raro o épico.',
     ['Armor below what you wear'] = 'Armadura de tipo inferior a la puesta',
     ['GearQuest ranks it for you: keep it'] = 'GearQuest lo puntúa para vos: se guarda',
+    ['%s already repairs on its own, so KnuJunk had nothing to repair. Turn off one of the two.'] = '%s ya repara solo, así que KnuJunk no tuvo nada que reparar. Apagá uno de los dos.',
     ['GearQuest: better than what you wear (+%d): keep it'] = 'GearQuest: mejor que lo que tenés puesto (+%d): se guarda',
     ['GearQuest: not better than what you wear (%d): sold'] = 'GearQuest: no supera lo que tenés puesto (%d): se vende',
     ['You already have %d (bags %d, bank %d)'] = 'Ya tenés %d (bolsas %d, banco %d)',

@@ -224,3 +224,26 @@ test('reparación: textos enUS y dinero formateado', function()
     ns.L, FAKE.locale = original, locale
     if not success then error(err, 0) end
 end)
+
+test('reparación: si ElvUI ya reparó (costo 0), avisa una vez por sesión', function()
+    merchant(0)
+    ElvUI = { { db = { general = { autoRepair = 'PLAYER' } } } }
+    local good, err = pcall(function()
+        FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(3)
+        local found = 0
+        for _, m in ipairs(FAKE.messages) do if m:find('ElvUI', 1, true) then found = found + 1 end end
+        eq(found, 1)
+        FAKE.Fire('MERCHANT_CLOSED'); FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(3)
+        found = 0
+        for _, m in ipairs(FAKE.messages) do if m:find('ElvUI', 1, true) then found = found + 1 end end
+        eq(found, 1, 'una sola vez')
+    end)
+    ElvUI = nil
+    if not good then error(err, 0) end
+end)
+
+test('reparación: sin otro addon que repare y costo 0, no dice nada', function()
+    merchant(0)
+    FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(3)
+    eq(#FAKE.messages, 0)
+end)

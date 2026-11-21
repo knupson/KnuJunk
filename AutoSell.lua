@@ -8,6 +8,7 @@ local reported, bursts = {}, {}
 local hookedContainer
 local attempts, pending = 0, nil
 local repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
+local repairWarned = false -- aviso de «otro addon repara» una vez por sesión
 
 local function safe(fn, ...)
     if type(fn) ~= 'function' then return nil end
@@ -44,6 +45,16 @@ local function repair()
     repairDeferred = false
     if safe(CanMerchantRepair) ~= true or type(RepairAllItems) ~= 'function' then return end
     local cost, canRepair = repairCost()
+    if cost == 0 and not repairWarned and AutoSell.OtherRepairers then
+        -- Otro addon reparó antes (caso real: ElvUI autoRepair = PLAYER, 2026-11-21): avisar una vez.
+        local names = {}
+        for name in pairs(AutoSell.OtherRepairers()) do names[#names + 1] = name end
+        if #names > 0 then
+            table.sort(names)
+            repairWarned = true
+            ns.Print(ns.L['%s already repairs on its own, so KnuJunk had nothing to repair. Turn off one of the two.']:format(table.concat(names, ', ')))
+        end
+    end
     if not cost or cost <= 0 or canRepair ~= true then return end
     local guildPaid, ownPaid = 0, 0
     if options.guild == true and safe(IsInGuild) == true and safe(CanGuildBankRepair) == true then
@@ -380,5 +391,6 @@ function AutoSell.ResetState()
     attempts, pending = 0, nil
     attempted, soldLinks, reportToken = {}, {}, reportToken + 1
     repairDeferred, repairAfterSales, repairRetried, repairSkipped = false, false, false, false
+    repairWarned = false
     installHook()
 end
