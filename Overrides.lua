@@ -32,7 +32,7 @@ function KnuJunk_CycleHovered()
         return
     end
     local action = Overrides.Cycle(id)
-    local api = type(GetItemInfo) == 'function' and GetItemInfo
+    local api = type(ns.API.GetItemInfo) == 'function' and ns.API.GetItemInfo
         or (type(C_Item) == 'table' and C_Item.GetItemInfo)
     local link
     if type(api) == 'function' then

@@ -161,11 +161,11 @@ end
 function Marks.OwnedCount(link)
     if type(link) ~= 'string' then return nil end
     local id = tonumber(link:match('item:(%d+)'))
-    if not id or type(GetItemInfo) ~= 'function' or type(GetItemCount) ~= 'function' then return nil end
-    local ok, name, _, _, _, _, _, _, stack = pcall(GetItemInfo, link)
+    if not id or type(ns.API.GetItemInfo) ~= 'function' or type(ns.API.GetItemCount) ~= 'function' then return nil end
+    local ok, name, _, _, _, _, _, _, stack = pcall(ns.API.GetItemInfo, link)
     if not ok or not name or stack ~= 1 then return nil end
-    local okBags, bags = pcall(GetItemCount, id)
-    local okAll, all = pcall(GetItemCount, id, true)
+    local okBags, bags = pcall(ns.API.GetItemCount, id)
+    local okAll, all = pcall(ns.API.GetItemCount, id, true)
     if not okBags or type(bags) ~= 'number' then return nil end
     if not okAll or type(all) ~= 'number' or all < bags then all = bags end
     return all, bags, all - bags

@@ -65,8 +65,8 @@ end
 -- GetItemSubClassInfo; al final el numero.
 local function subclassName(given, classID, subclassID)
     if type(given) == 'string' and given ~= '' then return given end
-    if type(GetItemSubClassInfo) == 'function' and type(classID) == 'number' and type(subclassID) == 'number' then
-        local success, name = pcall(GetItemSubClassInfo, classID, subclassID)
+    if type(ns.API.GetItemSubClassInfo) == 'function' and type(classID) == 'number' and type(subclassID) == 'number' then
+        local success, name = pcall(ns.API.GetItemSubClassInfo, classID, subclassID)
         if success and type(name) == 'string' and name ~= '' then return name end
     end
     return tostring(subclassID)

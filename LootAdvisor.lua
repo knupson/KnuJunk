@@ -20,7 +20,7 @@ end
 local function unitValue(item)
     local vendor = type(item.price) == 'number' and item.price or 0
     -- GetItemInfo: el campo 14 es bindType; nil no acredita que se pueda subastar.
-    local ok, data = pcall(function() return { GetItemInfo(item.link or item.id) } end)
+    local ok, data = pcall(function() return { ns.API.GetItemInfo(item.link or item.id) } end)
     local bind = ok and data[14]
     if type(bind) == 'number' and bind ~= 1 and item.isBound ~= true then
         return math.max(vendor, ns.AuctionPrice(item.id) or 0)
@@ -87,7 +87,7 @@ local function advice(slot)
     end
     local _, _, quantity = safe(GetLootSlotInfo, slot)
     quantity = type(quantity) == 'number' and quantity > 0 and quantity or 1
-    local stackOK, stack = pcall(function() return select(8, GetItemInfo(link)) end)
+    local stackOK, stack = pcall(function() return select(8, ns.API.GetItemInfo(link)) end)
     stack = stackOK and type(stack) == 'number' and stack > 0 and stack or 1
     local cheapest, capacity = nil, 0
     for _, entry in ipairs(data.items) do

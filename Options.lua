@@ -139,14 +139,14 @@ end
 -- Nombre, icono y calidad de un item; el nombre es nil si el cliente aun no lo tiene (se pide).
 function Options.ItemInfo(id)
     local name, icon, quality
-    local getInfo = (type(GetItemInfo) == 'function' and GetItemInfo)
+    local getInfo = (type(ns.API.GetItemInfo) == 'function' and ns.API.GetItemInfo)
         or (type(C_Item) == 'table' and C_Item.GetItemInfo) or nil
     if getInfo then
         local ok, n, _, q, _, _, _, _, _, _, i = pcall(getInfo, id)
         if ok then name, quality, icon = n, q, i end
     end
     if not icon then
-        local getIcon = (type(C_Item) == 'table' and C_Item.GetItemIconByID) or GetItemIcon
+        local getIcon = (type(C_Item) == 'table' and C_Item.GetItemIconByID) or ns.API.GetItemIcon
         if type(getIcon) == 'function' then
             local ok, i = pcall(getIcon, id)
             if ok then icon = i end

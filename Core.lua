@@ -1,6 +1,16 @@
 local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
+-- APIs de item: el cliente de WoW Forever (Interface 16001) sólo trae algunas en C_Item, sin la global
+-- de siempre (GearQuest las crea como globales; sin GearQuest no existen). Se busca primero la global
+-- (y los tests la reemplazan) y si falta, la de C_Item. Sin escribir globales.
+local ITEM_ALIASES = { GetItemIcon = "GetItemIconByID" }
+ns.API = setmetatable({}, { __index = function(_, name)
+    local global = rawget(_G, name)
+    if global ~= nil then return global end
+    local item = rawget(_G, "C_Item")
+    if type(item) == "table" then return item[name] or item[ITEM_ALIASES[name] or name] end
+end })
 ns.Defaults = { enabled = true, protectKeep = true, show = { coin = true, loot = true }, overrides = {} }
 ns.Defaults.rules = { sellUnruled = true, gearNoRanking = true, armorBelow = true, food = true, ammo = true, knownRecipe = true, gearNotRanked = true }
 ns.IconKinds = { 'protected', 'quest', 'hammer_mine', 'hammer_other', 'auction', 'coin', 'trash', 'useful', 'unruled' }
