@@ -199,6 +199,10 @@ function Tooltip.Lines(link, bound, bag, slot)
         if kind == 'no_rule' then
             local key = reason.exception and noRuleKeys[reason.exception] or 'No rule for this item: not sold by default'
             add(L[key], WHITE)
+            -- Con GearQuest simulando otro personaje KnuJunk no usa su ranking: decirlo y cómo salir.
+            if reason.exception == 'gear' and not informational and ns.GearQuestSimulating() then
+                add(L['GearQuest is simulating another character: type /gq set off so KnuJunk can judge your gear'], { 1, 0.82, 0.24 })
+            end
         elseif kind == 'book_unknown' and neutral then
             add(L['Your class book, not learned'], WHITE)
         elseif kind == 'quest_log_incomplete' then
@@ -553,3 +557,18 @@ function Tooltip.ResetState()
 end
 
 ns.OnLogin(function() pcall(Tooltip.Hook) end)
+
+-- Aviso al entrar: con la simulación de GearQuest prendida, el equipo de tu tipo y nivel queda sin
+-- decidir. Se espera unos segundos para que GearQuest cargue su configuración.
+function Tooltip.WarnGearQuestSimulation()
+    if ns.GearQuestSimulating() then
+        ns.Print(ns.L['GearQuest is in simulation mode, so KnuJunk does not sell gear by its ranking. Type /gq set off to use your real character.'])
+        return true
+    end
+    return false
+end
+ns.OnLogin(function()
+    if C_Timer and type(C_Timer.After) == 'function' then
+        C_Timer.After(10, function() pcall(Tooltip.WarnGearQuestSimulation) end)
+    end
+end)

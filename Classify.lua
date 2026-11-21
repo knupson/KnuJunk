@@ -777,6 +777,15 @@ function ns.Classify(item, ctx, withEvidence)
     return result
 end
 
+-- true sólo si GearQuest dice que está simulando otro personaje (GQ:IsPreviewEnabled). En ese caso
+-- KnuJunk no usa su ranking para vender equipo (gearMissText y gearQuestRanked lo vetan).
+function ns.GearQuestSimulating()
+    local root = rawget(_G, 'GQ')
+    if type(root) ~= 'table' or type(root.IsPreviewEnabled) ~= 'function' then return false end
+    local ok, value = pcall(root.IsPreviewEnabled, root)
+    return ok and value == true
+end
+
 -- API opcional: ni la ausencia del addon ni una base sin inicializar cortan la clasificación.
 function ns.AuctionPrice(id)
     local success, price = pcall(function()
