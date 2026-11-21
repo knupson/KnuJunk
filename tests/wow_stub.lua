@@ -452,6 +452,7 @@ end
 function FAKE.Reset()
     GearQuest, PawnGetAllScalesEx, PawnGetItemData, PawnIsItemAnUpgrade, PawnGetItemDataForInventorySlot = nil, nil, nil, nil, nil
     GetNumTalentTabs, GetTalentTabInfo = nil, nil
+    GetNumTalentGroups, GetActiveTalentGroup = nil, nil
     CanMerchantRepair, GetRepairAllCost, RepairAllItems, GetMoney, IsInGuild, CanGuildBankRepair = nil, nil, nil, nil, nil, nil
     hooksecurefunc = secureHook
     C_Timer.NewTicker = newTicker

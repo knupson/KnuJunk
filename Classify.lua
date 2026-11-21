@@ -606,35 +606,45 @@ local function foldLabel(label)
     local accents = { ['Á'] = 'á', ['É'] = 'é', ['Í'] = 'í', ['Ó'] = 'ó', ['Ú'] = 'ú', ['Ü'] = 'ü', ['Ñ'] = 'ñ' }
     return (label:gsub('[\194-\244][\128-\191]+', accents)):lower()
 end
+ns.FoldSpecLabel = foldLabel
 
 -- Comparte el mismo filtro con los vetos y el diagnóstico.
 function ns.PawnScales(ctx)
     local getter = rawget(_G, 'PawnGetAllScalesEx')
     local ok, scales
     if type(getter) == 'function' then ok, scales = pcall(getter) end
-    local visible, matches, count = {}, {}, 0
+    local visible, matches, count, offspec = {}, {}, 0, {}
     for _, scale in pairs(ok and type(scales) == 'table' and scales or {}) do
         if type(scale) == 'table' and scale.IsVisible then
             local label = scale.LocalizedName or scale.Name
-            local match = not ctx.specLabel or (type(label) == 'string'
+            local main = not ctx.specLabel or (type(label) == 'string'
                 and foldLabel(label):find(foldLabel(ctx.specLabel), 1, true) ~= nil)
-            visible[#visible + 1] = { name = scale.Name, label = label, matches = match }
+            local other = ctx.offSpecLabel and type(scale.LocalizedName) == 'string'
+                and foldLabel(scale.LocalizedName):find(foldLabel(ctx.offSpecLabel), 1, true) ~= nil
+            local match = main or other or false
+            local isOffSpec = other and (not ctx.specLabel or not main) or nil
+            visible[#visible + 1] = { name = scale.Name, label = label, matches = match, offspec = isOffSpec }
             if match then
                 count = count + 1
                 if scale.Name then matches[scale.Name] = true end
                 if label then matches[label] = true end
+                if isOffSpec then
+                    if scale.Name then offspec[scale.Name] = true end
+                    if label then offspec[label] = true end
+                end
             end
         end
     end
-    return visible, matches, count
+    return visible, matches, count, offspec
 end
 
-local function pawnUpgrade(link, equipLoc, ctx)
+local function pawnUpgrade(link, equipLoc, ctx, offOnly)
     local getData, isUpgrade = rawget(_G, 'PawnGetItemData'), rawget(_G, 'PawnIsItemAnUpgrade')
     if type(getData) ~= 'function' or type(isUpgrade) ~= 'function' then return nil end
-    local _, matches, count = ns.PawnScales(ctx)
+    local _, matches, count, offspec = ns.PawnScales(ctx)
     if count == 0 and (ctx.specLabel or type(rawget(_G, 'PawnGetAllScalesEx')) == 'function') then return nil end
     local function accepts(raw, localized)
+        if offOnly then return offspec[raw] or offspec[localized] end
         return matches[raw] or matches[localized] or (not ctx.specLabel and count == 0
             and type(rawget(_G, 'PawnGetAllScalesEx')) ~= 'function')
     end
@@ -656,12 +666,15 @@ local function pawnUpgrade(link, equipLoc, ctx)
     if not good then return 'pending' end
     for _, upgrade in ipairs(type(info) == 'table' and info or {}) do
         if type(upgrade) == 'table' and accepts(upgrade.ScaleName, upgrade.LocalizedScaleName) then
-            return { scale = upgrade.LocalizedScaleName or upgrade.ScaleName, percent = upgrade.PercentUpgrade }
+            return { scale = upgrade.LocalizedScaleName or upgrade.ScaleName, percent = upgrade.PercentUpgrade,
+                offspec = offspec[upgrade.ScaleName] or offspec[upgrade.LocalizedScaleName] or nil }
         end
     end
     for _, items in ipairs({ type(best) == 'table' and best or {}, type(second) == 'table' and second or {} }) do
         for scale, value in pairs(items) do
-            if value and accepts(scale) then return { best = true } end
+            if value and accepts(scale) then
+                return { best = true, scale = offspec[scale] and scale or nil, offspec = offspec[scale] or nil }
+            end
         end
     end
     return false
@@ -673,6 +686,29 @@ local function gearQuestRoot()
     return root
 end
 ns.GearQuestRoot = gearQuestRoot
+
+-- nil = no se pudo consultar; false = consulta completa sin puesto.
+function ns.GearQuestOffSpecRanked(item, ctx)
+    local root = gearQuestRoot()
+    if not ctx.offSpecLabel or not ctx.offSpecId or type(item.link) ~= 'string'
+        or type(root) ~= 'table' or type(root.Log) ~= 'table'
+        or type(root.Log.WithSpecProbe) ~= 'function' or type(root.Data) ~= 'table'
+        or type(root.Data.EntryForItemLink) ~= 'function'
+        or type(root.Data.GearScoreTooltipLine) ~= 'function' then return nil end
+    if ns.GearQuestSimulating() then return nil end
+    local good, ranked = pcall(root.Log.WithSpecProbe, root.Log, ctx.offSpecId, function()
+        local entry = root.Data:EntryForItemLink(item.link)
+        local line = entry and root.Data:GearScoreTooltipLine(entry)
+        return type(line) == 'string' and line ~= ''
+    end)
+    if good and type(ranked) == 'boolean' then return ranked end
+    return nil
+end
+
+function ns.PawnOffSpecUpgrade(item, ctx)
+    if not ctx.offSpecLabel then return nil end
+    return pawnUpgrade(item.link, item.equipLoc, ctx, true)
+end
 
 local function gearQuestRanked(item, ctx)
     if type(item.link) ~= 'string' or item.link == '' then return false end
@@ -839,6 +875,31 @@ function ns.Classify(item, ctx, withEvidence)
     result.mark = result.mark or 'useful'
     -- Duda real: datos del juego que faltan. Es el único caso que muestra «?» (Marks.markOf).
     result.doubt = (result.uncertain or ctx.questLogIncomplete or item.effect == 'unknown') and true or nil
+    -- La otra especialización sólo protege equipo común; conserva la precedencia del núcleo.
+    if ctx.offSpecLabel and not isGray and not manual and not protected and result.mark == 'useful'
+        and not result.doubt and (item.classID == ITEM_CLASS_ARMOR or item.classID == ITEM_CLASS_WEAPON)
+        and not excludedGearSlots[item.equipLoc or ''] and not ns.GearQuestSimulating() then
+        local eligible = true
+        for _, reason in ipairs(result.reasons) do
+            if reason.kind ~= 'no_rule' and reason.kind ~= 'useful' and reason.kind ~= 'no_sell_price'
+                and reason.kind ~= 'class_cannot_use_tradeable' and reason.kind ~= 'future_level' then eligible = false end
+        end
+        if eligible and not gearQuestRanked(item, ctx) then
+            local ranked = ns.GearQuestOffSpecRanked(item, ctx)
+            local pawn = not ranked and ns.PawnOffSpecUpgrade(item, ctx)
+            local reason
+            if ranked then reason = { kind = 'offspec_ranked', spec = ctx.offSpecLabel }
+            elseif type(pawn) == 'table' then
+                reason = { kind = 'pawn_upgrade', scale = pawn.scale, percent = pawn.percent, best = pawn.best, offspec = true }
+            end
+            if reason then
+                for i = #result.reasons, 1, -1 do
+                    if result.reasons[i].kind == 'no_rule' then table.remove(result.reasons, i) end
+                end
+                table.insert(result.reasons, 1, reason)
+            end
+        end
+    end
     local outgrown = not isGray and gearOutgrown(item, ctx, result)
     if outgrown then
         for i = #result.reasons, 1, -1 do
@@ -885,7 +946,8 @@ function ns.Classify(item, ctx, withEvidence)
                 and type(item.price) == 'number' and item.price > 0
                 and ctx.rules and ctx.rules.gearNoRanking == true
             if type(pawn) == 'table' then
-                result.reasons[1] = { kind = 'pawn_upgrade', scale = pawn.scale, percent = pawn.percent, best = pawn.best }
+                result.reasons[1] = { kind = 'pawn_upgrade', scale = pawn.scale, percent = pawn.percent, best = pawn.best,
+                    offspec = pawn.offspec }
             elseif pawn == 'pending' then
                 result.doubt = true
             elseif pawn == false then

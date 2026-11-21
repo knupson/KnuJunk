@@ -232,11 +232,15 @@ function Tooltip.Lines(link, bound, bag, slot)
             end
         elseif kind == 'gear_ranked' then
             add(L['GearQuest ranks it for you: keep it'], WHITE)
+        elseif kind == 'offspec_ranked' then
+            add(L['Useful for your other spec (%s): keep it']:format(reason.spec), WHITE)
         elseif kind == 'pawn_upgrade' then
-            if reason.best then add(L['Pawn: already one of your best items'], WHITE)
+            if reason.best then
+                if reason.offspec then add(L['Pawn: already one of your best items for %s (your other spec)']:format(tostring(reason.scale)), WHITE)
+                else add(L['Pawn: already one of your best items'], WHITE) end
             else
                 local pct = type(reason.percent) == 'number' and string.format('%d%%', math.floor(reason.percent * 100 + 0.5)) or '?'
-                add(L['Pawn: %s upgrade for %s']:format(pct, tostring(reason.scale)), WHITE)
+                add(L[reason.offspec and 'Pawn: %s upgrade for %s (your other spec)' or 'Pawn: %s upgrade for %s']:format(pct, tostring(reason.scale)), WHITE)
             end
         elseif kind == 'gear_no_ranking' then
             add(L[result.mark == 'coin' and 'No ranking says you need it: sold' or 'Pawn does not mark it as an upgrade for your spec: keep it'], WHITE,

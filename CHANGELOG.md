@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta (sin publicar)
 
+- Equipo de otra especialización: se guarda por GearQuest o Pawn sólo con doble spec informada por el cliente; en Forever se obtiene a nivel 40 según guías, todavía sin verificar en el juego.
+
 - Sin dudas: el «?» queda sólo para datos que el juego no mandó. Equipo que GearQuest no conoce: si Pawn lo marca como mejora se guarda con el porcentaje; si no, se vende lo blanco o verde (opción «Equipo que ningún ranking pide»). Bolsas, cosas que se abren, munición, libros, misión, llaves y raro o épico dicen qué hacer en el tooltip. Arreglos: GearQuest se busca como `_G.GearQuest`, «lo puntúa» exige un puesto real, y la línea de precio de venta (tipo 11) ya no deja el efecto en «desconocido». Comando `/knu junk debug <enlace>`.
 
 - Aviso cuando GearQuest está en modo simulación: línea en el tooltip del equipo sin regla y mensaje en el chat al entrar, con el comando `/gq set off` para volver al personaje real.
