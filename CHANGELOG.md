@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta (sin publicar)
+## 0.1.0-beta
 
 - Equipo de otra especialización: se guarda por GearQuest o Pawn sólo con doble spec informada por el cliente; en Forever se obtiene a nivel 40 según guías, todavía sin verificar en el juego.
 

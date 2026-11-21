@@ -16,6 +16,7 @@ function methods:Click(mouse)
     if onClick then onClick(self, mouse or 'LeftButton') end
 end
 function methods:RegisterEvent(event) self.events[event] = true end
+function methods:UnregisterEvent(event) self.events[event] = nil end
 function methods:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
 function methods:Hide() self.shown = false; if self.scripts.OnHide then self.scripts.OnHide(self) end end
 function methods:EnableKeyboard(value) self.keyboard = value end
