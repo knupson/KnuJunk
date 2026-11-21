@@ -99,3 +99,19 @@ test('GearQuest sin puesto y mismo personaje: monedita gear_not_ranked', functio
     eq(r.mark, 'coin')
     eq(r.reasons[#r.reasons].kind, 'gear_not_ranked')
 end)
+
+test('debug: /knu junk debug lista las líneas del tooltip y marca la vacía', function()
+    local saved = C_TooltipInfo.GetHyperlink
+    C_TooltipInfo.GetHyperlink = function()
+        return { lines = { { leftText = 'Fajín', type = 0 }, { leftText = '', type = 5 }, { leftText = 'Cintura', rightText = 'Malla', type = 0 } } }
+    end
+    local good, err = pcall(function()
+        ns.Commands.Handle('debug |Hitem:15528::::|h[Fajín]|h')
+        local text = table.concat(FAKE.messages, '\n')
+        ok(text:find('INCOMPLETA', 1, true), 'marca la línea vacía')
+        ok(text:find('Malla', 1, true), 'muestra el texto derecho')
+        ok(text:find('lectura=', 1, true), 'resume la lectura')
+    end)
+    C_TooltipInfo.GetHyperlink = saved
+    if not good then error(err, 0) end
+end)

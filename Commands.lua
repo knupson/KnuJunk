@@ -93,6 +93,10 @@ function Commands.Handle(args)
         manual(sub, rest)
     elseif sub == 'status' then
         Commands.Status()
+    elseif sub == 'debug' then
+        local lines = ns.Player.DebugTooltip(rest)
+        if not lines then say('Usage: /knu junk debug [item link]') return end
+        for _, line in ipairs(lines) do ns.Print(line) end
     elseif sub == 'rules' then
         if rest == '' then Commands.RulesStatus() return end
         local name, state = rest:lower():match('^(%S+)%s+(%S+)$')

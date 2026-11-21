@@ -600,6 +600,35 @@ local MAX_EFFECT_ATTEMPTS, EFFECT_BACKOFF = 5, 0.5
 local scheduleEffectRetry
 
 -- mode: nil (lectura normal), 'timer' (reintento programado), 'event' (llego un dato).
+-- Diagnóstico (/knu junk debug <enlace>): qué líneas del tooltip lee KnuJunk y cuál lo deja incompleto.
+function Player.DebugTooltip(link)
+    local id = type(link) == 'string' and tonumber(link:match('item:(%d+)')) or tonumber(link)
+    if not id then return nil end
+    local out = {}
+    local getter = type(C_TooltipInfo) == 'table' and C_TooltipInfo.GetHyperlink
+    if type(getter) ~= 'function' then
+        out[1] = 'C_TooltipInfo.GetHyperlink: no existe (se usa el tooltip oculto)'
+    else
+        local ok, data = pcall(getter, 'item:' .. id)
+        if not ok or type(data) ~= 'table' or type(data.lines) ~= 'table' then
+            out[1] = 'C_TooltipInfo.GetHyperlink: sin datos (' .. tostring(data) .. ')'
+        else
+            for index, line in ipairs(data.lines) do
+                local text = type(line) == 'table' and line.leftText or nil
+                local right = type(line) == 'table' and line.rightText or nil
+                local bad = (type(text) ~= 'string' or text == '') and not (type(line) == 'table' and blankLineType(line.type))
+                out[#out + 1] = string.format('%d tipo=%s izq=%q der=%q%s', index, tostring(type(line) == 'table' and line.type),
+                    tostring(text), tostring(right), bad and '  <- INCOMPLETA' or (retrieving(text or '') and '  <- CARGANDO' or ''))
+            end
+        end
+    end
+    local _, how = tooltipTexts(id)
+    local state = effectState[id]
+    out[#out + 1] = string.format('lectura=%s efecto=%s intentos=%s final=%s', tostring(how),
+        tostring(state and state.value), tostring(state and state.attempts), tostring(state and state.final))
+    return out
+end
+
 local function resolveEffect(id, mode)
     local state = effectState[id]
     if state and state.value ~= nil then return state.value end
