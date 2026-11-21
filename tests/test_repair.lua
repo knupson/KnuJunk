@@ -247,3 +247,20 @@ test('reparación: sin otro addon que repare y costo 0, no dice nada', function(
     FAKE.Fire('MERCHANT_SHOW'); FAKE.Advance(3)
     eq(#FAKE.messages, 0)
 end)
+
+test('reparación: el servidor actualiza el costo después (cliente real): igual avisa cuánto pagó', function()
+    local state = merchant(250)
+    local paidLater = false
+    RepairAllItems = function(guild)
+        state.calls[#state.calls + 1] = guild and 'guild' or 'own'
+        paidLater = true -- el costo baja recién después
+    end
+    GetRepairAllCost = function() return state.cost, state.cost > 0 end
+    FAKE.Fire('MERCHANT_SHOW')
+    FAKE.Advance(0.1)
+    if paidLater then state.cost = 0 end
+    FAKE.Advance(2)
+    local found = false
+    for _, m in ipairs(FAKE.messages) do if m:find('2p 50c', 1, true) or m:find('250', 1, true) then found = true end end
+    ok(found, 'mensaje de reparación: ' .. table.concat(FAKE.messages, ' | '))
+end)
