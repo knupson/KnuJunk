@@ -272,6 +272,17 @@ local function classify(item, ctx)
         return result
     end
     if classReason then
+        -- Reactivo de otra clase (decision del user 2026-11-21): no te sirve, se vende como un libro de
+        -- otra clase. Sin precio, de la clase Misión (12) o con el diario sin leer, se guarda como antes.
+        if not classReason.own and ctx.class and item.classID ~= 12 and (item.price or 0) > 0 then
+            if ctx.questLogIncomplete or logUnknown then
+                result.reasons = { { kind = 'quest_log_incomplete' } }
+                return result
+            end
+            result.mark = 'coin'
+            reasons[#reasons + 1] = { kind = 'class_reagent_other', classes = classReason.classes }
+            return result
+        end
         reasons[#reasons + 1] = classReason
         return result
     end

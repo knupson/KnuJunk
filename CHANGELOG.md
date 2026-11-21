@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2-beta
+
+- Reactivos de hechizos de otra clase (por ejemplo, Aceite de pescado o Escamas de pez lustrosas para un paladín) se venden: «Reactivo de Chamán: no es de tu clase, se vende». Los de tu clase se guardan; si además son material de una profesión, manda el martillo.
+
 ## 0.1.1-beta
 
 - Funciona solo, sin GearQuest ni Pawn: el cliente de Forever no trae `GetItemInfo` y otras funciones de ítem como globales (las creaba GearQuest); sin GearQuest no había marcas ni líneas en el tooltip. Ahora se usa `C_Item` cuando falta la global.

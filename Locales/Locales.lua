@@ -206,6 +206,7 @@ ns.L = LibStub('KnuLib-1.0'):NewLocale({
     ['%s and %d more'] = '%s y %d más',
     ["Reagent for your class's spells"] = 'Reactivo de hechizos de tu clase',
     ['%s reagent'] = 'Reactivo de %s',
+    ['%s reagent: not your class, sold'] = 'Reactivo de %s: no es de tu clase, se vende',
     ["Profession you don't have: %s"] = 'Profesión que no tenés: %s',
     ['Tool for your profession: %s'] = 'Herramienta de tu profesión: %s',
     ["Tool for a profession you don't have: %s"] = "Herramienta de profesión que no tenés: %s",
