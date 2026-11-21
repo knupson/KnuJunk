@@ -4,6 +4,8 @@ Iconos en las bolsas y en el botín para ver qué se puede vender o tirar y qué
 
 **Estado:** 0.1.0-beta, sin publicar. Probado sólo con pruebas automáticas contra un cliente simulado (`luajit tests/run.lua`); nada probado todavía en el juego.
 
+- **Otra especialización:** GearQuest y Pawn pueden recomendar guardar equipo sólo con doble spec informada por el cliente; en Forever se obtiene a nivel 40 según guías, todavía sin verificar en el juego.
+
 - **Armadura de tipo inferior a la puesta:** vende tela, cuero o malla blanca o verde en las 8 ranuras de armadura cuando llevás puesto un tipo superior en ese lugar (`rules.armorBelow`, activada por defecto en Reglas), sin tocar capas, anillos ni escudos y conservando lo verde si tenés Encantamiento (también en `gear_outgrown`).
 
 - **Venta por defecto y nuevas reglas:** lo que no tiene regla se vende por defecto (`rules.sellUnruled`, activada por defecto en Reglas) salvo equipo, bolsas, ítems que se abren (`Data/Locks.lua`), munición, libros/recetas, misión, llaves y calidad rara o épica (cada excepción explica el motivo en el tooltip); se suman equipo superado por 10 o más niveles (`gear_outgrown`), libros de hechizo de clase (`Data/Recipes.lua`) y la lista de enlaces vendidos en el chat tras cada tanda de auto-venta.

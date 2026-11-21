@@ -439,6 +439,54 @@ local function readSpec(class)
     if label then return label, 'talents' end
 end
 
+local function readOffSpec(class, mainLabel)
+    local groups, active = 1, 1
+    if type(GetNumTalentGroups) == 'function' then
+        local good, count = pcall(GetNumTalentGroups)
+        if good and type(count) == 'number' then groups = count end
+    end
+    if groups < 2 then return nil, nil, groups, active end
+    if type(GetActiveTalentGroup) == 'function' then
+        local good, value = pcall(GetActiveTalentGroup)
+        if good and (value == 1 or value == 2) then active = value end
+    end
+    if type(GetNumTalentTabs) ~= 'function' or type(GetTalentTabInfo) ~= 'function' then
+        return nil, nil, groups, active
+    end
+    local good, tabs = pcall(GetNumTalentTabs)
+    if not good or type(tabs) ~= 'number' then return nil, nil, groups, active end
+    local other = active == 1 and 2 or 1
+    local function tabInfo(tab, wrath)
+        local ok, first, second, third, fourth, fifth
+        if wrath then ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab, false, false, other)
+        else ok, first, second, third, fourth, fifth = pcall(GetTalentTabInfo, tab, other) end
+        local name, points = first, third
+        if type(first) == 'number' then name, points = second, fifth end
+        if ok and type(name) == 'string' and name ~= '' and type(points) == 'number' and points > 0 then
+            return name, points
+        end
+    end
+    local label, most = nil, 0
+    for tab = 1, tabs do
+        local name, points = tabInfo(tab, true)
+        if not name then name, points = tabInfo(tab, false) end
+        if name and points > most then label, most = name, points end
+    end
+    if not label or (mainLabel and ns.FoldSpecLabel(label) == ns.FoldSpecLabel(mainLabel)) then
+        return nil, nil, groups, active
+    end
+    local root = ns.GearQuestRoot and ns.GearQuestRoot()
+    if type(root) == 'table' and type(root.Spec) == 'table' and type(root.Spec.GetOptions) == 'function' then
+        local ok, options = pcall(root.Spec.GetOptions, root.Spec, class)
+        for _, option in ipairs(ok and type(options) == 'table' and options or {}) do
+            if type(option.label) == 'string' and ns.FoldSpecLabel(option.label) == ns.FoldSpecLabel(label) then
+                return label, option.id, groups, active
+            end
+        end
+    end
+    return label, nil, groups, active
+end
+
 local function readEquippedLevel()
     local levels, signature, pending = {}, {}, false
     for slot = 1, 18 do
@@ -470,6 +518,7 @@ local function buildContext()
     local questItems, incomplete, found = buildQuestItems()
     local equippedArmor, armorSig = readEquippedArmor()
     local specLabel, specSource = readSpec(class)
+    local offSpecLabel, offSpecId, talentGroups, activeTalentGroup = readOffSpec(class, specLabel)
     local equippedLevel, levelSig, equippedLevelPending = readEquippedLevel()
     -- QuestieDB disponible pero con el indice aun sin terminar: Uses da nil y no se sabe si el
     -- item es de una mision. Mismo trato que un diario sin leer: ninguna moneda.
@@ -483,6 +532,10 @@ local function buildContext()
         equippedLevelPending = equippedLevelPending,
         specLabel = specLabel,
         specSource = specSource,
+        offSpecLabel = offSpecLabel,
+        offSpecId = offSpecId,
+        talentGroups = talentGroups,
+        activeTalentGroup = activeTalentGroup,
         isQuestDone = isQuestDone,
         questInLog = questInLogFor(found),
         questItemsInLog = questItems,
@@ -496,7 +549,8 @@ local function buildContext()
     -- pairs ignora el __index de questItemsInLog: solo los ids ya resueltos.
     signatures[ctx] = table.concat({ tostring(class), tostring(level), tostring(incomplete), tostring(questRevision), tostring(effectRevision), sortedKeys(professions),
         sortedKeys(questItems), sortedKeys(found.names), sortedKeys(found.ids), tostring(optionalRevision),
-        ctx.bagStock.signature or '', armorSig, levelSig, tostring(specLabel), tostring(specSource) }, '|')
+        ctx.bagStock.signature or '', armorSig, levelSig, tostring(specLabel), tostring(specSource),
+        tostring(offSpecLabel), tostring(offSpecId), tostring(talentGroups), tostring(activeTalentGroup) }, '|')
     return ctx
 end
 
@@ -687,6 +741,16 @@ function Player.DebugTooltip(link)
     local L = ns.L
     local source = ctx.specSource == 'gearquest' and 'GearQuest' or ctx.specSource == 'talents' and L['talents'] or L['no source']
     out[#out + 1] = L['Spec: %s | source: %s']:format(ctx.specLabel or L['none'], source)
+    out[#out + 1] = L['Talent groups: %s | active: %s']:format(tostring(ctx.talentGroups), tostring(ctx.activeTalentGroup))
+    out[#out + 1] = L['Other spec: %s | GearQuest id: %s']:format(ctx.offSpecLabel or L['none'], ctx.offSpecId or L['none'])
+    local ranked = item and ns.GearQuestOffSpecRanked(item, ctx)
+    local pawn = item and ns.PawnOffSpecUpgrade(item, ctx)
+    local function verdict(value)
+        if value == nil or value == 'pending' then return L['no verdict'] end
+        return L[value and 'yes' or 'no']
+    end
+    out[#out + 1] = L['Other spec GearQuest rank: %s']:format(verdict(ranked))
+    out[#out + 1] = L['Other spec Pawn upgrade: %s']:format(verdict(pawn))
     local scales = ns.PawnScales(ctx)
     out[#out + 1] = L['Visible Pawn scales: %s']:format(#scales == 0 and L['none'] or tostring(#scales))
     for _, scale in ipairs(scales) do
@@ -1015,7 +1079,7 @@ local frame = CreateFrame('Frame')
 for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEPTED', 'QUEST_REMOVED',
     'QUEST_TURNED_IN', 'QUEST_DATA_LOAD_RESULT', 'PLAYER_LEVEL_UP', 'PLAYER_REGEN_ENABLED', 'BAG_UPDATE_DELAYED',
     'SPELLS_CHANGED', 'LEARNED_SPELL_IN_TAB', 'PLAYER_EQUIPMENT_CHANGED', 'UNIT_INVENTORY_CHANGED',
-    'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED' }) do
+    'PLAYER_TALENT_UPDATE', 'CHARACTER_POINTS_CHANGED', 'ACTIVE_TALENT_GROUP_CHANGED' }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 
