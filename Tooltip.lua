@@ -127,6 +127,14 @@ end
 
 -- Líneas {text, r, g, b}, incluidos motivos de protección sin marca. bound = true si el
 -- propio tooltip confirma que el ejemplar está ligado (ver boundFromTooltip); nil = no se sabe.
+-- Sólo para el botín (gancho de SetLootItem): en las bolsas el ítem se contaría a sí mismo.
+function Tooltip.OwnedLine(link)
+    if not enabled() or (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.owned == false) then return nil end
+    local total, inBags, inBank = ns.Marks.OwnedCount(link)
+    if not total or total <= 0 then return nil end
+    return ns.L['You already have %d (bags %d, bank %d)']:format(total, inBags, inBank)
+end
+
 function Tooltip.Lines(link, bound, bag, slot)
     local lines = {}
     if not enabled() or not link then return lines end
@@ -184,13 +192,7 @@ function Tooltip.Lines(link, bound, bag, slot)
         if iconMark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
         add(L['Icon: %s']:format(label), ns.Marks.Color(iconMark))
     end
-    -- Fuera de las bolsas (botín, enlaces): si ya tenés uno igual, decirlo (no se apila).
-    if bag == nil and ns.Marks.OwnedCount and not (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.owned == false) then
-        local total, inBags, inBank = ns.Marks.OwnedCount(link)
-        if total and total > 0 then
-            add(L['You already have %d (bags %d, bank %d)']:format(total, inBags, inBank), { 1, 210/255, 60/255 })
-        end
-    end
+
 
     if mark == 'quest' and (result.reasonMark == 'hammer_mine' or result.reasonMark == 'hammer_other') then
         mark = result.reasonMark
@@ -559,6 +561,12 @@ local function hookTooltip(tooltip, withSetItem)
             local result = ns.LootAdvisor.Advice(slot)
             if result then
                 self:AddLine(result.text, result.good and 0.3 or 1, result.good and 1 or 0.3, 0.3, true)
+            end
+            local okLink, link = pcall(GetLootSlotLink, slot)
+            local owned = okLink and Tooltip.OwnedLine(link)
+            if owned then
+                self:AddLine(owned, 1, 210/255, 60/255)
+                if type(self.Show) == 'function' then self:Show() end
             end
         end)
     end

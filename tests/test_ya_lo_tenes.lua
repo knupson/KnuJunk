@@ -36,15 +36,16 @@ test('ya lo tenés: el botón del botín muestra xN, se oculta con 0, opción ap
     GetItemCount = nil
 end)
 
-test('ya lo tenés: tooltip de un enlace dice cuántos tenés; en las bolsas no', function()
+test('ya lo tenés: la línea es sólo del botín (no aparece en Tooltip.Lines de las bolsas)', function()
     local savedL = ns.L
     FAKE.locale = 'esES'; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
     FAKE.items[ID] = { name = 'Anillo', quality = 2, price = 10, classID = 4, subclassID = 0, stack = 1 }
     counts(1, 2)
     local good, err = pcall(function()
+        eq(ns.Tooltip.OwnedLine(FAKE.linkOf(ID)), 'Ya tenés 2 (bolsas 1, banco 1)')
         local text = {}
         for _, l in ipairs(ns.Tooltip.Lines(FAKE.linkOf(ID))) do text[#text + 1] = l.text end
-        ok(table.concat(text, '\n'):find('Ya tenés 2 (bolsas 1, banco 1)', 1, true), 'línea en el enlace')
+        ok(not table.concat(text, '\n'):find('Ya tenés', 1, true), 'no en el tooltip general')
     end)
     GetItemCount = nil
     ns.L, FAKE.locale = savedL, nil
