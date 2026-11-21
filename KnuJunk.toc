@@ -8,6 +8,7 @@
 ## OptionalDeps: QuestieDB, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag, Combuctor, OneBag3, Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI, RealUI_Inventory
 ## Version: @project-version@
 ## X-License: MIT
+## X-Curse-Project-ID: 1820289
 ## X-Website: https://knunet.com
 
 Libs\KnuLib\KnuLib.xml
