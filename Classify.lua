@@ -361,7 +361,10 @@ local function classify(item, ctx)
     end
     -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
     -- En recetas (clase 9), el uso que enseña no protege de R12/R13.
-    if (effect == 'yes' and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST
+    -- En armas y armaduras, «Equipar:» son estadísticas: las juzga la cadena de equipo (GearQuest,
+    -- Pawn, nivel de objeto), no esta regla. Caso real: Cinturón de equilibrista (16659).
+    local isGear = item.classID == ITEM_CLASS_WEAPON or item.classID == ITEM_CLASS_ARMOR
+    if (effect == 'yes' and not isGear and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST
         and not classCannotUse(item, ctx) and not (rules.food == true and item.restorationOnly == true
         and ns.Data.food and ns.Data.food[id])) or item.isSetPiece then
         reasons[#reasons + 1] = { kind = 'useful', setPiece = item.isSetPiece or nil }
@@ -425,7 +428,7 @@ local function classify(item, ctx)
     if knownRecipe then
         return result
     end
-    if effect == 'yes' and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST and not classCannotUse(item, ctx) then
+    if effect == 'yes' and not isGear and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST and not classCannotUse(item, ctx) then
         reasons[#reasons + 1] = { kind = 'useful' }
         return result
     end
@@ -772,7 +775,8 @@ end
 local function gearMissText(item, ctx, result)
     -- Se anota por qué no decide, para que el tooltip lo diga (sólo equipo).
     local function skip(state, extra)
-        result.gearQuest = { state = state, gqLevel = extra and extra.gqLevel, gqClass = extra and extra.gqClass }
+        result.gearQuest = { state = state, gqLevel = extra and extra.gqLevel, gqClass = extra and extra.gqClass,
+            delta = extra and extra.delta }
     end
     if item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR then return end
     if ctx.rules and ctx.rules.gearNotRanked == false then return skip('rule_off') end
@@ -827,7 +831,23 @@ local function gearMissText(item, ctx, result)
         if type(root.Data.GearScoreTooltipLine) ~= 'function' then return skip('ranked') end
         local okLine, line = pcall(root.Data.GearScoreTooltipLine, root.Data, entry)
         if not okLine then return skip('error') end
-        if type(line) == 'string' and line ~= '' then return skip('ranked') end
+        if type(line) == 'string' and line ~= '' then
+            -- Puesto, pero comparado con lo que tenés puesto (la flecha de GearQuest, Data.lua
+            -- GearScoreTrail): peor o igual se vende, mejor se guarda. Sin comparación, se guarda.
+            local delta
+            if root.Log and type(root.Log.RankListContext) == 'function' and type(root.Data.GearScoreContext) == 'function'
+                and type(root.Data.GearScoreArrowDelta) == 'function' then
+                local okSlot, slotName, handKind = pcall(root.Log.RankListContext, root.Log, entry)
+                local okCtx, scoreCtx = false, nil
+                if okSlot then okCtx, scoreCtx = pcall(root.Data.GearScoreContext, root.Data, slotName, handKind) end
+                if okCtx and scoreCtx then
+                    local okArrow, arrow = pcall(root.Data.GearScoreArrowDelta, root.Data, entry, scoreCtx)
+                    if okArrow and type(arrow) == 'number' then delta = arrow end
+                end
+            end
+            if delta and delta <= 0 then return skip('ranked_worse', { delta = delta }) end
+            return skip('ranked', { delta = delta })
+        end
     end
     local success, text = pcall(root.Data.GearScoreMissText, root.Data, item.link)
     if success and type(text) == 'string' and text ~= '' then return text end
@@ -935,7 +955,15 @@ function ns.Classify(item, ctx, withEvidence)
     elseif result.gearQuest and result.gearQuest.state == 'ranked' and result.mark == 'useful'
         and result.reasons[1] and result.reasons[1].kind == 'no_rule' then
         -- GearQuest la puntúa para vos: es una razón para guardarla (tilde verde), no «sin regla».
-        result.reasons[1] = { kind = 'gear_ranked' }
+        result.reasons[1] = { kind = 'gear_ranked', delta = result.gearQuest.delta }
+    elseif result.gearQuest and result.gearQuest.state == 'ranked_worse' and result.mark == 'useful'
+        and result.reasons[1] and result.reasons[1].kind == 'no_rule' and not manual and not protected then
+        -- Puesto en GearQuest pero peor o igual que lo que tenés puesto: se vende (blanco o verde).
+        result.reasons[1] = { kind = 'gear_worse_than_equipped', delta = result.gearQuest.delta }
+        if type(item.quality) == 'number' and item.quality >= 1 and item.quality <= 2
+            and type(item.price) == 'number' and item.price > 0 and ctx.rules and ctx.rules.gearNotRanked ~= false then
+            result.mark = 'coin'
+        end
     elseif not isGray and not manual and not protected and not result.doubt and result.mark == 'useful'
         and result.reasons[1] and result.reasons[1].kind == 'no_rule' and result.reasons[1].exception == 'gear'
         and not ns.GearQuestSimulating() then

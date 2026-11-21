@@ -231,7 +231,14 @@ function Tooltip.Lines(link, bound, bag, slot)
                 add(L['Why GearQuest did not decide: %s']:format(why), { 0.6, 0.6, 0.6 })
             end
         elseif kind == 'gear_ranked' then
-            add(L['GearQuest ranks it for you: keep it'], WHITE)
+            if type(reason.delta) == 'number' and reason.delta > 0 then
+                add(L['GearQuest: better than what you wear (+%d): keep it']:format(reason.delta), WHITE)
+            else
+                add(L['GearQuest ranks it for you: keep it'], WHITE)
+            end
+        elseif kind == 'gear_worse_than_equipped' then
+            local d = type(reason.delta) == 'number' and reason.delta or 0
+            add(L['GearQuest: not better than what you wear (%d): sold']:format(d), WHITE, 'coin')
         elseif kind == 'offspec_ranked' then
             add(L['Useful for your other spec (%s): keep it']:format(reason.spec), WHITE)
         elseif kind == 'pawn_upgrade' then

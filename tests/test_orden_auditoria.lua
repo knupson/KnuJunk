@@ -26,9 +26,9 @@ test('orden: bastón con efecto libre para paladín conserva motivo comerciable'
     eq(r.mark, 'useful'); ok(reason(r.reasons, 'class_cannot_use_tradeable'))
 end)
 
-test('orden: bastón con efecto ligado para mago se conserva por efecto', function()
+test('orden: bastón con «Equipar:» ligado para mago no se guarda por el efecto (lo juzga la cadena de equipo)', function()
     local r = ns.Classify(item { classID = 2, subclassID = 10, isBound = true, effect = 'yes' }, context { class = 'MAGE' })
-    eq(r.mark, 'useful'); ok(reason(r.reasons, 'useful')); eq(reason(r.reasons, 'no_rule'), nil)
+    eq(r.mark, 'useful'); eq(reason(r.reasons, 'useful'), nil)
 end)
 
 test('orden: misión con uso decide según diario, sin alterar vetos de duda', function()
