@@ -184,6 +184,13 @@ function Tooltip.Lines(link, bound, bag, slot)
         if iconMark == 'auction' then label = L['Auction (auction %s, vendor %s)']:format(money(result.auctionPrice), money(item.price)) end
         add(L['Icon: %s']:format(label), ns.Marks.Color(iconMark))
     end
+    -- Fuera de las bolsas (botín, enlaces): si ya tenés uno igual, decirlo (no se apila).
+    if bag == nil and ns.Marks.OwnedCount and not (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.owned == false) then
+        local total, inBags, inBank = ns.Marks.OwnedCount(link)
+        if total and total > 0 then
+            add(L['You already have %d (bags %d, bank %d)']:format(total, inBags, inBank), { 1, 210/255, 60/255 })
+        end
+    end
 
     if mark == 'quest' and (result.reasonMark == 'hammer_mine' or result.reasonMark == 'hammer_other') then
         mark = result.reasonMark

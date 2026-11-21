@@ -90,6 +90,7 @@ local function updateRow(row)
         local link = currentLink(slotOf(row))
         if not link then return ns.Marks.Clear(button) end
         ns.Marks.UpdateLink(button, link, OWNER)
+        pcall(ns.Marks.UpdateOwned, button, link)
         ns.LootAdvisor.Update(button, slotOf(row))
     end)
     if not success then pcall(clearRow, row) end

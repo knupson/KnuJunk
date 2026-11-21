@@ -311,7 +311,7 @@ local function installClient()
     GetItemInfo = function(key)
         local id, d = itemOf(key)
         if not d then return nil end
-        return d.name, linkOf(id), d.quality, d.itemLevel or 1, d.reqLevel or 1, 'Tipo', d.subType, 1, d.equipLoc or '', 'icon',
+        return d.name, linkOf(id), d.quality, d.itemLevel or 1, d.reqLevel or 1, 'Tipo', d.subType, d.stack or 1, d.equipLoc or '', 'icon',
             d.price, d.classID, d.subclassID, 0, 0, d.setID, false
     end
     GetItemInfoInstant = function(key)
