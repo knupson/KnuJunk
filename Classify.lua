@@ -612,7 +612,12 @@ local function gearQuestRanked(item, ctx)
         if not ok or class ~= ctx.class then return true end
     end
     local ok, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
-    return not ok or entry ~= nil
+    if not ok then return true end
+    if entry == nil then return false end
+    -- Puesto real sólo si GearQuest le da línea (Data.lua:7437-7459); ante error, se veta.
+    if type(root.Data.GearScoreTooltipLine) ~= 'function' then return true end
+    local okLine, line = pcall(root.Data.GearScoreTooltipLine, root.Data, entry)
+    return not okLine or (type(line) == 'string' and line ~= '')
 end
 
 local function gearOutgrown(item, ctx, result)
@@ -673,13 +678,6 @@ local function gearMissText(item, ctx, result)
     local okEntries, entries = pcall(root.Data.GetEntriesByItemId, root.Data, item.id)
     if not okEntries then return skip('error') end
     if type(entries) ~= 'table' or next(entries) == nil then return skip('unknown_item') end
-    -- Mismo criterio que el tooltip de GearQuest (Data.lua:7279-7281): si EntryForItemLink da una
-    -- fila puntuada para este enlace, el ítem TE SIRVE, aunque GearScoreMissText devuelva un texto
-    -- de diagnóstico. Sin esa API, o si falla, no se decide nada.
-    if type(root.Data.EntryForItemLink) ~= 'function' then return skip('api') end
-    local okEntry, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
-    if not okEntry then return skip('error') end
-    if entry ~= nil then return skip('ranked') end
     -- GearQuest puede simular otra clase, especialización o nivel (Preview.lua:929-979,
     -- Core.lua:621): con simulación activa o perfil distinto al personaje real, no se decide nada.
     local function gq(method)
@@ -697,6 +695,18 @@ local function gearMissText(item, ctx, result)
     local class, okClass = gq('GetEffectiveClass')
     if not okClass or type(ctx.class) ~= 'string' or class ~= ctx.class then
         return skip('class', { gqClass = okClass and class or nil })
+    end
+    -- Mismo criterio que el tooltip de GearQuest (Data.lua:7437-7459): hay puesto sólo si existe la
+    -- fila del enlace (EntryForItemLink) Y GearScoreTooltipLine le da una línea. Una fila sin línea
+    -- es «Sin puesto a tu nivel» (caso real: Fajín de avizor del oso 15528, nivel 28, franja 21-27).
+    if type(root.Data.EntryForItemLink) ~= 'function' then return skip('api') end
+    local okEntry, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
+    if not okEntry then return skip('error') end
+    if entry ~= nil then
+        if type(root.Data.GearScoreTooltipLine) ~= 'function' then return skip('ranked') end
+        local okLine, line = pcall(root.Data.GearScoreTooltipLine, root.Data, entry)
+        if not okLine then return skip('error') end
+        if type(line) == 'string' and line ~= '' then return skip('ranked') end
     end
     local success, text = pcall(root.Data.GearScoreMissText, root.Data, item.link)
     if success and type(text) == 'string' and text ~= '' then return text end
