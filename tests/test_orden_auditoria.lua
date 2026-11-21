@@ -18,7 +18,8 @@ test('orden: bastón 16889 ligado para paladín vende aunque tenga efecto', func
     local r = ns.Classify(item { id = 16889, classID = 2, subclassID = 10, isBound = true,
         effect = 'yes', hasUseOrEquipSpell = true }, context())
     eq(r.mark, 'coin'); ok(reason(r.reasons, 'class_cannot_use'))
-    ok(reason(r.otherReasons, 'effect'))
+    -- En equipo «Equipar:» son estadísticas: no aparece como motivo secundario.
+    eq(reason(r.otherReasons, 'effect'), nil)
 end)
 
 test('orden: bastón con efecto libre para paladín conserva motivo comerciable', function()
@@ -93,7 +94,7 @@ test('orden: evidencia reúne clase, misión, gris, profesión, nivel y efecto s
         local c = context {overrides={[ID]='keep'},questieUses=function() return {{questID=7}} end}
         local r = ns.Classify(v,c)
         eq(r.mark,'protected')
-        for _, kind in ipairs({'class_cannot_use','quest_not_active','gray','profession','profession_tool','effect'}) do
+        for _, kind in ipairs({'class_cannot_use','quest_not_active','gray','profession','profession_tool'}) do
             ok(reason(r.otherReasons,kind),'falta '..kind)
         end
         eq(v.effect,'yes'); eq(v.isBound,true); eq(c.overrides[ID],'keep'); eq(ns.Data.reagents[ID][1],164)
@@ -104,13 +105,13 @@ test('orden: evidencia reúne clase, misión, gris, profesión, nivel y efecto s
     if not success then error(err) end
 end)
 
-test('orden: tooltip muestra primero el ganador de clase o gris, después el efecto', function()
+test('orden: tooltip muestra primero el ganador de clase o gris; en equipo no agrega el efecto', function()
     FAKE.class='PALADIN'
     FAKE.items[ID]={name='Bastón',quality=2,classID=2,subclassID=10,price=10,spell=true,subType='Bastón'}
     ns.Player.Invalidate()
     local lines=ns.Tooltip.Lines(FAKE.linkOf(ID),true)
     ok(lines[2].text:find(ns.L["Your class can't use %s"]:format('Bastón'),1,true))
-    eq(lines[3].text,ns.L['Also: ']..ns.L['Has a use or equip effect'])
+    eq(lines[3], nil)
     FAKE.items[ID].quality=0; ns.Player.Invalidate()
     lines=ns.Tooltip.Lines(FAKE.linkOf(ID),true)
     ok(lines[2].text:find(ns.L['Junk: sells'],1,true))

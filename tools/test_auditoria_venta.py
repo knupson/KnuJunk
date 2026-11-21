@@ -80,7 +80,8 @@ class AuditoriaTests(unittest.TestCase):
             return next(r for r in rows if r['id'] == str(id_) and r['context'] == context)
         bound = result(990804, 'PALADIN:30:ligado')
         self.assertEqual((bound['mark'], bound['winner_reason']), ('coin', 'class_cannot_use'))
-        self.assertIn('effect', bound['other_reasons'])
+        # En equipo «Equipar:» son estadísticas: no figura como motivo secundario.
+        self.assertNotIn('effect', bound['other_reasons'])
         self.assertEqual(result(990804, 'PALADIN:30:libre')['mark'], 'useful')
         self.assertEqual(result(990804, 'MAGE:30:ligado')['mark'], 'useful')
         self.assertEqual((result(990804, 'MAGE:60:ligado')['mark'], result(990804, 'MAGE:60:ligado')['winner_reason']), ('coin', 'gear_outgrown'))

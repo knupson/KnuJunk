@@ -297,3 +297,10 @@ test('GearQuest: tooltip de peor que lo puesto en castellano', function()
     ns.Classify, ns.L, FAKE.locale = savedClassify, savedL, nil
     if not good then error(err, 0) end
 end)
+
+test('equipo: sin «También: tiene un efecto» en armas y armaduras', function()
+    GearQuest = rankedStub(-9)
+    local r = ns.Classify(belt16659(), ctx27())
+    GearQuest = nil
+    for _, o in ipairs(r.otherReasons or {}) do ok(o.kind ~= 'effect', 'sin motivo de efecto') end
+end)

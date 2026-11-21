@@ -543,7 +543,8 @@ local function collectEvidence(item, ctx, result)
     end
     local effect = item.effect
     if effect ~= 'yes' and effect ~= 'no' and effect ~= 'unknown' then effect = item.hasUseOrEquipSpell and 'yes' or 'no' end
-    if effect == 'yes' and not seen.useful then add({ kind = 'effect' }) end
+    -- En equipo, «Equipar:» son estadísticas: no se muestra como motivo secundario.
+    if effect == 'yes' and not seen.useful and item.classID ~= ITEM_CLASS_WEAPON and item.classID ~= ITEM_CLASS_ARMOR then add({ kind = 'effect' }) end
     if not item.isSetPiece and type(item.quality) == 'number' and item.quality > 0 and item.quality <= 2
         and not (item.quality == 2 and ctx.professions and ctx.professions[333])
         and (item.classID == ITEM_CLASS_WEAPON or item.classID == ITEM_CLASS_ARMOR)
