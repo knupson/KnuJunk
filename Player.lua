@@ -337,15 +337,15 @@ local function buildQuestItems()
     local names = found.names
     local ids = {}
     for _, name in pairs(names) do
-        if type(GetItemInfo) == 'function' then
-            local _, link = GetItemInfo(name)
+        if type(ns.API.GetItemInfo) == 'function' then
+            local _, link = ns.API.GetItemInfo(name)
             local id = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
             if id then ids[id] = true end
         end
     end
     return setmetatable(ids, { __index = function(_, id)
-        if next(names) == nil or type(GetItemInfo) ~= 'function' then return nil end
-        local name = GetItemInfo(id)
+        if next(names) == nil or type(ns.API.GetItemInfo) ~= 'function' then return nil end
+        local name = ns.API.GetItemInfo(id)
         if type(name) == 'string' and names[ns.NormalizeName(name)] then return true end
         return nil
     end }), incomplete, found
@@ -369,8 +369,8 @@ end
 -- questItemTitle(itemID): titulo de la mision del diario que pide el item, o nil.
 local function questItemTitleFor(found)
     return function(itemID)
-        if type(GetItemInfo) ~= 'function' or next(found.titles) == nil then return nil end
-        local name = GetItemInfo(itemID)
+        if type(ns.API.GetItemInfo) ~= 'function' or next(found.titles) == nil then return nil end
+        local name = ns.API.GetItemInfo(itemID)
         return type(name) == 'string' and found.titles[ns.NormalizeName(name)] or nil
     end
 end
@@ -391,7 +391,7 @@ local ARMOR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10 }
 local function readEquippedArmor()
     local equipped, parts = {}, {}
     local inv = type(GetInventoryItemID) == 'function' and GetInventoryItemID or nil
-    local instant = type(GetItemInfoInstant) == 'function' and GetItemInfoInstant
+    local instant = type(ns.API.GetItemInfoInstant) == 'function' and ns.API.GetItemInfoInstant
         or (type(C_Item) == 'table' and type(C_Item.GetItemInfoInstant) == 'function' and C_Item.GetItemInfoInstant) or nil
     for i, slot in ipairs(ARMOR_SLOTS) do
         local sub = false
@@ -494,8 +494,8 @@ local function readEquippedLevel()
             if type(GetInventoryItemLink) == 'function' then
                 local ok, link = pcall(GetInventoryItemLink, 'player', slot)
                 if ok and link == nil then levels[slot] = false
-                elseif ok and type(GetItemInfo) == 'function' and type(link) == 'string' then
-                    local good, name, _, _, level = pcall(GetItemInfo, link)
+                elseif ok and type(ns.API.GetItemInfo) == 'function' and type(link) == 'string' then
+                    local good, name, _, _, level = pcall(ns.API.GetItemInfo, link)
                     if good and name and type(level) == 'number' then levels[slot] = level end
                 end
             end
@@ -893,7 +893,7 @@ end
 local function itemEffect(id)
     local api
     if C_Item and type(C_Item.GetItemSpell) == 'function' then api = C_Item.GetItemSpell
-    elseif type(GetItemSpell) == 'function' then api = GetItemSpell end
+    elseif type(ns.API.GetItemSpell) == 'function' then api = ns.API.GetItemSpell end
     if not api then return 'unknown' end
     local success, name, spellID = pcall(api, id)
     if not success then return 'unknown' end
@@ -907,12 +907,12 @@ end
 -- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED). Sin ubicacion no
 -- se sabe si esta ligado: isBound queda en nil (ReadItem lo completa).
 function Player.ReadLink(link)
-    if link == nil or type(GetItemInfo) ~= 'function' then return nil end
+    if link == nil or type(ns.API.GetItemInfo) ~= 'function' then return nil end
     local id
     if type(link) == 'number' then id = link
     elseif type(link) == 'string' then id = tonumber(link:match('item:(%d+)')) end
     if not id then return nil end
-    local _, itemLink, quality, itemLevel, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = GetItemInfo(link)
+    local _, itemLink, quality, itemLevel, reqLevel, _, subclassName, _, equipLoc, _, price, classID, subclassID, _, _, setID = ns.API.GetItemInfo(link)
     if quality == nil then return nil end
     local effect = itemEffect(id)
     -- Sólo el efecto exacto de restauración acreditado por la build queda exceptuado.
@@ -920,7 +920,7 @@ function Player.ReadLink(link)
     local restorationOnly
     local food = ns.DB and ns.DB.rules and ns.DB.rules.food and ns.Data.food and ns.Data.food[id]
     local spellAPI = type(C_Item) == 'table' and C_Item.GetItemSpell or nil
-    if type(spellAPI) ~= 'function' then spellAPI = GetItemSpell end
+    if type(spellAPI) ~= 'function' then spellAPI = ns.API.GetItemSpell end
     local restored = restorationState[id]
     if food and restored then
         restorationOnly = restored.value
