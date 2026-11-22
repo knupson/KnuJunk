@@ -51,3 +51,50 @@ test('ya lo tenés: la línea es sólo del botín (no aparece en Tooltip.Lines d
     ns.L, FAKE.locale = savedL, nil
     if not good then error(err, 0) end
 end)
+
+test('nivel que te falta: rojo en el botón sólo para equipo que todavía no te podés poner', function()
+    local button = CreateFrame('Button')
+    local ring = { classID = 4, equipLoc = 'INVTYPE_FINGER', reqLevel = 32 }
+    local savedGet = ns.Player.GetContext
+    ns.Player.GetContext = function() return { level = 28 } end
+    local good, err = pcall(function()
+        eq(ns.Marks.LevelNeeded(ring), 32)
+        ns.Marks.UpdateLevel(button, ring)
+        ok(button.KnuJunkLevel:IsShown(), 'visible'); eq(button.KnuJunkLevel:GetText(), '32')
+        eq(ns.Marks.LevelNeeded({ classID = 4, equipLoc = 'INVTYPE_FINGER', reqLevel = 28 }), nil, 'mismo nivel')
+        eq(ns.Marks.LevelNeeded({ classID = 0, equipLoc = '', reqLevel = 40 }), nil, 'consumible')
+        eq(ns.Marks.LevelNeeded({ classID = 4, equipLoc = '', reqLevel = 40 }), nil, 'sin ranura')
+        ns.Marks.UpdateLevel(button, { classID = 4, equipLoc = 'INVTYPE_FINGER', reqLevel = 20 })
+        eq(button.KnuJunkLevel:IsShown(), false, 'ya te lo podés poner')
+        ns.Marks.UpdateLevel(button, ring); ok(button.KnuJunkLevel:IsShown(), 'otra vez')
+        ns.DB.show.level = false
+        ns.Marks.UpdateLevel(button, ring); eq(button.KnuJunkLevel:IsShown(), false, 'opción apagada')
+        ns.DB.show.level = true
+        ns.Marks.UpdateLevel(button, ring); ns.Marks.Clear(button)
+        eq(button.KnuJunkLevel:IsShown(), false, 'al limpiar')
+        ns.Marks.UpdateLevel(button, nil); eq(button.KnuJunkLevel:IsShown(), false, 'sin ítem')
+    end)
+    ns.Player.GetContext = savedGet
+    if not good then error(err, 0) end
+end)
+
+test('nivel que te falta: el tooltip lo dice también para el equipo', function()
+    local savedL = ns.L
+    FAKE.locale = 'esES'; assert(loadfile('Locales/Locales.lua'))('KnuJunk', ns)
+    FAKE.items[992010] = { name = 'Anillo de pantano', quality = 2, price = 2469, classID = 4, subclassID = 0,
+        equipLoc = 'INVTYPE_FINGER', reqLevel = 32, itemLevel = 37 }
+    local savedLevel = UnitLevel
+    UnitLevel = function() return 28 end
+    ns.Player.Invalidate()
+    local good, err = pcall(function()
+        local text = {}
+        for _, l in ipairs(ns.Tooltip.Lines(FAKE.linkOf(992010))) do text[#text + 1] = l.text end
+        local all = table.concat(text, '\n')
+        ok(all:find('Podés usarlo desde nivel 32', 1, true), all)
+        local _, count = all:gsub('desde nivel 32', '')
+        eq(count, 1, 'una sola vez')
+    end)
+    UnitLevel = savedLevel; ns.Player.Invalidate()
+    ns.L, FAKE.locale = savedL, nil
+    if not good then error(err, 0) end
+end)

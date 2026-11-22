@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3-beta
+
+- Equipo que todavía no te podés poner: en las bolsas se ve el nivel que pide, en rojo abajo a la izquierda (mochila de Blizzard y Baganator), y el tooltip dice «Podés usarlo desde nivel N». Opción «Nivel que te falta» en Marcas.
+
 ## 0.1.2-beta
 
 - Reactivos de hechizos de otra clase (por ejemplo, Aceite de pescado o Escamas de pez lustrosas para un paladín) se venden: «Reactivo de Chamán: no es de tu clase, se vende». Los de tu clase se guardan; si además son material de una profesión, manda el martillo.

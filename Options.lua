@@ -21,6 +21,8 @@ Options.TOGGLES = {
         help = 'The same icons in the loot window (with autoloot there is no window).' },
     { section = 'Marks', path = 'show.owned', label = 'You already have it',
         help = 'In the loot window, xN when you already carry that item (bags and bank). Only for items that do not stack.' },
+    { section = 'Marks', path = 'show.level', label = 'Level you need',
+        help = 'In your bags, the required level in red on gear you cannot equip yet.' },
     { section = 'Rules', path = 'rules.sellUnruled', label = 'Sell items with no rule',
         help = 'What no rule classifies is sold, except gear, bags, openable items, ammunition, books, keys, quest items and rare or epic items.' },
     { section = 'Rules', path = 'rules.armorBelow', label = 'Armor below what you wear',
