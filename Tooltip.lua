@@ -392,6 +392,10 @@ function Tooltip.Lines(link, bound, bag, slot)
     end
     if winner then renderReason(reasons[winner]) end
     for i, reason in ipairs(reasons) do if i ~= winner then renderReason(reason) end end
+    local hasFuture = false
+    for _, reason in ipairs(reasons) do if reason.kind == 'future_level' then hasFuture = true end end
+    local needed = not hasFuture and ns.Marks and ns.Marks.LevelNeeded and ns.Marks.LevelNeeded(item)
+    if needed then add(L['Usable from level %d']:format(needed), { 1, 0.25, 0.25 }) end
     informational = true
     for _, reason in ipairs(result.otherReasons or {}) do renderReason(reason) end
     return lines

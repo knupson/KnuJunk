@@ -395,3 +395,25 @@ test('clase que no lo usa: el junk plugin no; la esquina si', function()
         eq(update({ itemID = 100, itemLocation = location(0, 1) }), true)
     end)
 end)
+
+test('widget: el nivel que te falta va en rojo sobre el botón de Baganator', function()
+    local state = installed()
+    FAKE.items[992011] = { name = 'Anillo', quality = 2, price = 2469, classID = 4, subclassID = 0,
+        equipLoc = 'INVTYPE_FINGER', reqLevel = 32, itemLevel = 37 }
+    FAKE.bags['0:1'] = 992011
+    local entry = state.widgets.knujunk_icon
+    local button = CreateFrame('Button')
+    local widgetFrame = entry.onInit(button)
+    eq(widgetFrame:GetParent(), button)
+    local savedLevel = UnitLevel
+    UnitLevel = function() return 28 end
+    ns.Player.Invalidate()
+    local good, err = pcall(function()
+        withMark('useful', function() entry.onUpdate(widgetFrame, { itemID = 992011, itemLocation = location(0, 1) }) end)
+        ok(button.KnuJunkLevel and button.KnuJunkLevel:IsShown(), 'visible'); eq(button.KnuJunkLevel:GetText(), '32')
+        entry.onUpdate(widgetFrame, { itemID = 5 })
+        eq(button.KnuJunkLevel:IsShown(), false, 'botón reciclado con otro ítem')
+    end)
+    UnitLevel = savedLevel; ns.Player.Invalidate()
+    if not good then error(err, 0) end
+end)

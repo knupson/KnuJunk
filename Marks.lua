@@ -62,6 +62,7 @@ local function hide(button)
     local texture = button.KnuJunkMark
     if texture then texture:Hide() end
     if button.KnuJunkBackground then button.KnuJunkBackground:Hide() end
+    if button.KnuJunkLevel then button.KnuJunkLevel:Hide() end
 end
 
 local function enabled()
@@ -192,6 +193,40 @@ function Marks.UpdateOwned(button, link)
     text:Show()
 end
 
+-- Nivel que pide el equipo (arma o armadura que se equipa) cuando todavia no te lo podes poner, o nil.
+-- `ctx` opcional (por defecto el del jugador). Pedido del user 2026-11-22: verlo en las bolsas.
+function Marks.LevelNeeded(item, ctx)
+    if type(item) ~= 'table' or (item.classID ~= 2 and item.classID ~= 4) then return nil end
+    if type(item.equipLoc) ~= 'string' or item.equipLoc == '' then return nil end
+    ctx = ctx or ns.Player.GetContext()
+    local level = type(ctx) == 'table' and ctx.level
+    if type(item.reqLevel) == 'number' and type(level) == 'number' and item.reqLevel > level then return item.reqLevel end
+end
+
+-- Bolsas: el nivel que pide, en rojo abajo a la izquierda, si todavia no te lo podes poner (opcion
+-- show.level). Se oculta en cualquier otro caso. Nunca lanza.
+function Marks.UpdateLevel(button, item)
+    if type(button) ~= 'table' then return end
+    local text = button.KnuJunkLevel
+    local ok, level = pcall(function()
+        if not enabled() or (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.level == false) then return nil end
+        return Marks.LevelNeeded(item)
+    end)
+    if not ok or not level then
+        if text then text:Hide() end
+        return
+    end
+    if not text then
+        if type(button.CreateFontString) ~= 'function' then return end
+        text = button:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal')
+        text:SetPoint('BOTTOMLEFT', button, 'BOTTOMLEFT', 2, 2)
+        button.KnuJunkLevel = text
+    end
+    text:SetText(tostring(level))
+    text:SetTextColor(1, 0.25, 0.25)
+    text:Show()
+end
+
 -- Cuerpo de Update: puede lanzar error (lecturas del cliente); el llamador lo aisla con pcall.
 local function updateSlot(button, bag, slot, owner)
     if not enabled() or not allowedBag(bag, owner or 'generic', true) or type(slot) ~= 'number' then return end
@@ -203,6 +238,7 @@ local function updateSlot(button, bag, slot, owner)
         return
     end
     paint(button, markOf(classify(item), false), false)
+    Marks.UpdateLevel(button, item)
 end
 
 local function updateLinkBody(button, link, owner)

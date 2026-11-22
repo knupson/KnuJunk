@@ -169,6 +169,8 @@ end
 
 local function widgetCallback(accepts, isCoin)
     return function(texture, details)
+        local button = type(texture) == 'table' and type(texture.GetParent) == 'function' and texture:GetParent() or nil
+        if button then ns.Marks.UpdateLevel(button, nil) end
         if type(details) ~= 'table' or type(details.itemID) ~= 'number' then return false end
         local location = details.itemLocation
         if type(location) ~= 'table' or type(location.bagID) ~= 'number' or type(location.slotIndex) ~= 'number' then
@@ -178,6 +180,7 @@ local function widgetCallback(accepts, isCoin)
         if ns.Bank.IsBankBag(location.bagID) and not liveBank() then return false end
         local mark, pending, _, item = ns.Marks.Verdict(location.bagID, location.slotIndex, details.itemID)
         if pending then await(details.itemID) end
+        if button and item then ns.Marks.UpdateLevel(button, item) end
         -- Gris con el junk plugin de KnuJunk activo: la moneda nativa ya lo cubre (sin doble moneda).
         if grayJunk(mark, item) and nativeJunkActive() then return false end
         if mark and accepts(mark) and ns.Marks.Style(texture, mark) then return true end
