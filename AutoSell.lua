@@ -131,15 +131,11 @@ local function candidate(bag, slot)
     return guid, item.price, count, link
 end
 
--- Cada pedido de venta queda anotado y se cuenta recién cuando el ítem ya no está en las bolsas.
--- El servidor tarda más que un tick en sacarlo: confirmar al tick siguiente descartaba ventas
--- reales y el resumen no salía (visto en el juego 2026-11-18).
+-- Cada pedido de venta se cuenta cuando el ítem ya no está en las bolsas: el servidor tarda más de un tick en sacarlo.
 local attempted, soldLinks, reportToken = {}, {}, 0
 local REPORT_DELAY = 1.5
 
--- Lugar vacío = legible y sin ítem. Después de vender, GetItemGUID sobre un lugar vacío puede
--- lanzar error («invalid item location»): antes eso contaba como ilegible y la venta nunca se
--- confirmaba, así que el resumen no salía (visto en el juego 2026-11-21).
+-- Lugar vacío = legible y sin ítem. Tras vender, GetItemGUID sobre un lugar vacío puede lanzar error («invalid item location»): no cuenta como ilegible.
 local function slotEmpty(bag, slot, loc)
     if loc and C_Item and type(C_Item.DoesItemExist) == 'function' then
         local ok, exists = pcall(C_Item.DoesItemExist, loc)

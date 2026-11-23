@@ -50,7 +50,7 @@ local function withScrollUtil(fn)
     local callbacks = {}
     ScrollUtil = { AddInitializedFrameCallback = function(scrollBox, callback, owner, iterate)
         callbacks[#callbacks + 1] = { scrollBox = scrollBox, callback = callback, owner = owner, iterate = iterate }
-        -- como Blizzard: con iterate = true se inicializan YA las filas existentes
+        -- como Blizzard: con iterate = true se inicializan ya las filas existentes
         if iterate then scrollBox:ForEachFrame(function(row) callback(owner, row) end) end
     end }
     fn(callbacks)

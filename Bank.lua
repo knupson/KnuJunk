@@ -1,19 +1,7 @@
 local _, ns = ...
 
--- Banco VIVO del personaje actual: fuente unica de verdad para todo el addon.
--- Regla (decision del controlador, 2026-11-17): el banco se marca SOLO mientras esta abierto en un
--- banquero; nunca el banco de hermandad, el banco de cuenta, vistas guardadas ni otros personajes.
---   * Abierto/cerrado: BANKFRAME_OPENED / BANKFRAME_CLOSED y, si el cliente los tiene,
---     PLAYER_INTERACTION_MANAGER_FRAME_SHOW / _HIDE con Enum.PlayerInteractionType.Banker o
---     CharacterBanker (nunca AccountBanker ni GuildBanker). Se escuchan los dos caminos porque en
---     Forever algunos *_CLOSED no llegan (CONVENCION.md, MAIL_CLOSED). Fuentes leidas: Syndicator
---     Tracking/BagCache.lua l.58-59 y l.160-175, ElvUI Bags.lua l.3934-3935 y Baganator
---     ItemViewCommon/BankView.lua l.144-156 usan BANKFRAME_*; Inventorian Events.lua l.235-247 usa
---     PLAYER_INTERACTION_MANAGER_FRAME_* con Banker/CharacterBanker. Cualquier cierre gana; una
---     pantalla de carga (PLAYER_ENTERING_WORLD) tambien cierra.
---   * Bolsas del banco: Enum.BagIndex.CharacterBankTab_1..9 (Syndicator Core/Constants.lua l.56-66 y
---     ElvUI Bags.lua l.183-207: "Forever has a base bank plus eight bank bags"). Sin ese Enum no hay
---     bolsas de banco reconocidas (sin marca): no se adivinan numeros.
+-- Banco vivo del personaje actual, fuente unica de verdad: se marca solo mientras esta abierto en un banquero, nunca el de hermandad, el de cuenta ni vistas guardadas.
+-- Abierto/cerrado por BANKFRAME_* y PLAYER_INTERACTION_MANAGER_FRAME_* (Banker/CharacterBanker), porque en Forever algunos *_CLOSED no llegan; las bolsas salen de Enum.BagIndex.CharacterBankTab_1..9, sin adivinar numeros.
 local Bank = {}
 ns.Bank = Bank
 

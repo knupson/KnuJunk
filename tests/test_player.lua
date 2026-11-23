@@ -140,9 +140,7 @@ test('ReadItem: C_Item.IsBound con ItemLocation gana; si falla, GetContainerItem
     C_Item = nil
 end)
 
--- Tanda 1, regla 30: si GetItemSpell no informa nada, el tooltip del item decide: una linea
--- "Equipar:" / "Uso:" / "Probabilidad al acertar:" (o en ingles) es un efecto. Sin poder leerlo: no se
--- sabe (true, conservador). El resultado se guarda por itemID solo si se pudo leer.
+-- Si GetItemSpell no informa nada, el tooltip del item decide: una linea «Equipar:», «Uso:» o «Probabilidad al acertar:» (o en ingles) es un efecto; sin poder leerlo, no se sabe (true, conservador). Se guarda por itemID solo si se pudo leer.
 test('efecto solo de equipar visto en el tooltip -> hasUseOrEquipSpell', function()
     addItem(730, { tooltip = { 'Placas', 'Equipar: Aumenta tu probabilidad de bloquear un 1%.' } })
     addItem(731, { tooltip = { 'Uso: Te teletransporta.' } })
@@ -180,9 +178,7 @@ test('tooltip del efecto: ilegible o con error = no se sabe, sin re-escanear en 
     eq(FAKE.tooltipCalls, 0)
 end)
 
--- Ronda de arreglos 1 (R30): una lectura parcial (texto pendiente) nunca es "sin efecto". Queda
--- pendiente, se reintenta (timer acotado, TOOLTIP_DATA_UPDATE o GET_ITEM_INFO_RECEIVED) y al resolverse
--- avisa por Player.OnChanged para repintar.
+-- Una lectura parcial (texto pendiente) nunca es «sin efecto»: queda pendiente, se reintenta (timer acotado, TOOLTIP_DATA_UPDATE o GET_ITEM_INFO_RECEIVED) y al resolverse avisa por Player.OnChanged.
 test('C_TooltipInfo parcial y despues con efecto: nunca false, se resuelve y avisa', function()
     addItem(760, { classID = 4, subclassID = 4, quality = 2 })
     local real = C_TooltipInfo.GetHyperlink
@@ -203,7 +199,7 @@ test('C_TooltipInfo parcial y despues con efecto: nunca false, se resuelve y avi
     FAKE.Advance(5)
     eq(ns.Player.ReadLink(FAKE.linkOf(760)).hasUseOrEquipSpell, true, 'efecto visto')
     ok(changed >= 1, 'avisa para repintar')
-    -- Parcial y despues completo SIN efecto: recien ahi false.
+    -- Parcial y despues completo sin efecto: recien ahi false.
     addItem(761, {})
     full = false
     eq(ns.Player.ReadLink(FAKE.linkOf(761)).hasUseOrEquipSpell, true)
@@ -475,9 +471,7 @@ test('no guardado: TOOLTIP_DATA_UPDATE relee el efecto; equipo ajeno ligado cons
     C_TooltipInfo.GetHyperlink = real
 end)
 
--- Ronda de arreglos 3 (reproduccion del revisor): un 'no' invalidado por TOOLTIP_DATA_UPDATE cuya
--- relectura es parcial pasa a pendiente completo (sin error en lecturas siguientes) y avisa por
--- OnChanged para retirar la moneda de clase; con el efecto confirmado, decide nuevamente la clase.
+-- Un 'no' invalidado por TOOLTIP_DATA_UPDATE cuya relectura es parcial pasa a pendiente (sin error en lecturas siguientes) y avisa por OnChanged para retirar la moneda de clase; con el efecto confirmado, decide la clase.
 test('no invalidado con relectura parcial: pendiente valido, aviso y moneda retirada', function()
     addItem(99790, { quality = 2, classID = 4, subclassID = 4 })
     local real = C_TooltipInfo.GetHyperlink
@@ -926,7 +920,7 @@ test('habilidades plegadas en combate: no toca nada y no hay profesion', functio
     eq(FAKE.skillLines[3].isExpanded, false)
 end)
 
--- Regla del 2026-11-17: questInLog dice si una mision esta AHORA en el diario (true/false), o nil si
+-- Regla del 2026-11-17: questInLog dice si una mision esta ahora en el diario (true/false), o nil si
 -- no se puede saber; questItemTitle da el titulo de la mision del diario que pide el item.
 test('questInLog y questItemTitle desde el escaneo del diario', function()
     collapsedLog()

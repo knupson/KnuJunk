@@ -108,11 +108,8 @@ local function popup(bag, slot)
     call(StaticPopup_Show, 'KNUJUNK_CONFIRM_SELL', link, nil, { bag = bag, slot = slot, guid = guid })
 end
 
--- Confirmación por clic derecho SIN capas encima del botón. Una capa que toma el mouse hace que la
--- bolsa reciba OnLeave y esconda el tooltip; con Baganator eso armó un ciclo de parpadeo en el juego
--- y el clic derecho nunca llegaba. Ahora enganchamos (HookScript, post-hook: no reemplaza nada) el
--- OnClick del propio botón: el botón intenta usar el ítem trabado (el juego no lo vende) y después
--- nuestro gancho pregunta «¿Lo vendés igual?».
+-- Confirmación por clic derecho sin capas sobre el botón: una capa que toma el mouse hace que la bolsa reciba OnLeave y esconda el tooltip (con Baganator armaba un ciclo de parpadeo).
+-- Se engancha el OnClick del propio botón (HookScript, post-hook): el botón intenta usar el ítem trabado (el juego no lo vende) y después se pregunta «¿Lo vendés igual?».
 local slotOf = setmetatable({}, { __mode = 'k' })   -- botón -> { bag =, slot = } visto por última vez
 local hooked = setmetatable({}, { __mode = 'k' })
 

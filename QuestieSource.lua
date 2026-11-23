@@ -1,39 +1,7 @@
 local _, ns = ...
 
--- Fuente opcional de misiones: si el jugador tiene QuestieDB cargado, se le pregunta que
--- misiones usan cada item (objetivo, item fuente, item que inicia la mision) para que los
--- sobrantes de misiones hechas den moneda. QuestieDB NUNCA se incluye ni se copia (GPL-3.0):
--- se lee por su API publica (`LibQuestieDB`) en la maquina del jugador.
---
--- Contrato leido (2026-11-17) de los paquetes para Forever (Interface 16001):
---   Questie v12.10.0          Questie_Forever.toc: `X-QuestieDB-Contract: 4`
---   QuestieDB v1.1.2          QuestieDB_Forever.toc: `X-Contract-Version: 4`; src/api.lua define
---                             `LibQuestieDB.RequireContract(n)`: true si minSupportedContract <= n <= contractVersion.
--- Se exige el contrato 4 (el que declara Questie 12.10.0 y contra el que se leyeron los campos).
---
--- Campos usados (todos por `LibQuestieDB.Quest.Get(questID, 'campo')`; Types/Quest.t.lua y General.t.lua):
---   objectives          {[1]=criaturas, [2]=objetos, [3]={ {itemID, texto, cantidad}... }, [4]=rep,
---                        [5]=creditos, [6]={ {spellID, texto, itemID}... }}. Se toman los items de
---                        [3] (tambien si la entrada es un id suelto) y el itemID de [6] (item que
---                        se usa en un objetivo de hechizo).
---   requiredSourceItems { itemID... } items necesarios sin ser objetivo.
---   sourceItemId        item que entrega quien da la mision.
---   startedBy           {[1]=npcs, [2]=objetos, [3]={ itemID... }} items que inician la mision.
---   requiredRaces       mascara de razas (nil o 0 = sin restriccion). Bits de `Enum.raceMaskById[raceID]`
---                       (hay bits por encima de 2^31: se prueban con aritmetica, no con bit.*).
---   requiredClasses     mascara de clases (nil o 0 = sin restriccion). Bits de `Enum.classKeys[TOKEN]`.
---   specialFlags        bit 1 = REPEATABLE.
---   questFlags          DAILY 4096, WEEKLY 32768, MONTHLY 65536 (se tratan como repetibles).
---   reputationReward    {{factionID, valor}, ...}; sólo valor > 0 y objetivos de item [3]
---                       de una misión repetible generan reputationFactions (R20).
--- Otros campos de LibQuestieDB: `Quest.GetAllIds()` (lista ascendente, compartida, solo lectura),
--- `Enum.factionRaceMasks.Alliance/Horde`. Con Questie presente se espera a `Questie.API.isReady`
--- (API publica estable, Public/RegisterOnReady.lua): hasta entonces Questie aun aplica sus
--- correcciones sobre la base y un indice armado antes podria quedar desactualizado.
---
--- Regla de oro: ante cualquier duda, nil. Uses nunca lanza error (Classify lo llama sin pcall)
--- y cualquier dato faltante conserva la mision (un item de mas "util" cuesta una monedita
--- menos; una monedita falsa es el peor fallo).
+-- Fuente opcional de misiones por la API publica de QuestieDB (`LibQuestieDB`, contrato 4: Questie 12.10.0 y QuestieDB 1.1.2 para Forever); su codigo no se incluye ni se copia (GPL-3.0). Ante la duda, nil.
+-- Campos de `LibQuestieDB.Quest.Get(questID, campo)`: objectives, requiredSourceItems, sourceItemId, startedBy, requiredRaces, requiredClasses, specialFlags, questFlags, reputationReward; se espera a Questie.API.isReady.
 
 local Questie = {}
 ns.Questie = Questie
@@ -50,11 +18,9 @@ local raceBit, classBit -- cada uno se guarda en cuanto se resuelve (no cambian 
 local readyCallbacks = {}
 local generation = 0   -- ResetState invalida los lotes y avisos pendientes
 
--- ---------------------------------------------------------------------------
 -- Libreria
--- ---------------------------------------------------------------------------
 
--- Devuelve LibQuestieDB si existe y acepta el contrato; el fallo NO se cachea (el addon puede
+-- Devuelve LibQuestieDB si existe y acepta el contrato; el fallo no se cachea (el addon puede
 -- cargarse mas tarde), el exito si.
 local function getLib()
     if lib then return lib end
@@ -90,9 +56,7 @@ function Questie.ResetState()
     state, index, lib, raceBit, classBit, readyCallbacks = nil, nil, nil, nil, nil, {}
 end
 
--- ---------------------------------------------------------------------------
 -- Bits
--- ---------------------------------------------------------------------------
 
 -- Prueba un bit con aritmetica: las mascaras de razas de Forever pasan de 2^31.
 local function hasBit(value, bit)
@@ -107,9 +71,7 @@ local function sharesRace(a, b, raceMasks)
     return false
 end
 
--- ---------------------------------------------------------------------------
 -- Personaje
--- ---------------------------------------------------------------------------
 
 -- { raceBit=, classBit=, faction= }; cada dato en nil si no se sabe (esa mision no se filtra por el).
 -- Raza y clase se cachean por separado: si una aun no esta disponible, la otra no se vuelve a leer.
@@ -161,18 +123,14 @@ local function canDo(record, info)
     return true
 end
 
--- ---------------------------------------------------------------------------
 -- Indice item -> misiones
--- ---------------------------------------------------------------------------
 
 -- Mascara de bits valida: numero entero, finito y no negativo.
 local function validMask(value)
     return type(value) == 'number' and value == value and value >= 0 and value < math.huge and value % 1 == 0
 end
 
--- true si algun flag valido confirma que es repetible (REPEATABLE, diaria, semanal o mensual);
--- false SOLO con specialFlags y questFlags presentes, validos y sin esos bits; nil = no se sabe
--- (faltan o son invalidos: no confirman nada, y el clasificador no da moneda).
+-- true si algun flag valido confirma que es repetible (REPEATABLE, diaria, semanal o mensual); false solo con specialFlags y questFlags validos y sin esos bits; nil = no se sabe (sin moneda).
 local function isRepeatable(special, flags)
     if validMask(special) and hasBit(special, FLAG_REPEATABLE) then return true end
     if validMask(flags) then
@@ -221,9 +179,7 @@ local function indexQuest(source, items, questID)
     if type(startedBy) == 'table' and type(startedBy[3]) == 'table' then
         for _, itemID in ipairs(startedBy[3]) do starterIds[#starterIds + 1] = itemID end
     end
-    -- Objetivos ocultos: { spawns?, icono, texto?, indice, { {'item'|'monster'|'object', id}, ... }? }.
-    -- Cada entrada se lee aparte: una ilegible se saltea SOLA (sus ids no se agregan) y el resto de
-    -- la mision y del indice sigue valiendo. Asi una referencia rota nunca degrada a "sin Questie".
+    -- Objetivos ocultos: cada entrada se lee aparte y una ilegible se saltea, asi una referencia rota nunca degrada a "sin Questie".
     local extra = get(questID, 'extraObjectives')
     if type(extra) == 'table' then
         for _, objective in pairs(extra) do
@@ -295,9 +251,7 @@ end
 
 local function finish(items)
     index, state = items, 'ready'
-    -- Los contextos ya armados no tenian esta fuente: se reconstruyen en el proximo pedido.
-    -- Y se reconstruye ya: asi Player.OnChanged se entera (questLogIncomplete pasa de true a nil)
-    -- aunque nadie pida el contexto, y las vistas se refrescan.
+    -- Los contextos ya armados no tenian esta fuente: se reconstruye ya para que Player.OnChanged se entere (questLogIncomplete pasa de true a nil) aunque nadie pida el contexto.
     if ns.Player and ns.Player.Invalidate then
         pcall(ns.Player.Invalidate)
         if ns.Player.GetContext then pcall(ns.Player.GetContext) end
@@ -365,9 +319,7 @@ local function ensureBuilding()
     startBuild(source)
 end
 
--- ---------------------------------------------------------------------------
 -- Consulta
--- ---------------------------------------------------------------------------
 
 local function usesFor(itemID)
     if type(itemID) ~= 'number' then return nil end
@@ -393,10 +345,8 @@ local function usesFor(itemID)
     return uses
 end
 
--- { {questID=, repeatable=bool, starter=true|nil, reputationFactions={id,...}|nil}, ... }
--- con las misiones (starter: el item la inicia) que podria hacer este personaje y que usan
--- el item, o nil (sin QuestieDB, indice aun sin terminar, item sin misiones o cualquier error).
--- Nunca lanza.
+-- { {questID=, repeatable=bool, starter=true|nil, reputationFactions={id,...}|nil}, ... } con las misiones que este personaje podria hacer y usan el item (starter: lo inicia),
+-- o nil (sin QuestieDB, indice aun sin terminar, item sin misiones o error). Nunca lanza.
 function Questie.Uses(itemID)
     local good, result = pcall(usesFor, itemID)
     if good then return result end

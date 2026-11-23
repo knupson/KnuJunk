@@ -214,7 +214,7 @@ test('Blizzard: un boton que falla no impide marcar los demas', function()
 end)
 
 -- Item 4 de la ola final: al retomar una marca pendiente (datos o combate) se revalida lo que
--- el boton muestra AHORA: bolsa del frame actual (0-4), slot actual, visible, y el item vivo.
+-- el boton muestra ahora: bolsa del frame actual (0-4), slot actual, visible, y el item vivo.
 test('Blizzard: boton que paso al banco mientras esperaba datos -> sin moneda', function()
     withGlobals({ 'ContainerFrame_Update', 'ContainerFrame1', 'ContainerFrame1Item1' }, function()
         local frame, buttons = classicFrame('ContainerFrame1', 0, { 1 })

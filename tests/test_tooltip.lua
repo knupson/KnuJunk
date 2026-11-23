@@ -45,7 +45,7 @@ local function run(processor, tooltip, data)
     processor.calls[1].fn(tooltip, data)
 end
 
--- Cambia ns.Classify durante fn y lo restaura SIEMPRE, aunque fn falle.
+-- Cambia ns.Classify durante fn y lo restaura siempre, aunque fn falle.
 local function withClassify(replacement, fn)
     local saved = ns.Classify
     ns.Classify = replacement

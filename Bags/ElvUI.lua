@@ -1,22 +1,7 @@
 local _, ns = ...
 
--- ElvUI por su hook de actualizacion: hooksecurefunc(ElvUI[1].Bags, 'UpdateSlot', ...).
--- Contrato VERIFICADO contra el ElvUI v16.01 instalado (Game/Shared/Modules/Bags/Bags.lua):
---   * General/Initialize.lua l.78: E.Bags = E:NewModule('Bags'); ElvUI = { E, L, V, P, G }.
---   * l.3805-3864: B.Initialized = true solo cuando E.private.bags.enable; con las bolsas apagadas
---     (el caso del usuario) Initialize retorna antes: install devuelve false y no se engancha nada.
---   * l.703-711: B:UpdateSlot(frame, bagID, slotID) trabaja sobre frame.Bags[bagID][slotID], lee el
---     item vivo (C_Container) y fija slot.itemID y slot.itemLink: identidad EXPUESTA del item dibujado.
---   * l.2448-2466 y l.3862-3866: B.BagFrame = ConstructContainerFrame('ElvUI_ContainerFrame') y
---     B.BankFrame = ... ('ElvUI_BankContainerFrame', true); frame.isBank, frame.Bags.
---   * l.2798-2800: cada slot guarda slot.bagFrame, slot.BagID y slot.SlotID (su GetBagID se evita
---     a proposito por taint).
--- ElvUI no tiene vista de otros personajes. Cuentan la ventana B.BagFrame y, solo con el banco VIVO
--- (ns.Bank), B.BankFrame (isBank) con bolsas del banco (ns.Bank.IsBankBag): l.3404-3466 la abre en
--- BANKFRAME_OPENED (B:OpenBank) y la cierra en BANKFRAME_CLOSED (B:CloseBank), registrados en
--- l.3934-3935; l.183-207: en Forever las bolsas del banco son Enum.BagIndex.CharacterBankTab_1..9.
--- Sin marca si el item que dice el slot no es el vivo. Referencia leida (competencia/): magic-eraser
--- Tint-Junk.lua l.434-448.
+-- ElvUI por su hook de actualizacion: hooksecurefunc(ElvUI[1].Bags, 'UpdateSlot', ...). Contrato leido en ElvUI v16.01 (Game/Shared/Modules/Bags/Bags.lua).
+-- Solo con las bolsas de ElvUI activas (B.Initialized); identidad = slot.itemID y slot.itemLink. Cuentan B.BagFrame y, con el banco vivo (ns.Bank), B.BankFrame; sin vista de otros personajes.
 local OWNER = 'ElvUI'
 local Adapter = {}
 ns.ElvUIAdapter = Adapter
@@ -81,7 +66,7 @@ function Adapter.Refresh() tracker:Refresh() end
 function Adapter.ResetState() hooked, retried = false, false end
 Common.OnReset(Adapter.ResetState)
 
--- ElvUI inicializa sus modulos (E:OnEnable de AceAddon) en PLAYER_LOGIN y puede hacerlo DESPUES de
+-- ElvUI inicializa sus modulos (E:OnEnable de AceAddon) en PLAYER_LOGIN y puede hacerlo despues de
 -- nuestro PLAYER_LOGIN: un unico reintento en el primer PLAYER_ENTERING_WORLD.
 local frame = CreateFrame('Frame')
 pcall(frame.RegisterEvent, frame, 'PLAYER_ENTERING_WORLD')

@@ -1,17 +1,7 @@
 local _, ns = ...
 
--- LiteBag por su gancho publico: LiteBag_RegisterHook('LiteBagItemButton_Update', callback(boton)).
--- Mecanismo de la referencia, escrito de cero (SIN VERIFICAR EN EL JUEGO: LiteBag no esta instalado
--- aqui; se detecta por forma):
---   * los botones de LiteBag son botones de contenedor con plantilla Blizzard: slot = button:GetID(),
---     bolsa = button:GetBagID() si existe o el GetID() de su padre (la "bolsa" de LiteBag).
---   * sin marca: boton que sea (o cuelgue de algo con nombre/banderas de) banco, hermandad, vault o
---     vista cacheada (Common.NonCarried); las bolsas fuera de 0-4 las descarta Marks.
---   * identidad: si el boton expone el item que muestra (Common.DisplayedID) manda; si no (SIN
---     VERIFICAR), el slot vivo leido DURANTE el callback de redibujado (Common.Capture), que es lo
---     que LiteBag acaba de dibujar; los refrescos posteriores solo remarcan si sigue igual.
--- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1152-1155 (y l.1007-1009 para el
--- slot por padre; peddler Peddler.lua l.452-463 para los nombres de botones de LiteBag).
+-- LiteBag por su gancho publico: LiteBag_RegisterHook('LiteBagItemButton_Update', callback(boton)); slot = GetID(), bolsa = GetBagID() o el GetID() del padre.
+-- Sin verificar en el juego (no instalado aqui): identidad = Common.DisplayedID o, si no, el slot vivo capturado en el callback (Common.Capture).
 local OWNER = 'LiteBag'
 local Adapter = {}
 ns.LiteBagAdapter = Adapter

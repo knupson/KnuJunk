@@ -1,8 +1,7 @@
 local _, ns = ...
 
 -- Contexto del personaje para el clasificador y lectura de items de las bolsas.
--- Toda API del cliente se detecta antes de usarla: en Forever conviven nombres clasicos
--- y modernos (C_*) y no se asume ninguno.
+-- Toda API del cliente se detecta antes de usarla: en Forever conviven nombres clasicos y modernos (C_*).
 local Player = {}
 ns.Player = Player
 
@@ -20,9 +19,7 @@ local scanTip -- GameTooltip oculto de respaldo (sin C_TooltipInfo), creado al p
 local retryAt -- momento del timer de reintento de efectos programado
 local effectRevision = 0 -- sube cuando se resuelve un efecto pendiente: entra en la firma (OnChanged)
 local signatures = setmetatable({}, { __mode = 'k' }) -- [ctx] = firma de contenido
--- Sube con cada alta, baja o entrega de mision: isQuestDone puede responder distinto aunque
--- el resto del contexto sea igual, y eso tiene que avisar por OnChanged. Los ecos de expandir
--- el diario (QUEST_LOG_UPDATE) no la tocan, asi que no reabren aquel bucle.
+-- Sube con cada alta, baja o entrega de mision (isQuestDone puede cambiar con el resto del contexto igual); los ecos de expandir el diario (QUEST_LOG_UPDATE) no la tocan, para no reabrir el bucle.
 local questRevision = 0
 
 local function markDirty()
@@ -33,7 +30,7 @@ end
 
 function Player.Invalidate() markDirty() end
 
--- fn(ctx) se llama tras una reconstruccion SOLO si el contenido del contexto cambio
+-- fn(ctx) se llama tras una reconstruccion solo si el contenido del contexto cambio
 -- (clase, profesiones, items de misiones, questLogIncomplete, revision de misiones).
 function Player.OnChanged(fn) changedCallbacks[#changedCallbacks + 1] = fn end
 
@@ -50,14 +47,8 @@ local MIN_EXPAND_INTERVAL = 1 -- sin huella, no se expande mas de una vez por se
 local function now() return GetTime and GetTime() or 0 end
 local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
 
--- Lee una lista con encabezados plegables (diario de misiones, habilidades). Si hay
--- encabezados plegados los expande (fuera de combate), llama scan() y los vuelve a plegar
--- exactamente igual.
---   count() -> n ; entry(i) -> title, isHeader, isCollapsed ; expand(i), collapse(i) pueden ser nil.
---   fingerprint() -> string|nil describe lo visible; si coincide con la de la ultima expansion
---   (memo.fp) no se expande de nuevo: es lo que corta el bucle expandir -> evento -> reconstruir.
--- Devuelve complete, how: how = 'expanded' (scan() corrio con todo expandido), 'cached'
--- (memo.fp coincide: scan() NO corrio) o nil.
+-- Lee una lista con encabezados plegables (diario, habilidades): expande los plegados (fuera de combate), llama scan() y los vuelve a plegar igual. count(), entry(i) -> title, isHeader, isCollapsed; expand/collapse pueden ser nil.
+-- fingerprint() describe lo visible: si coincide con memo.fp no se expande de nuevo (corta el bucle expandir -> evento -> reconstruir). Devuelve complete, how = 'expanded' | 'cached' | nil.
 local function scanExpanded(count, entry, expand, collapse, scan, saveState, restoreState, fingerprint, memo)
     local collapsedTitles, any = {}, false
     for index = 1, count() do
@@ -69,9 +60,7 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
     end
     -- scan() devuelve false si alguna fila u objetivo todavía no tiene datos: ese escaneo no es completo.
     if not any then return scan() ~= false end
-    -- La huella de la ultima expansion completa certifica lo escaneado aunque ahora no se
-    -- pueda expandir (combate): mismo diario visible y mismo total. Aceptar, abandonar o
-    -- entregar una mision borra memo.fp, asi que despues de esos eventos no certifica.
+    -- La huella de la ultima expansion completa certifica lo escaneado aunque ahora no se pueda expandir (combate); aceptar, abandonar o entregar una mision borra memo.fp.
     local before = fingerprint and fingerprint()
     if before and memo and memo.fp == before then return true, 'cached' end
     if inCombat() or not expand or not collapse then scan(); return false end
@@ -111,9 +100,7 @@ local function scanExpanded(count, entry, expand, collapse, scan, saveState, res
     return complete, complete and 'expanded' or nil
 end
 
--- ---------------------------------------------------------------------------
 -- Profesiones
--- ---------------------------------------------------------------------------
 
 local function readProfessions()
     local professions = {}
@@ -169,9 +156,7 @@ local function readProfessions()
     return professions
 end
 
--- ---------------------------------------------------------------------------
 -- Misiones
--- ---------------------------------------------------------------------------
 
 -- true/false segun el cliente; nil si no hay ninguna API de misiones completadas.
 local function isQuestDone(questID)
@@ -191,12 +176,8 @@ local function objectiveItemName(text, kind)
     return text:match('^(.-):%s*%d+%s*/%s*%d+%s*$')
 end
 
--- Lee el diario completo. Devuelve found y complete:
---   found = { names = {[normalizado]=nombre} de items pedidos, titles = {[normalizado]=titulo de la
---   mision que lo pide}, ids = {[questID]=true} de las misiones del diario, idsKnown = true si todas
---   las misiones leidas trajeron su questID (si no, ids no alcanza para decir "no esta") }.
--- complete=false si quedaron misiones sin leer (encabezado plegado en combate, sin API para
--- expandir, o sin API de diario).
+-- Lee el diario completo: found = { names = {[normalizado]=nombre}, titles = {[normalizado]=titulo de la mision}, ids = {[questID]=true}, idsKnown = true si todas trajeron questID }.
+-- complete=false si quedaron misiones sin leer (encabezado plegado en combate, sin API para expandir o sin API de diario).
 local function scanQuestLog()
     local found = { names = {}, titles = {}, ids = {}, idsKnown = true }
     local names = found.names
@@ -312,13 +293,8 @@ local function scanQuestLog()
     return found, false
 end
 
--- Devuelve questItemsInLog = {[itemID]=true} y si el diario quedo incompleto. Un escaneo
--- incompleto no reemplaza al ultimo completo: se unen (lo ya visto sigue protegiendo), pero
--- el contexto queda questLogIncomplete igual: el escaneo anterior no certifica misiones
--- nuevas que no se pudieron leer. Se certifica de nuevo solo con un escaneo completo.
--- Los objetivos traen el nombre, no el id: se resuelve con GetItemInfo(nombre) y, para lo
--- que no se pudo resolver, __index compara por el nombre del item consultado (un item de
--- mision gris no debe quedar con monedita por no haberse resuelto a tiempo).
+-- Devuelve questItemsInLog = {[itemID]=true} y si el diario quedo incompleto: un escaneo incompleto no reemplaza al ultimo completo (se unen), pero el contexto queda questLogIncomplete hasta un escaneo completo.
+-- Los objetivos traen el nombre, no el id: se resuelve con GetItemInfo(nombre) y lo no resuelto se compara por nombre en __index (un item de mision gris no debe quedar con monedita).
 local function buildQuestItems()
     local found, complete = scanQuestLog()
     local incomplete = not complete
@@ -375,9 +351,7 @@ local function questItemTitleFor(found)
     end
 end
 
--- ---------------------------------------------------------------------------
 -- Contexto
--- ---------------------------------------------------------------------------
 
 local function sortedKeys(set)
     local list = {}
@@ -425,10 +399,8 @@ local function summedRanks(tab, group)
     return total
 end
 
--- Nombre y puntos de la rama `tab` (del grupo `group`, o el activo). Acepta las dos formas de
--- GetTalentTabInfo (vieja: nombre, icono, puntos; nueva: id, nombre, descripcion, icono, puntos) y
--- las firmas (tab), (tab, grupo) y (tab, false, false, grupo). Si los puntos no vienen, los suma
--- talento por talento. nil si no hay nombre.
+-- Nombre y puntos de la rama `tab` (del grupo `group`, o el activo). Acepta las dos formas de GetTalentTabInfo (vieja y nueva) y las firmas (tab), (tab, grupo) y (tab, false, false, grupo);
+-- si faltan los puntos, los suma talento por talento. nil si no hay nombre.
 function Player.TalentTab(tab, group)
     if type(GetTalentTabInfo) ~= 'function' then return nil end
     local calls = group and { { tab, false, false, group }, { tab, group } } or { { tab } }
@@ -447,9 +419,7 @@ function Player.TalentTab(tab, group)
     if found then return found, summedRanks(tab, group) or 0 end
 end
 
--- Rama activa en el cliente de Forever: no hay GetNumTalentTabs (probado en el juego 2026-11-21). La
--- ventana de talentos lee las ramas con C_Traits: GetGroupDisplayInfoByTreeID da las 3 en orden y
--- GetGroupCurrencyInfo los puntos gastados (mismo metodo que KnuUI/PawnSpec.lua, probado en el juego).
+-- Rama activa en Forever (no hay GetNumTalentTabs): la ventana de talentos lee las ramas con C_Traits (GetGroupDisplayInfoByTreeID, GetGroupCurrencyInfo); probado en el juego.
 -- Devuelve indice (1..3), nombre (si el cliente lo da) y las filas leidas; indice nil sin puntos o empate.
 function Player.TraitSpec()
     local traits = rawget(_G, 'C_Traits')
@@ -657,9 +627,7 @@ function Player.GetContext()
     return cache
 end
 
--- ---------------------------------------------------------------------------
 -- Items
--- ---------------------------------------------------------------------------
 
 local function bare(text)
     if type(text) ~= 'string' then return nil end
@@ -697,15 +665,8 @@ local function retrieving(text)
     return type(global) == 'string' and global ~= '' and text == global
 end
 
--- Lee el tooltip del item. Devuelve texts, how, instance:
---   how = 'complete', 'partial' o 'unavailable' (no hay forma de leerlo en este cliente).
---   Completo = el titulo (nombre) y al menos otra linea con texto, y ninguna linea pendiente. Una
---   lectura con solo el titulo es 'partial': no prueba que no haya efectos.
---   instance = dataInstanceID de C_TooltipInfo, para cruzar con TOOLTIP_DATA_UPDATE.
--- C_TooltipInfo.GetHyperlink: una linea sin texto es espaciador solo si su tipo es Blank o Separator;
--- si no, esta pendiente. GameTooltip oculto (sin C_TooltipInfo): solo se llama con el item ya en la
--- cache del cliente (ReadLink exige GetItemInfo antes); con el titulo presente, una region con texto
--- vacio ('') es un espaciador de diseno, y una sin texto (nil) o "Recuperando..." esta pendiente.
+-- Lee el tooltip del item: devuelve texts, how ('complete', 'partial' o 'unavailable') e instance (dataInstanceID de C_TooltipInfo, para cruzar con TOOLTIP_DATA_UPDATE).
+-- Completo = titulo y otra linea con texto, sin lineas pendientes; solo el titulo es 'partial' (no prueba que no haya efectos). Una linea sin texto es espaciador solo si es Blank o Separator; si no, esta pendiente.
 local function tooltipTexts(id, bag, slot)
     local link = 'item:' .. id
     local getter = type(C_TooltipInfo) == 'table' and (bag ~= nil and C_TooltipInfo.GetBagItem or C_TooltipInfo.GetHyperlink)
@@ -787,13 +748,8 @@ local function scanEffect(id)
     return nil, how, instance
 end
 
--- Estado por itemID (regla 30): { value = true|false|nil, instance, attempts, nextAt, final }.
---   value true/false = resuelto (guarda el dataInstanceID de la lectura); nil = pendiente.
--- Un pendiente no se re-escanea en cada repintado: el timer lo reintenta con espera creciente
--- (EFFECT_BACKOFF * 2^n) hasta MAX_EFFECT_ATTEMPTS lecturas y despues queda final. Los eventos de datos
--- que llegan (TOOLTIP_DATA_UPDATE de su instancia, o sin instancia; GET_ITEM_INFO_RECEIVED del item)
--- lo releen aunque este final; TOOLTIP_DATA_UPDATE de la instancia de un 'no' guardado lo invalida y
--- lo relee. Cada cambio resuelto avisa una sola vez (agrupado) por OnChanged.
+-- Estado por itemID: { value = true|false|nil, instance, attempts, nextAt, final }; nil = pendiente, que el timer reintenta con espera creciente (EFFECT_BACKOFF * 2^n) hasta MAX_EFFECT_ATTEMPTS lecturas y despues queda final.
+-- TOOLTIP_DATA_UPDATE y GET_ITEM_INFO_RECEIVED lo releen aunque este final; cada cambio resuelto avisa una sola vez (agrupado) por OnChanged.
 local MAX_EFFECT_ATTEMPTS, EFFECT_BACKOFF = 5, 0.5
 local scheduleEffectRetry
 
@@ -988,10 +944,8 @@ local function onItemInfo(id)
         or (rules.knownRecipe and data.recipes and data.recipes[id])) and true or false
 end
 
--- Efecto de uso/equipar: 'yes' (GetItemSpell con nombre o id, o una linea "Equipar:"/"Uso:"/
--- "Probabilidad al acertar:" en el tooltip), 'no' (GetItemSpell sin nada Y tooltip completo sin esas
--- lineas) o 'unknown' (sin API, error, o tooltip pendiente/ilegible). Ver Classify: 'unknown' no
--- bloquea la moneda del gris pero si las demas.
+-- Efecto de uso/equipar: 'yes' (GetItemSpell o una linea «Equipar:», «Uso:» o «Probabilidad al acertar:» del tooltip), 'no' (GetItemSpell sin nada y tooltip completo sin esas lineas) o 'unknown'.
+-- 'unknown' no bloquea la moneda del gris pero si las demas (ver Classify).
 local function itemEffect(id)
     local api
     if C_Item and type(C_Item.GetItemSpell) == 'function' then api = C_Item.GetItemSpell
@@ -1005,9 +959,8 @@ local function itemEffect(id)
     return 'unknown'
 end
 
--- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, effect, hasUseOrEquipSpell, isSetPiece };
--- nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED). Sin ubicacion no
--- se sabe si esta ligado: isBound queda en nil (ReadItem lo completa).
+-- item = { id, quality, price, classID, subclassID, subclassName, equipLoc, effect, hasUseOrEquipSpell, isSetPiece }; nil si GetItemInfo aun no tiene los datos (reintentar con GET_ITEM_INFO_RECEIVED).
+-- Sin ubicacion no se sabe si esta ligado: isBound queda en nil (ReadItem lo completa).
 function Player.ReadLink(link)
     if link == nil or type(ns.API.GetItemInfo) ~= 'function' then return nil end
     local id
@@ -1063,9 +1016,7 @@ function Player.ReadLink(link)
     }
 end
 
--- true/false si el cliente confirma si el ejemplar de bag/slot esta ligado; nil si no se sabe.
--- Primero C_Item.IsBound(ItemLocation); si falta, falla o no responde un booleano, el isBound de
--- C_Container.GetContainerItemInfo (info ya leida).
+-- true/false si el cliente confirma si el ejemplar de bag/slot esta ligado; nil si no se sabe: primero C_Item.IsBound(ItemLocation) y, si falta o no da un booleano, el isBound de C_Container.GetContainerItemInfo.
 local function boundAt(bag, slot, info)
     if type(C_Item) == 'table' and type(C_Item.IsBound) == 'function'
         and type(ItemLocation) == 'table' and type(ItemLocation.CreateFromBagAndSlot) == 'function' then
@@ -1171,9 +1122,7 @@ function Player.BagStock(level, rules)
     return stock
 end
 
--- ---------------------------------------------------------------------------
 -- Invalidacion
--- ---------------------------------------------------------------------------
 
 local frame = CreateFrame('Frame')
 -- Todo evento que pueda cambiar el contexto lo ensucia; la reconstruccion es perezosa. Un
@@ -1186,9 +1135,7 @@ for _, event in ipairs({ 'QUEST_LOG_UPDATE', 'SKILL_LINES_CHANGED', 'QUEST_ACCEP
     pcall(frame.RegisterEvent, frame, event)
 end
 
--- Una reconstruccion diferida (agrupada) para que OnChanged se entere de cambios reales aunque
--- nadie pida el contexto. Expandir encabezados provoca otro evento, pero esa segunda
--- reconstruccion no expande (misma huella) y no cambia el contenido: no avisa y se corta ahi.
+-- Una reconstruccion diferida (agrupada) para que OnChanged se entere de cambios reales aunque nadie pida el contexto; la segunda reconstruccion que provoca expandir encabezados no expande (misma huella) y se corta ahi.
 local function scheduleCheck()
     if pending or #changedCallbacks == 0 or not (C_Timer and C_Timer.After) then return end
     pending = true
@@ -1230,9 +1177,7 @@ frame:SetScript('OnEvent', function(_, event, arg1)
         if not enabled or (event == 'UNIT_INVENTORY_CHANGED' and arg1 ~= 'player') then return end
         optionalRevision = optionalRevision + 1
     end
-    -- Aceptar/abandonar/entregar una mision puede cambiar el diario sin cambiar la huella (mismo
-    -- total bajo un encabezado plegado): se olvida lo escaneado. QUEST_LOG_UPDATE no, porque es
-    -- tambien el eco de nuestra propia expansion.
+    -- Aceptar, abandonar o entregar una mision puede cambiar el diario sin cambiar la huella: se olvida lo escaneado. QUEST_LOG_UPDATE no, porque tambien es el eco de nuestra propia expansion.
     if event == 'QUEST_ACCEPTED' or event == 'QUEST_REMOVED' or event == 'QUEST_TURNED_IN' then
         questMemo.fp, questMemo.at = nil, nil
         questRevision = questRevision + 1

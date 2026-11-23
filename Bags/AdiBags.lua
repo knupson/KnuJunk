@@ -1,18 +1,7 @@
 local _, ns = ...
 
--- AdiBags por sus mensajes (ABEvent-1.0), sin hooks sobre su clase ItemButton.
--- Mecanismo de la referencia, escrito de cero (SIN VERIFICAR EN EL JUEGO: AdiBags no esta instalado
--- aqui; se detecta por forma):
---   * LibStub('ABEvent-1.0', true).RegisterMessage(receptor, mensaje, callback(mensaje, boton)) para
---     'AdiBags_AcquireButton' (boton reciclado: se limpia), 'AdiBags_UpdateButton' (se marca) y
---     'AdiBags_ReleaseButton' (se limpia).
---   * el boton trae button.bag, button.slot y button.itemId: ese es el slot que muestra.
---   * sin marca: boton soltado, sin button.itemId numerico, o si el slot de bolsa 0-4 ya no tiene
---     button.itemId (tambien al retomar una marca pendiente: revalidate). Los botones
---     del banco usan bolsas fuera de 0-4 (Marks los descarta); AdiBags no muestra otros personajes.
--- Alternativa de la referencia (no usada): hooksecurefunc al prototipo de su clase ItemButton.
--- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1137-1150, magic-eraser
--- Tint-Junk.lua l.322-345.
+-- AdiBags por sus mensajes (ABEvent-1.0: AdiBags_AcquireButton, _UpdateButton y _ReleaseButton), sin hooks sobre su clase ItemButton.
+-- Sin verificar en el juego (addon no instalado aqui): sin button.itemId numerico o con el slot ya cambiado, sin marca.
 local OWNER = 'AdiBags'
 local Adapter = {}
 ns.AdiBagsAdapter = Adapter

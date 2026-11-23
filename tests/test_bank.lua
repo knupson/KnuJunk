@@ -1,5 +1,5 @@
 -- Banco vivo del personaje actual (Bank.lua) y su uso en Marks y en los adaptadores que lo soportan.
--- Los numeros del Enum son FALSOS (solo pruebas): el codigo nunca los supone, los lee del Enum.
+-- Los numeros del Enum son falsos (solo pruebas): el codigo nunca los supone, los lee del Enum.
 local BANK_TAB = 6     -- Enum.BagIndex.CharacterBankTab_1 en estas pruebas
 local BANK_TAB_9 = 14
 
@@ -32,9 +32,7 @@ end
 local function openBank() FAKE.Fire('BANKFRAME_OPENED') end
 local function closeBank() FAKE.Fire('BANKFRAME_CLOSED') end
 
--- ---------------------------------------------------------------------------
 -- Bank.lua
--- ---------------------------------------------------------------------------
 
 test('Bank: IsBankBag solo para las pestanas del banco del personaje', function()
     ok(not ns.Bank.IsBankBag(BANK_TAB), 'sin Enum: nada es banco')
@@ -78,9 +76,7 @@ test('Bank: un callback que falla no frena a los demas', function()
     eq(#seen, 2, 'solo cambios reales'); eq(seen[1], true); eq(seen[2], false)
 end)
 
--- ---------------------------------------------------------------------------
 -- Marks
--- ---------------------------------------------------------------------------
 
 test('Marks: banco vivo marca solo para duenos que soportan banco', function()
     forever()
@@ -180,9 +176,7 @@ test('Common.NonCarried: el banco solo se admite vivo y nunca la hermandad ni lo
     ok(Common.NonCarried(cached, true), 'vista cacheada del banco: nunca')
 end)
 
--- ---------------------------------------------------------------------------
 -- Blizzard: panel del banco (BankPanelItemButtonMixin / CamelotBankPanelItemButtonMixin)
--- ---------------------------------------------------------------------------
 
 -- Boton del panel con la forma que leen las referencias: GetBankTabID() y GetContainerSlotID().
 local function panelButton(mixin, tab, slot)
@@ -248,9 +242,7 @@ test('Blizzard: bolsa del banco en un ContainerFrame vivo marca solo con el banc
     ok(marked(button), 'abierto')
 end)
 
--- ---------------------------------------------------------------------------
 -- Baganator: vista del banco viva vs guardada
--- ---------------------------------------------------------------------------
 
 local function bagState()
     local state = FAKE.InstallBaganator()
@@ -317,9 +309,7 @@ test('Baganator: junk plugin en el banco exige la vista del banco viva', functio
     ok(not callback(BANK_TAB, 1, 100), 'cerrado otra vez')
 end)
 
--- ---------------------------------------------------------------------------
 -- Bagnon, ElvUI, ArkInventory, BetterBags, Inventorian
--- ---------------------------------------------------------------------------
 
 local function bagnonBank(windowID, bag, slot, offline)
     local window = CreateFrame('Frame', 'BagnonBankWindow', UIParent)

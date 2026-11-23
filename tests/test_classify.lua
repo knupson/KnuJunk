@@ -157,7 +157,7 @@ test('item que es reactivo y herramienta: manda el reactivo; la herramienta cubr
     end, { [9000] = { 164 } })
 end)
 
--- Tanda 1, regla 4: un iniciador con la mision hecha solo da moneda si QuestieDB confirma que NO es
+-- Tanda 1, regla 4: un iniciador con la mision hecha solo da moneda si QuestieDB confirma que no es
 -- repetible (repeatable == false explicito). Sin QuestieDB o sin saberlo: sin moneda, motivo propio.
 test('iniciador con mision hecha y no repetible confirmada -> coin quest_done', function()
     withData({}, { [9000] = 123 }, function()
@@ -278,7 +278,7 @@ test('override sell sobre reactivo -> coin', function()
     end)
 end)
 
--- Regla del 2026-11-17: solo protege una mision que esta AHORA en el diario. Futuras, no tomadas,
+-- Regla del 2026-11-17: solo protege una mision que esta ahora en el diario. Futuras, no tomadas,
 -- hechas o repetibles no tomadas no protegen nada (los iniciadores tienen su propia regla).
 test('questie: mision futura que no esta en el diario -> coin quest_not_active', function()
     withData({}, {}, function()
@@ -355,7 +355,7 @@ test('item de mision: diario incompleto y reactivo protegen; efecto no protege',
     end)
 end)
 
--- Tanda 1, regla 8: el equipo que tu clase no puede usar da moneda SOLO si el ejemplar esta ligado
+-- Tanda 1, regla 8: el equipo que tu clase no puede usar da moneda solo si el ejemplar esta ligado
 -- (confirmado). Sin ligar o sin saberlo: sin moneda y un motivo neutro para el tooltip.
 test('equipo de otra clase sin ligar o sin saberlo -> sin moneda, motivo class_cannot_use_tradeable', function()
     withData({}, {}, function()
@@ -539,7 +539,7 @@ test('ClassGear: generado desde datos con build', function()
     ok(first:find('Generado por tools/build_data.py', 1, true), 'cabecera generada: ' .. tostring(first))
 end)
 
--- Item 2 de la ola final: un uso repetible conocido por Questie bloquea TODA moneda automatica.
+-- Item 2 de la ola final: un uso repetible conocido por Questie bloquea toda moneda automatica.
 test('iniciador repetible hecho sin moneda; repetible no tomada ya no protege', function()
     withData({}, { [9000] = 99001 }, function()
         local repeatable = function() return { { questID = 99001, repeatable = true } } end

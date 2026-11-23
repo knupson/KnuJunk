@@ -1,99 +1,110 @@
 # KnuJunk
 
-Iconos en las bolsas y en el botín para ver qué se puede vender o tirar y qué material usa una profesión. Para **World of Warcraft: Forever** (1.60.1, `## Interface: 16001`).
+Iconos en las bolsas, el banco y el botín para ver qué se puede vender o tirar y qué material usa una profesión. Para **World of Warcraft: Forever** (1.60.1). Funciona solo: GearQuest, Pawn, QuestieDB, Auctionator y los addons de bolsas son opcionales y sólo suman información.
 
-**Estado:** 0.1.0-beta, sin publicar. Probado sólo con pruebas automáticas contra un cliente simulado (`luajit tests/run.lua`); nada probado todavía en el juego.
-
-- **Otra especialización:** GearQuest y Pawn pueden recomendar guardar equipo sólo con doble spec informada por el cliente; en Forever se obtiene a nivel 40 según guías, todavía sin verificar en el juego.
-
-- **Armadura de tipo inferior a la puesta:** vende tela, cuero o malla blanca o verde en las 8 ranuras de armadura cuando llevás puesto un tipo superior en ese lugar (`rules.armorBelow`, activada por defecto en Reglas), sin tocar capas, anillos ni escudos y conservando lo verde si tenés Encantamiento (también en `gear_outgrown`).
-
-- **Venta por defecto y nuevas reglas:** lo que no tiene regla se vende por defecto (`rules.sellUnruled`, activada por defecto en Reglas) salvo equipo, bolsas, ítems que se abren (`Data/Locks.lua`), munición, libros/recetas, misión, llaves y calidad rara o épica (cada excepción explica el motivo en el tooltip); se suman equipo superado por 10 o más niveles (`gear_outgrown`), libros de hechizo de clase (`Data/Recipes.lua`) y la lista de enlaces vendidos en el chat tras cada tanda de auto-venta.
-
-- Clasificación: efecto subordinado a clase y misión, fallback `no_rule` visible y motivos adicionales en gris; [auditoría completa de venta](docs/auditoria-venta.md), reproducible con `python -I tools/auditoria_venta.py --ambos` (o `--offline --ambos` con las tablas descargadas).
-
-- **Reparación automática:** activada por defecto; fondos de hermandad opcionales en General, Shift para saltearla y reintento tras las ventas si faltaba plata. Sin archivos nuevos en el `.toc`; pendiente validar en Forever.
-
-- **Venta automática:** activada por defecto, sólo moneditas de bolsas 0 a 4, una ranura cada 0,2 s y hasta 12 por visita; opciones «Sólo grises» y límite de 1 a 12, resumen y avisos de otros vendedores automáticos sin cambiarles la configuración. Reiniciá el cliente por `AutoSell.lua`; pendiente probar en Forever.
-
-- **Protección en el vendedor:** «Protegido» bloquea el ítem mientras está abierto; clic derecho pide confirmación para vender ese ejemplar una vez, sin borrar la marca. Activada por defecto y configurable. Sin API de escudos, queda el bloqueo. Requiere reiniciar el cliente por `Merchant.lua` en el `.toc`; pendiente validar en Forever.
-
-- **Asesor de botín:** con la bolsa llena, mantené Shift para ver si conviene lootear; el tooltip indica qué basura tirar y sus valores. Activado por defecto, configurable en General, sin eliminar ítems.
+**Estado:** 0.1.3-beta. Probado en el juego: marcas en la mochila de Blizzard, en Baganator y en el banco, venta y reparación automáticas, venta de reactivos de otra clase, nivel que te falta en rojo y lectura de la especialización por talentos. Falta probar: la ventana de botín, la doble especialización (se obtiene a nivel 40) y los addons de bolsas que no son Blizzard ni Baganator.
 
 ## Qué hace
 
-Cada ítem legible recibe un solo ícono, por prioridad: candado azul (Protegido), pergamino crema (misión activa), martillo verde/naranja (profesión propia/ajena), balanza violeta (Subastar), moneda dorada (Vender), tacho rojo (Tirar, sin precio de venta), tilde verde (Útil) o signo de pregunta gris `#A0A0A0` (Sin regla, cuando ninguna regla lo decide). Con datos pendientes no se dibuja. Subastar requiere Auctionator, ítem sin ligadura confirmada y precio al menos igual al mayor entre el doble del vendedor y 1 plata; factor y mínimo son configurables.
+Cada ítem recibe un solo ícono, en este orden de prioridad:
 
-En «Íconos» podés elegir las nueve marcas, tamaño (10-32 px, predeterminado 14), opacidad (30-100%), fondo oscuro, esquina, color por marca y moneda Blizzard/KnuJunk. «Restaurar colores» vuelve a la paleta inicial. La tecla alterna Protegido / Automático y limpia marcas viejas de venta; esas marcas aparecen como «Vender (marca vieja)» con «Quitar». Los cambios se aplican al instante.
+| Ícono | Significa |
+|---|---|
+| Candado azul | Protegido: lo marcaste a mano y no se vende |
+| Pergamino crema | Lo pide una misión que está ahora en tu diario |
+| Martillo verde / naranja | Material o herramienta de una profesión tuya / de otra |
+| Balanza violeta | Conviene subastarlo (necesita Auctionator) |
+| Moneda dorada | Se vende |
+| Tacho rojo | Se puede tirar: no tiene precio de venta |
+| Tilde verde | Útil, se guarda |
+| Signo de pregunta gris | El juego todavía no mandó los datos del ítem |
 
-- **Recetas por profesión (R14):** martillo verde si tenés la profesión, naranja si no. Tooltip «Receta de {profesión}, requiere {rango}»; el requisito se omite si se desconoce. Por defecto, ninguna moneda automática para recetas, aunque ya las conozcas, sean grises o no alcances el rango. `Data/Recipes.lua` contiene 2083 recetas (2060 con rango), build `1.60.1.70959`; una receta de clase 9 sin profesión identificada queda como Útil. La opción `knownrecipe`, prendida por defecto, permite tratar las conocidas según su ligadura.
-- **Equipo para nivel futuro (R24):** si tu clase puede llegar a usar el subtipo de arma o armadura según `Data/ClassGear.lua` y el nivel requerido supera el tuyo, queda sin moneda automática y con ícono Útil. Tooltip «Podés usarlo desde nivel {n}». Usa el quinto retorno de `GetItemInfo` y `UnitLevel('player')`; con nivel desconocido no agrega protección. Misión activa y profesión mantienen sus marcas; venta manual prevalece. Reiniciá el cliente para cargar `Data/Recipes.lua`, agregado al `.toc`.
-- **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
-- **Entregas repetibles de reputación (R20):** excepción explícita del dueño a «misión fuera del diario = moneda». Un objetivo de ítem de una misión repetible que otorgue reputación positiva según QuestieDB se conserva aunque no esté en el diario; tooltip «Se entrega por reputación: {facción}», con ícono Útil. Profesión y misión activa conservan su marca. Sin QuestieDB no hay protección R20: no se generó una lista de entregas Forever porque las tablas utilizadas no establecen esa relación. No se inventaron listas.
-- Monedita: items grises con precio de venta, items de misión que ninguna misión de tu diario pide, items que inician una misión ya hecha y confirmada como no repetible por QuestieDB, y armaduras o armas que tu clase nunca puede equipar **sólo si ese ejemplar ya está ligado** (según los datos de Forever 1.60.1.70959). Sin ligar (o sin poder saberlo, como en el botín) no hay monedita y el tooltip dice «Tu clase no puede usar <subtipo>: podés subastarlo o pasarlo a otro personaje».
-- Misiones: sólo protege una misión que está **ahora** en tu diario. Un item de misión (de clase Misión, o que QuestieDB conoce como objetivo, objetivo oculto, fuente o entrega) que ninguna misión de tu diario pide lleva monedita «Ninguna misión activa lo pide», aunque una misión futura, no tomada, ya hecha o repetible lo use, salvo las entregas de reputación R20. Los iniciadores tienen su regla: si no hiciste la misión que inician, no llevan monedita (tooltip «Inicia una misión que no hiciste: <misión>»); hecha y no repetible según QuestieDB, monedita «Misión terminada: <misión>»; hecha sin QuestieDB o sin saber si es repetible, sin monedita y tooltip «Misión entregada; no se sabe si es repetible». Lo que pide una misión del diario lleva el pergamino de misión en bolsas, banco y botín y el tooltip dice «Misión activa: <misión>» (o «Lo pide una misión activa»).
-- Martillito: materiales y herramientas de profesión. Verde si son de una profesión tuya; naranja si son de otra. Una misión activa tiene prioridad y muestra el pergamino en bolsas, banco y botín.
-- Reactivos y herramientas de hechizos de clase (por ejemplo 17031/17032 Rune of Teleportation/Portals, 17030 Ankh, 5140 Flash Powder, 6265 Soul Shard, 17056 Light Feather, reactivos de los venenos del pícaro y tótems del chamán): nunca llevan monedita ni martillo. Si son de tu clase, el tooltip dice «Reactivo de <clase>: <hechizo>» (o «Reactivo de hechizos de tu clase»); de otra clase, «Reactivo de <clase>». Si además es material o herramienta de una profesión, lleva su martillo (verde o naranja) como cualquier material: la clase sólo evita la monedita. La lista sale de wago.tools (`Data/ClassReagents.lua`, 37 items en la build 1.60.1.70959).
-- Libros de biblioteca y cajones arrebatados de Forever: nunca llevan monedita automática , aunque sean de clase Misión y ninguna misión del diario los pida. El tooltip dice a quién entregarlos, sólo el PNJ de tu facción: «Libro de biblioteca: entregalo al bibliotecario (Owen Thadd en Entrañas)» o «(Garion Wendell en Ventormenta)»; «Cajón arrebatado: llenalo con una opción de la lista y entregalo a Dokimi (Encrucijada)» o «Marcy Baker (Crestagrana)», y «Cajón arrebatado lleno: entregalo a …» para el cajón sellado. La lista sale de ItemSparse de wago.tools (descripción «addition to any library's collection» y nombres «Waylaid Crate» / «Sealed … Crate»): `Data/Special.lua`.
-- Ante la duda, Útil: diario incompleto, misiones cuyo estado no se pudo leer o efectos desconocidos nunca habilitan moneda ni tacho. Los efectos confirmados y sets conservan su protección. Datos de ítem pendientes: todavía sin marca.
-- Marcas en bolsas propias, banco vivo mientras está abierto y botín. Banco cerrado, hermandad y vistas guardadas de otros personajes: sin marca.
-- El tooltip suma una leyenda con el color del ícono y conserva los motivos. Subastar informa precios de subasta y vendedor. KnuJunk vende sólo cuando aceptás la confirmación del vendedor; nunca borra ítems.
-- `/knu junk` abre el panel de opciones; `/knu junk help` muestra la ayuda. Por comando: `on|off`, `coin|hammer|loot on|off`, `keep|clear <enlace o ID>`, `rules`, `status`.
-- Bolsas: Blizzard, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag e Inventorian. Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI y RealUI_Inventory tienen adaptador por nombre de ventana pero **hoy no muestran ninguna marca** hasta verificar en el juego el nombre de su ventana. El hook genérico sólo marca botones dentro de contenedores declarados (hoy, las ventanas de bolsas de Blizzard). Cuáles existen para Forever y cuáles se revisaron contra su código: [docs/prueba-bolsas.md](docs/prueba-bolsas.md).
-- Limitaciones conocidas: sin QuestieDB, un item que inicia una misión ya hecha no lleva monedita (no se sabe si es repetible); las misiones imposibles para tu raza o clase no dan monedita (no implementado); la lectura de efectos por tooltip y de «Ligado» no está probada en Forever todavía.
+El tooltip dice el motivo de cada ícono. Ante la duda, se guarda: un diario de misiones incompleto, un estado de misión que no se pudo leer o un efecto desconocido nunca dan moneda ni tacho.
 
-QuestieDB es opcional. Baganator usa un único widget «KnuJunk», con autoinserción solicitada arriba a la derecha y esquina elegible desde sus opciones. Los IDs viejos quedan registrados sin dibujo. El plugin de basura sigue limitado a grises vendibles; cuando su moneda nativa ya aparece, el widget evita duplicarla.
+**Se vende:**
+- Grises con precio de venta.
+- Ítems de misión que ninguna misión de tu diario pide, aunque una misión futura o ya hecha los use (salvo entregas repetibles de reputación, según QuestieDB).
+- Ítems que inician una misión que ya hiciste y que QuestieDB confirma que no se repite.
+- Armas y armaduras que tu clase nunca puede usar, sólo si ese ejemplar ya está ligado. Sin ligar, el tooltip sugiere subastarlo o pasarlo a otro personaje.
+- Armadura blanca o verde de un tipo inferior al que llevás puesto en esa ranura (tela, cuero o malla), sin tocar capas, anillos ni escudos. Con Encantamiento se guarda lo verde.
+- Equipo superado por 10 o más niveles, y equipo que ni GearQuest ni Pawn piden para tu especialización.
+- Reactivos de hechizos de otra clase.
+- Lo que ninguna regla clasifica, salvo equipo, bolsas, cosas que se abren, munición, libros y recetas, misión, llaves y calidad rara o épica. Cada excepción explica en el tooltip qué hacer.
 
-## Opciones
+**Se guarda:**
+- Lo que pide una misión de tu diario.
+- Reactivos y herramientas de hechizos de tu clase.
+- Recetas: martillo verde si tenés la profesión, naranja si no. El tooltip dice qué rango piden.
+- Equipo que tu clase va a poder usar más adelante: en las bolsas se ve en rojo el nivel que pide y el tooltip dice «Podés usarlo desde nivel N».
+- Llaves y cajas cerradas.
+- Libros de biblioteca y cajones arrebatados de Forever. El tooltip dice a qué PNJ de tu facción entregarlos.
 
-Asigná una tecla desde «Cambiar la marca con una tecla» en el panel de opciones. Pasá el mouse por un ítem de las bolsas o del botín y apretala para recorrer Protegido / Automático. No hay tecla predeterminada; la asignación se hace fuera de combate y avisa si reemplazás otra acción.
+**En el vendedor:**
+- Venta automática de lo que tiene moneda: una ranura cada 0,2 s, hasta 12 por visita, con un resumen en el chat. Opciones «Sólo grises» y límite por visita.
+- Reparación automática, con fondos de hermandad opcionales. Mantené Shift para saltearla.
+- Lo protegido queda bloqueado; clic derecho pide confirmación para venderlo una vez.
+- KnuJunk nunca borra ítems.
 
-**Panel de opciones:** Esc > Opciones > AddOns > KnuJunk, o `/knu junk` (sin argumentos). Tiene casillas para activar KnuJunk y para cada marca (monedita, martillito, marcas en el botín), las tres reglas opcionales (comida y bebida superadas, munición superada, recetas ya aprendidas), la lista de marcas manuales con un botón «Quitar» por item y, al pie, el build de datos, si QuestieDB está y su índice listo y los adaptadores de bolsas instalados. Cada cambio refresca las marcas al instante, igual que los comandos. En combate Blizzard no deja abrir la ventana de opciones desde un comando: KnuJunk avisa y hay que abrirlo al salir de combate (o desde Esc > Opciones). Pendiente probar en Forever (ver [CHANGELOG](CHANGELOG.md)).
+**Botín:** la ventana de botín de Blizzard muestra los mismos íconos y «xN» si ya tenés ese ítem (sólo para lo que no se apila). Con la bolsa llena, mantené Shift para ver qué basura conviene tirar.
 
-Las reglas de comida, munición y recetas aprendidas arrancan **prendidas** (el default es vender); al actualizar una instalación existente se prenden una sola vez y después se respeta lo que elijas. `/knu junk rules` lista sus estados; `/knu junk status` también los muestra. Usá `/knu junk rules food|ammo|knownrecipe on|off` para cambiar una y refrescar las marcas.
+## Bolsas compatibles
 
-- **food (R9):** comida/bebida de restauración simple, nivel del personaje al menos 15 por encima del requerido y alternativa usable en bolsas que restaure más del mismo recurso. Sólo ejemplares en bolsas 0 a 4. R9 nunca se aplica a cazadores (HUNTER), porque sus mascotas comen comida común. Sin buffs, comida exclusiva de mascota ni otros efectos. Tooltip: «Tenés comida/bebida mejor para tu nivel».
-- **ammo (R16):** flechas o balas ordinarias con otra pila usable del mismo subtipo en bolsas, de mayor DPS confirmado y al menos 10 niveles de objeto más. Conserva la munición equipada y al menos una pila compatible; sólo marca ejemplares identificados en las bolsas del personaje. Tooltip: «Tenés munición compatible de mayor daño».
-- **knownrecipe (R12/R13):** exige la línea exacta `ITEM_SPELL_KNOWN` («Already known»/«Ya conocido») del tooltip de ese ejemplar en bolsa. Con ligadura confirmada y precio positivo: moneda, «Ya conocés esta receta». Sin ligadura confirmada: sin moneda, «Ya la conocés; podés pasarla o subastarla». Ausencia de la línea no demuestra conocimiento.
+Mochila y banco de Blizzard, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag e Inventorian. El banco se marca sólo mientras está abierto. El banco de hermandad y las vistas de otros personajes no llevan marcas.
 
-Misión activa, reactivos/herramientas, efectos adicionales o desconocidos, sets, llaves, objetos especiales y demás protecciones conservan precedencia; los overrides manuales siguen mandando. Sólo la restauración simple identificada se exceptúa de su propio efecto de uso, nunca de otro efecto. Datos de `wowf 1.60.1.70959`: `Data/Food.lua` contiene 131 comidas/bebidas y `Data/Ammo.lua`, 35 municiones ordinarias (excluye 19286, Fast Test Ammo); regeneración con `python -I tools/build_data.py --offline`. Reiniciá el cliente por los archivos nuevos del `.toc`. Pendiente validar en Forever.
+En Baganator, KnuJunk es un ícono de esquina; la esquina se elige en las opciones de Baganator.
 
-## Documentos
+Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI y RealUI_Inventory todavía no muestran marcas: falta confirmar en el juego el nombre de su ventana.
 
-- [Diseño](docs/superpowers/specs/2026-11-17-knujunk-design.md)
-- [Plan de implementación](docs/superpowers/plans/2026-11-17-knujunk.md)
-- [Prueba de bolsas](docs/prueba-bolsas.md)
-- [Textos para CurseForge](docs/curseforge.md)
+## Opciones y comandos
+
+Panel: Esc > Opciones > AddOns > KnuJunk, o `/knu junk`. Ahí elegís qué íconos ver, su tamaño, opacidad, esquina y color, las reglas de venta, la lista de ítems marcados a mano y una tecla para cambiar la marca del ítem bajo el mouse (Protegido / Automático). En combate el juego no deja abrir el panel con un comando: abrilo al salir de combate.
+
+Comida y bebida superadas, munición superada y recetas ya aprendidas se venden por defecto; se pueden apagar en el panel o con `/knu junk rules`.
+
+| Comando | Qué hace |
+|---|---|
+| `/knu junk` | Abre el panel de opciones |
+| `/knu junk help` | Muestra la ayuda |
+| `/knu junk on` / `off` | Prende o apaga todos los íconos |
+| `/knu junk coin\|hammer\|loot on\|off` | Prende o apaga un tipo de ícono |
+| `/knu junk keep\|clear <enlace o ID>` | Protege un ítem o le saca tu marca |
+| `/knu junk rules` | Lista las reglas opcionales y su estado |
+| `/knu junk status` | Datos, QuestieDB, adaptadores de bolsas y opciones |
+
+## Limitaciones conocidas
+
+- Sin QuestieDB, un ítem que inicia una misión ya hecha no lleva moneda: no se sabe si la misión se repite.
+- Las misiones que tu raza o clase nunca puede hacer todavía no dan moneda.
 
 ## English
 
-- **Merchant protection:** Protected items are locked while the merchant is open; right-click asks before selling that copy once, preserving the mark. Enabled by default and configurable. Without shield support, the lock remains. Restart the client to load `Merchant.lua` from the `.toc`; in-game validation pending.
+Icons on your bags, bank and loot window showing what you can sell or drop and which materials a profession uses. For **World of Warcraft: Forever** (1.60.1). Works on its own: GearQuest, Pawn, QuestieDB, Auctionator and bag addons are optional and only add information.
 
-- **Llaves y cajas cerradas (R18):** sin moneda automática; misión activa y profesión conservan sus marcas y el tooltip explica la protección. `Data/Locks.lua`: 157 llaves/abridores (clase Key (13) más Skeleton Keys 15869–15872 y seforio 4367, 4398, 18594) y 29 cajas (`ItemSparse.LockID > 0`), build 1.60.1.70959. Los requisitos genéricos de Lock no acreditan llaves. Venta manual prevalece. Reiniciá el juego para cargar el archivo nuevo del `.toc`.
-- **Repeatable reputation turn-ins:** owner-approved exception to the quest-log rule. QuestieDB item objectives with confirmed repeatability and positive reputation rewards get no coin outside your log. Active quests and professions retain their marks. Without QuestieDB there is no R20 protection or generated turn-in list. Tooltip: "Turn in for reputation: <faction>".
-Icons in your bags and loot window showing what you can sell or drop and which materials a profession uses. For **World of Warcraft: Forever** (1.60.1).
+**Status:** 0.1.3-beta. Tested in game: icons on Blizzard's backpack, Baganator and the bank, automatic selling and repair, selling other classes' reagents, the missing level in red, and reading your specialization from talents. Not tested yet: the loot window, dual specialization (unlocked at level 40) and bag addons other than Blizzard and Baganator.
 
-**Status:** 0.1.0-beta, unreleased. Tested only with automated tests against a simulated client (`luajit tests/run.lua`); not tested in game yet.
+Each item gets one icon, by priority: blue lock (Protected, marked by you), cream scroll (a quest in your log needs it), green/orange hammer (material or tool for one of your professions / another one), purple scale (worth auctioning, needs Auctionator), gold coin (sell), red bin (drop, no vendor price), green tick (useful, keep) and grey question mark (the game has not sent the item data yet). The tooltip gives the reason. When in doubt, it keeps the item.
 
-- Coin: grey items with a vendor price, quest items no quest in your log needs, items that start a quest you already finished and QuestieDB confirms is not repeatable, and armor or weapons your class can never equip **only if that copy is already soulbound** (per Forever 1.60.1.70959 data). Not bound (or unknown, as in the loot window): no coin, and the tooltip says "Your class can't use <subtype>: you can auction it or pass it to another character".
-- Quests: only a quest that is **in your log right now** protects an item. A quest item (item class Quest, or one QuestieDB knows as an objective, hidden objective, source or turn-in item) that no quest in your log needs gets a coin, "No active quest needs it", even if a future, untaken, finished or repeatable quest uses it, except R20 reputation turn-ins. Quest starters have their own rule: if you haven't done the quest they start, no coin (tooltip "Starts a quest you haven't done: <quest>"); once done and not repeatable per QuestieDB, coin "Quest finished: <quest>"; done without QuestieDB or unknown repeatability, no coin and the tooltip says "Quest turned in; unknown if it's repeatable". Items a quest in your log needs get the quest scroll in bags, bank and loot and the tooltip says "Active quest: <quest>" (or "Needed by an active quest").
-- Hammer: profession materials and tools, green for your professions and orange for others. Active quests take priority and show the scroll in bags, bank and loot.
-- Class spell reagents and tools (teleport and portal runes, Ankh, Flash Powder, Soul Shard, Light Feather, rogue poison reagents, shaman totems...): never a coin or a hammer. Your class: the tooltip says "<class> reagent: <spell>" (or "Reagent for your class's spells"); another class: "<class> reagent". If it is also a profession material or tool it keeps its hammer (green or orange) like any other material: the class only prevents the coin. Generated from wago.tools (`Data/ClassReagents.lua`, 37 items in build 1.60.1.70959).
-- Forever's library books and waylaid crates never get an automatic coin , even if their item class is Quest and no quest in your log needs them. The tooltip says who takes them, only your faction's NPC: "Library book: turn it in to the librarian (Owen Thadd in Undercity)" or "(Garion Wendell in Stormwind)"; "Waylaid crate: fill it with one option from the list and turn it in to Dokimi (Crossroads)" or "Marcy Baker (Redridge)", and "Sealed waylaid crate: turn it in to ..." for the filled crate. The list comes from wago.tools ItemSparse (`Data/Special.lua`).
-- When in doubt, Useful: incomplete quest logs, unknown quest status and unknown effects never enable Coin or Trash. Confirmed effects and set pieces retain protection. Pending item data: no mark yet.
-- Icons only on your character's bags 0 to 4, Blizzard's loot window and your character's bank **while it is open at a banker** (Blizzard, Baganator, Bagnon, Bagnonium, ElvUI, ArkInventory, BetterBags and Inventorian); closing the bank removes them. A closed or cached bank, the guild bank and cached views of other characters get none. Bank icons are not tested in game yet.
-- The tooltip adds a legend in the icon color and keeps the existing reasons. Auction shows auction and vendor prices. KnuJunk automatically sells only coin-marked items; protected items require merchant confirmation. It never deletes items.
-- `/knu junk` opens the options panel; `/knu junk help` shows the help. By command: `on|off`, `coin|hammer|loot on|off`, `keep|clear <link or ID>`, `rules`, `status`.
-- Bags: Blizzard, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag and Inventorian. Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI and RealUI_Inventory currently show **no icons at all** until their window names are verified in game. The generic hook only marks buttons inside declared containers (today, Blizzard's bag frames). See [docs/prueba-bolsas.md](docs/prueba-bolsas.md) (Spanish) for which exist for Forever and which were checked against their code.
-- Known limitations: without QuestieDB, an item that starts a finished quest gets no coin (repeatability unknown); quests your race or class can't do give no coin (not implemented); reading effects and "Soulbound" from tooltips is not tested on Forever yet.
+**Sold:** greys with a vendor price; quest items no quest in your log needs (except repeatable reputation turn-ins, per QuestieDB); starters of a finished quest QuestieDB confirms is not repeatable; weapons and armor your class can never use, only once that copy is bound; white or green armor of a lower type than the one you wear in that slot (cloth, leather or mail; not cloaks, rings or shields; greens kept with Enchanting); gear 10 or more levels below you and gear neither GearQuest nor Pawn wants for your spec; other classes' spell reagents; and anything no rule covers, except gear, bags, openable items, ammunition, books and recipes, quest items, keys and rare or epic quality.
 
-QuestieDB is optional. Baganator uses one KnuJunk corner widget, requesting top-right auto-insertion. Choose its corner in Baganator settings. Old IDs remain as empty aliases. The junk plugin still flags only sellable greys; the widget avoids duplicating its native coin.
+**Kept:** what a quest in your log needs; your class's spell reagents and tools; recipes (green hammer if you have the profession); gear your class can use later (the required level shows in red on the icon and the tooltip says "Usable from level N"); keys and locked boxes; Forever's library books and waylaid crates (the tooltip names your faction's NPC).
 
-### Options
+**At the merchant:** coin items are sold automatically (one slot every 0.2 s, up to 12 per visit, with a chat summary); automatic repair with optional guild funds (hold Shift to skip); protected items are locked and right-click asks before selling one. KnuJunk never deletes items.
 
-Assign a key from “Change a mark with a key” in the options panel, then hover a bag or loot item and press it to cycle Protected / Automatic. No default key; assignment requires being out of combat and reports any replaced action.
+**Loot window:** the same icons, plus "xN" when you already carry that item (non-stacking items only). With full bags, hold Shift to see which junk is worth dropping.
 
-**Options panel:** Esc > Options > AddOns > KnuJunk, or `/knu junk` with no arguments. It has checkboxes to enable KnuJunk and for each icon (coin, hammer, marks in the loot window), the three optional rules (outleveled food and drink, outdamaged ammunition, recipes already learned; all off by default), the list of items you marked by hand with a "Remove" button per item and, at the bottom, the data build, whether QuestieDB is present with its index ready and the installed bag adapters. Every change refreshes the icons right away, like the commands. In combat Blizzard does not let a command open the options window: KnuJunk says so and you open it after combat (or from Esc > Options). Not tested in Forever yet (see [CHANGELOG](CHANGELOG.md)).
+**Bags:** Blizzard's backpack and bank, Baganator, BetterBags, AdiBags, ArkInventory, EllesmereUIBags, LiteBag, tdBag2, Baggins, Bagnon, Bagnonium, ElvUI, BaudBag and Inventorian. The bank is marked only while it is open. Combuctor, OneBag3, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI and RealUI_Inventory show no icons yet: their window names still have to be confirmed in game.
+
+**Options:** Esc > Options > AddOns > KnuJunk, or `/knu junk`. Choose which icons to show, size, opacity, corner and color, the selling rules, your hand-marked items and a key that switches the hovered item between Protected and Automatic. Outleveled food and drink, outdamaged ammunition and already learned recipes are sold by default; turn them off in the panel or with `/knu junk rules`. Commands: `help`, `on|off`, `coin|hammer|loot on|off`, `keep|clear <link or ID>`, `rules`, `status`.
+
+**Known limitations:** without QuestieDB, an item that starts a finished quest gets no coin (repeatability unknown); quests your race or class can never do don't give a coin yet.
+
+## Para desarrolladores
+
+- Pruebas: `luajit tests/run.lua` (cliente simulado).
+- Datos generados de wago.tools, build `1.60.1.70959`: recetas, llaves y cajas, reactivos de clase, comida, munición y objetos especiales en `Data/*.lua`. Se regeneran con `python -I tools/build_data.py --offline`.
+- Auditoría de venta reproducible: `python -I tools/auditoria_venta.py --ambos` ([resultado](docs/auditoria-venta.md)).
+- Otros addons pueden leer la marca de un ítem con `KnuJunkAPI.MarkFor(itemLink, bag, slot)`.
+- Documentos: [diseño](docs/superpowers/specs/2026-11-17-knujunk-design.md), [plan](docs/superpowers/plans/2026-11-17-knujunk.md), [prueba de bolsas](docs/prueba-bolsas.md), [textos para CurseForge](docs/curseforge.md), [CHANGELOG](CHANGELOG.md).
 
 ## Licencia
 

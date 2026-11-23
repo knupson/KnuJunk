@@ -1,19 +1,7 @@
 local _, ns = ...
 
--- BetterBags (AceAddon 'BetterBags' -> modulo 'Events'), sin hooks propios sobre sus botones.
--- Mecanismo de la referencia, escrito de cero (SIN VERIFICAR EN EL JUEGO: BetterBags no esta
--- instalado aqui; todo se detecta por forma y cada pieza ausente deja el boton sin marca):
---   * mensajes 'item/Updated' (item dibujado), 'item/NewButton' (boton nuevo) e 'item/Clearing'
---     (boton liberado) del modulo Events: callback(_, item, decoration). La marca va en la
---     decoracion (donde esta el icono); si no llega, en item.button.
---   * datos del slot: item:GetItemData() -> bagid, slotid, itemInfo.itemID (o item.currentData).
---   * sin marca: hueco libre/virtual/soltado/estatico (item.isFreeSlot, isVirtual, released, blank,
---     staticData), data.isItemEmpty, sin itemInfo.itemID (identidad del item mostrado), o si el slot
---     de bolsa 0-4 ya no tiene el item mostrado (tambien al retomar una marca pendiente: revalidate).
---     BetterBags no tiene vista de otros personajes; el banco usa bolsas fuera de 0-4, que Marks acepta
---     solo con el banco VIVO (ns.Bank) y si son del banco del personaje (bank = true en el registro).
--- Referencias leidas (competencia/): magic-eraser Tint-Junk.lua l.358-384, keep-or-toss-forever
--- BagMarks.lua l.225-238, questjunksweeper Bags.lua l.1051-1118.
+-- BetterBags (AceAddon 'BetterBags', modulo 'Events') por los mensajes item/Updated, item/NewButton e item/Clearing, sin hooks propios.
+-- Sin verificar en el juego (no instalado aqui): cada pieza ausente deja el boton sin marca; el banco solo con el banco vivo (bank = true en el registro).
 local OWNER = 'BetterBags'
 local Adapter = {}
 ns.BetterBagsAdapter = Adapter

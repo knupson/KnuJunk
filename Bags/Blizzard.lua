@@ -1,19 +1,7 @@
 local _, ns = ...
 
--- Bolsas de Blizzard. Solo hooksecurefunc: nunca se reemplaza ni se llama a funciones de Blizzard.
--- Forever convive con dos formas de dibujar bolsas y se soportan las dos, detectando cada una:
---   * clasica: la global ContainerFrame_Update(frame); botones ContainerFrameNItemM, bolsa = ID del frame.
---   * moderna: frame:UpdateItems() de ContainerFrame1..N y ContainerFrameCombinedBags; botones de
---     frame:EnumerateValidItems() (o frame.Items), bolsa = button:GetBagID().
--- El slot es siempre button:GetID(). Si ambas existieran, el doble pintado es idempotente.
--- Banco (solo VIVO: ns.Bank; Marks rechaza toda bolsa de banco con el banco cerrado):
---   * bolsas del banco abiertas en ContainerFrameN: el mismo camino de arriba (la bolsa es del banco).
---   * panel del banco de Forever: botones de un pool que copian el mixin al crearse; se engancha
---     Refresh de BankPanelItemButtonMixin y de CamelotBankPanelItemButtonMixin (el que exista), bolsa =
---     button:GetBankTabID(), slot = button:GetContainerSlotID(); al repintar se recorre
---     BankPanel:EnumerateValidItems() (o BankFrame.BankPanel). SIN VERIFICAR contra el codigo de
---     Blizzard (no hay copia local): la forma sale de magic-eraser Tint-Junk.lua l.135-140, 164-166 y
---     181-185, itemera Filters_Bank.lua l.11-14 y bagmarks Bags.lua l.12-13, 207 y 262.
+-- Bolsas de Blizzard: solo hooksecurefunc, nunca se reemplaza ni se llama a funciones de Blizzard. Se soportan las dos formas de dibujar de Forever: ContainerFrame_Update (clasica) y frame:UpdateItems() (moderna).
+-- Panel del banco: se engancha Refresh de BankPanelItemButtonMixin y CamelotBankPanelItemButtonMixin (el que exista); forma tomada de otros addons, sin copia local del codigo de Blizzard.
 local Blizzard = {}
 ns.Blizzard = Blizzard
 
@@ -148,10 +136,7 @@ function Blizzard.Refresh()
     paintBankPanel()
 end
 
--- Al retomar una marca pendiente (datos del item o fin del combate) el boton pudo reciclarse:
--- se lee lo que muestra AHORA. Tiene que estar visible, su bolsa (del frame actual, o la pestana del
--- panel del banco) en 0-4 o del banco vivo (Marks.AllowedBag) y el item vivo de ese slot es lo que
--- muestra. Cualquier duda: nil (sin marca).
+-- Al retomar una marca pendiente el boton pudo reciclarse: se relee lo que muestra ahora, que debe ser una bolsa 0-4 o del banco vivo (Marks.AllowedBag). Ante la duda, nil (sin marca).
 local function revalidate(button)
     if type(button) ~= 'table' then return nil end
     if type(button.IsVisible) == 'function' then

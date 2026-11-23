@@ -1,8 +1,7 @@
 local _, ns = ...
 
 -- Una marca configurable por ítem legible; datos pendientes, vistas guardadas y addon apagado no dibujan.
--- Sólo bolsas propias 0-4 y banco vivo con adaptador habilitado. Al cerrar el banco se limpia todo.
--- Siluetas propias en media/, martillo existente y moneda Blizzard opcional.
+-- Sólo bolsas propias 0-4 y banco vivo con adaptador habilitado; al cerrar el banco se limpia todo.
 local Marks = {}
 ns.Marks = Marks
 
@@ -252,7 +251,7 @@ local function updateLinkBody(button, link, owner)
     paint(button, markOf(classify(item), true), true)
 end
 
--- Los botones se reciclan: la marca vieja se oculta ANTES de cualquier lectura, y si la lectura
+-- Los botones se reciclan: la marca vieja se oculta antes de cualquier lectura, y si la lectura
 -- falla el boton queda sin marca (una moneda falsa es el peor fallo).
 local function safely(button, fn, ...)
     pending[button] = nil
@@ -263,10 +262,8 @@ local function safely(button, fn, ...)
     end
 end
 
--- En combate no se toca un boton protegido ajeno que aun no tiene nuestra textura (crearla y
--- anclarla seria una operacion sobre un frame protegido): se difiere hasta salir del combate.
--- Actualizar una textura nuestra ya creada si se permite. Un IsProtected que falla cuenta como
--- protegido (ante la duda, no se toca).
+-- En combate no se crea ni ancla una textura sobre un boton protegido ajeno (seria operar sobre un frame protegido): se difiere. Una textura nuestra ya creada si se actualiza.
+-- Un IsProtected que falla cuenta como protegido (ante la duda, no se toca).
 local function mustDefer(button)
     if button.KnuJunkMark then return false end
     if type(InCombatLockdown) ~= 'function' or not InCombatLockdown() then return false end
@@ -316,12 +313,8 @@ function Marks.UpdateLink(button, link, owner)
     safely(button, updateLinkBody, link, owner)
 end
 
--- Para adaptadores que dibujan por su cuenta: veredicto del slot de bolsa `bag`/`slot` (0-4, o el
--- banco vivo: el que llama tiene que haber probado que su vista es la viva). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') si hay que mostrarla,
--- nil si no; el 2.o valor es true cuando el cliente aun no tiene los datos del item (reintentar con
--- GET_ITEM_INFO_RECEIVED). Con marca, el 3.o valor es el resultado completo del clasificador (motivos)
--- y el 4.o el item leido (calidad, precio). Si expectedID viene, el slot tiene que contener ese item.
--- Nunca lanza.
+-- Para adaptadores que dibujan por su cuenta: veredicto del slot `bag`/`slot` (0-4 o banco vivo; el que llama prueba que su vista es la viva). Devuelve la marca ('coin', 'hammer_mine' o 'hammer_other') o nil; el 2.o valor es true si el cliente aun no tiene los datos del item.
+-- Con marca, el 3.o valor es el resultado completo del clasificador y el 4.o el item leido; con expectedID el slot tiene que contener ese item. Nunca lanza.
 function Marks.Verdict(bag, slot, expectedID)
     local success, mark, waiting, result, info = pcall(function()
         if not enabled() or not allowedBag(bag) or type(slot) ~= 'number' then return nil end
@@ -338,11 +331,8 @@ function Marks.Verdict(bag, slot, expectedID)
     return nil, false
 end
 
--- API publica para otros addons (pedido de WOWCompanion, 2026-11-23): la marca que KnuJunk pintaria
--- para un objeto, sin efectos secundarios. Con bag/slot y ese objeto en la casilla, lee la casilla
--- (ligado, recetas conocidas); si no, el link. Devuelve 'trash', 'coin', 'useful', 'quest', 'protected',
--- 'unruled', 'auction', 'hammer_mine', ... o nil (KnuJunk apagado, datos pendientes, fallo). No aplica
--- los interruptores de visibilidad (show.*): eso lo decide quien dibuja. Nunca lanza.
+-- API publica para otros addons (pedido de WOWCompanion): la marca que KnuJunk pintaria para un objeto, sin efectos secundarios; con bag/slot lee la casilla (ligado, recetas conocidas), si no, el link.
+-- Devuelve 'trash', 'coin', 'useful', 'quest', 'protected', 'unruled', 'auction', 'hammer_mine', ... o nil (apagado, datos pendientes, fallo); no aplica show.*. Nunca lanza.
 function Marks.MarkFor(itemLink, bag, slot)
     local success, mark = pcall(function()
         if not enabled() then return nil end
@@ -423,15 +413,10 @@ function Marks.ConnectBank()
 end
 Marks.ConnectBank()
 
--- Retoma lo que quedo esperando (datos del item o fin del combate) SIN confiar en lo guardado:
--- el slot tiene que seguir teniendo el item que se esperaba y, si el adaptador del dueno sabe
--- revalidar (spec.revalidate(boton) -> bag, slot, itemID mostrado), su vista tiene que seguir
--- siendo una casilla viva con ese mismo item. Si algo no coincide: sin marca.
+-- Retoma lo que quedo esperando sin confiar en lo guardado: el slot tiene que seguir teniendo el item esperado y, si el adaptador sabe revalidar, su vista tiene que seguir siendo una casilla viva con ese item; si no, sin marca.
 function resume(button, entry)
     if entry.link then
-        -- Por enlace: si el dueno sabe revalidar, spec.revalidate(boton) devuelve el enlace que el
-        -- boton muestra AHORA (la fila de botin pudo reciclarse a otro item mientras esperaba datos);
-        -- tiene que ser el mismo item que se esperaba, y se marca con el enlace actual.
+        -- Por enlace: si el dueno sabe revalidar, devuelve el enlace que el boton muestra ahora (la fila de botin pudo reciclarse); tiene que ser el item esperado y se marca con el enlace actual.
         local revalidate = ns.Bags and ns.Bags.Revalidator and ns.Bags.Revalidator(entry.owner or 'generic')
         if revalidate then
             local success, current = pcall(revalidate, button)
@@ -452,9 +437,7 @@ function resume(button, entry)
     Marks.Update(button, bag, slot, entry.owner)
 end
 
--- Los datos del item llegaron: se vuelve a marcar solo lo que esperaba ESE item. Si el cliente
--- dice que no existe (success == false) se olvida la espera. Al salir del combate se retoma lo
--- diferido.
+-- Llegaron los datos del item: se vuelve a marcar solo lo que lo esperaba; si el cliente dice que no existe (success == false) se olvida la espera. Al salir del combate se retoma lo diferido.
 local frame = CreateFrame('Frame')
 pcall(frame.RegisterEvent, frame, 'GET_ITEM_INFO_RECEIVED')
 frame:SetScript('OnEvent', function(_, event, itemID, success)

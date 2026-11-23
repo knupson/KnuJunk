@@ -1,41 +1,7 @@
 local _, ns = ...
 
--- Bolsas sin API de plugins, halladas por el NOMBRE GLOBAL de sus botones: Combuctor, OneBag3,
--- Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI y RealUI_Inventory. Los
--- patrones salen de peddler Peddler.lua (l.291-304 Combuctor, 306-319 OneBag3, 374-396 Nivaya,
--- 398-413 m_Bags, 415-423 DerpyStuffing, 465-473 famBags, 475-483 LUI, 485-507 RealUI; rangos
--- corregidos en analisis/_auditoria-codex.md filas 22-25) y, para Inventorian, del codigo real
--- (Inventorian 12.1.5.1 Item.lua l.22: InventorianItemButton<n>; l.57-70: reusa ContainerFrame<c>Item<i>).
--- Escritos de cero; el recorrido NO copia el barrido de 1000/2000 globals de la referencia:
---   * solo con el addon cargado (Registry), solo si el CONTENEDOR del addon (entry.frame) existe y es
---     visible (IsVisible) antes de sondear nada, y solo botones visibles. Una entrada SIN contenedor
---     conocido NO recorre (decision del controlador, 2026-11-17): hoy solo Inventorian lo tiene
---     verificado (_G.InventorianBagFrame); las otras ocho conservan sus patrones y recorreran cuando se
---     verifique el nombre de su ventana en el juego (campo `frame`);
---   * acotado: cada serie de nombres se corta en el PRIMER indice que falta y hay un tope total de
---     sondeos por pasada (PROBE_CAP). Si un addon numera con huecos, lo que sigue al hueco no se ve
---     (sin marca: el fallo seguro).
--- El nombre solo DESCUBRE el boton; bolsa y slot salen del propio boton (GetBagID / button.bag / ID
--- del padre, que si coinciden entre si; slot = GetID()), nunca del nombre.
--- IDENTIDAD: no hay callback de redibujado en estos addons, asi que NO se captura el slot vivo:
--- solo cuenta lo que el boton EXPONE (Common.DisplayedID: itemID, itemLink, info.*, GetItemID) y
--- tiene que coincidir con el item vivo del slot. Boton sin campo expuesto: sin marca, "sin marca
--- hasta verificar en el juego" (salvo Inventorian, cuyo fuente real publica button.itemLink, l.130-133).
--- Inventorian: solo se mira itemLink (Item.lua l.130-133: SetItem fija item e itemLink en cada Update);
--- button.itemID (l.410 de GetInfo) nunca se limpia y puede estar viejo. Su IsCached() (l.373-375:
--- vista de otro personaje o banco sin abrir, Frame.lua l.707) lo ve Common.NonCarried; button.bag y SetBagID (l.85, 90)
--- tienen que coincidir con el ID del padre (bagContainers, l.353-366); la ventana de bolsas es
--- _G.InventorianBagFrame (Inventorian.lua l.81) y no se recorre mientras esta oculta. Banco VIVO (ns.Bank):
--- tambien se recorre _G.InventorianBankFrame (Inventorian.lua l.82) mientras esta visible, y un boton con
--- bolsa del banco se marca solo si su IsCached() es false (Frame.lua l.706-708: cacheado si es otro
--- personaje o el banco no esta abierto; Events.lua l.201-247 lo abre/cierra con BANKFRAME_* y
--- PLAYER_INTERACTION_MANAGER_FRAME_*). Las demas entradas no tienen banco: sin marca ahi.
--- Un boton con otro dueno dedicado (Marks.KnuJunkOwner de otro adaptador) no se toca; uno con dueno
--- generico ('generic' o 'GenericHook') se toma (Common.MayTakeOver) y el generico deja de seguirlo. Los refrescos llegan
--- por Registry (instalacion y BAG_UPDATE_DELAYED) y, con contenedor verificado, al abrir su ventana
--- (HookScript OnShow). Inventorian recicla botones en un pool: ver hookPooled.
--- SIN VERIFICAR EN EL JUEGO: ninguno de estos addons esta instalado aqui salvo lo leido de
--- Inventorian; los nombres son los de la competencia.
+-- Bolsas sin API de plugins, halladas por el nombre global de sus botones (Combuctor, OneBag3, Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI, RealUI_Inventory); patrones de otros addons, Inventorian 12.1.5.1 del codigo real.
+-- Solo se recorre si el contenedor del addon (entry.frame) existe y esta visible: hoy solo Inventorian (InventorianBagFrame); la identidad es lo que expone el boton. Sin verificar en el juego.
 local Frames = {}
 ns.Frames = Frames
 Frames.probes = 0   -- sondeos de globals hechos en total (las pruebas comprueban que con la bolsa cerrada son 0)
@@ -100,9 +66,7 @@ local function bagOf(button)
     return found
 end
 
--- allowBank: la entrada soporta el banco (tiene bankFrame verificado). Una bolsa del banco solo se
--- acepta con el banco VIVO (ns.Bank) y si el boton dice explicitamente que NO es cache (Inventorian
--- Item.lua l.373-375 -> Frame.lua l.706-708: cacheado si es otro personaje o el banco no esta abierto).
+-- allowBank: la entrada tiene bankFrame verificado; una bolsa del banco se acepta solo con el banco vivo (ns.Bank) y si el boton dice que no es cache (IsCached() == false).
 local function locate(button, allowBank)
     if type(button) ~= 'table' then return nil end
     local bag = bagOf(button)
@@ -173,9 +137,7 @@ local function newAdapter(entry)
         pcall(tracker.Apply, tracker, button, reader)
     end
 
-    -- Abrir la ventana del addon pide un refresco agrupado (HookScript, nunca SetScript). La
-    -- ventana puede crearse despues de instalar: se reintenta en cada Refresh y unos segundos
-    -- tras instalar.
+    -- Abrir la ventana del addon pide un refresco agrupado (HookScript, nunca SetScript); la ventana puede crearse despues de instalar, asi que se reintenta en cada Refresh.
     local hookedFrames = {} -- [nombre global] = ventana ya enganchada (si el global pasa a ser otra, se engancha esa)
     local function hookOne(name)
         local frame = rawget(_G, name)
@@ -191,11 +153,8 @@ local function newAdapter(entry)
         return hookOne(entry.frame)
     end
 
-    -- Botones de un pool (Inventorian Item.lua l.73-97): Free los suelta (oculto, sin padre) y Set
-    -- los reasigna a cualquier contenedor, banco incluido, y los redibuja con Update. Se engancha
-    -- cada boton la primera vez que se lo ve (solo uno visto puede llevar nuestra marca): Free
-    -- quita la marca; Set y Update vuelven a leer lo que muestra (banco, vista cacheada o bolsa
-    -- fuera de 0-4: sin marca).
+    -- Pool de botones (Inventorian Item.lua): Free los suelta y Set los reasigna a cualquier contenedor, banco incluido.
+    -- Se engancha cada boton la primera vez que se lo ve: Free quita la marca; Set y Update vuelven a leer lo que muestra.
     local pooledHooks = setmetatable({}, { __mode = 'k' })
     local function release(button)
         if button.KnuJunkOwner == entry.name then tracker:Release(button) end

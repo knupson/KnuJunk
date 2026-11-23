@@ -1,15 +1,7 @@
 local _, ns = ...
 
--- BaudBag por su hook: hooksecurefunc(BaudBag, 'ItemSlot_Updated', ...).
--- SIN VERIFICAR EN EL JUEGO NI CONTRA SU CODIGO: BaudBag no esta instalado aqui ni hay copia de su
--- fuente; la forma sale de la competencia (questjunksweeper Bags.lua l.1166-1170: el hook recibe
--- el boton como 6.o argumento, es decir (BaudBag, a, b, c, d, boton), y bolsa = ID del padre, slot =
--- ID del boton; peddler Peddler.lua l.321-329: botones BaudBagSubBag<bolsa>Item<slot>).
---   * identidad: SOLO la que el boton exponga (Common.DisplayedID, via Common.ExposedReader). No se
---     captura el slot vivo: sin fuente no se puede probar que el hook corra despues de dibujar ni
---     que la vista sea la viva. Boton sin campo expuesto: sin marca hasta verificar en el juego.
---   * sin marca: argumento que no es un boton, banco/hermandad/cache (Common.NonCarried) o bolsas
---     fuera de 0-4 (Marks).
+-- BaudBag por su hook: hooksecurefunc(BaudBag, 'ItemSlot_Updated', ...); el boton llega como 6.o argumento.
+-- Sin verificar en el juego ni contra su codigo (forma tomada de otros addons): solo cuenta la identidad que el boton exponga.
 local OWNER = 'BaudBag'
 local Adapter = {}
 ns.BaudBagAdapter = Adapter

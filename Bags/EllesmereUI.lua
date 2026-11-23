@@ -1,16 +1,7 @@
 local _, ns = ...
 
--- EllesmereUIBags por su API publica: EUI_Bags.RegisterItemOverlayIcon(nombre, callback).
--- Mecanismo de la referencia, escrito de cero (SIN VERIFICAR EN EL JUEGO: EllesmereUIBags no esta
--- instalado aqui; se detecta por forma). Carpeta del addon: 'EllesmereUIBags' (catalogo de
--- questjunksweeper y OptionalDeps de bagmarks):
---   * callback(boton, data): data.bag y data.slot son el slot fisico pintado, data.info.itemID y
---     data.itemLink el item. EUI recicla su tabla `data`: solo se copian escalares.
---   * No se toca nada del boton de EUI salvo la marca propia (Marks); nunca se escriben hooks.
---   * identidad: data.info.itemID o, si no, el itemID de data.itemLink; sin ninguno no hay marca.
---   * sin marca: data sin bag/slot o sin identidad, o el slot de bolsa 0-4 ya no tiene el item
---     mostrado (tambien al retomar una marca pendiente o refrescar: revalidate).
--- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1120-1135.
+-- EllesmereUIBags por su API publica: EUI_Bags.RegisterItemOverlayIcon(nombre, callback(boton, data)); EUI recicla `data`, asi que solo se copian escalares.
+-- Sin verificar en el juego (no instalado aqui): identidad = data.info.itemID o el de data.itemLink; sin bag/slot o sin identidad, sin marca.
 local OWNER = 'EllesmereUIBags'
 local Adapter = {}
 ns.EllesmereUIAdapter = Adapter

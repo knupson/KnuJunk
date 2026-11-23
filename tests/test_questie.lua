@@ -137,7 +137,7 @@ test('mision repetible, diaria, semanal o mensual -> repeatable true', function(
     eq(ns.Questie.Uses(604)[1].repeatable, false)
 end)
 
--- Ronda de arreglos 1 (R4): repeatable = false SOLO con los dos campos presentes, numericos y sin
+-- Ronda de arreglos 1 (R4): repeatable = false solo con los dos campos presentes, numericos y sin
 -- ningun bit de repeticion. Faltantes o invalidos -> nil (no se sabe); un bit valido -> true.
 test('repeatable: nil con flags faltantes o invalidos; true si un flag valido lo confirma', function()
     install({
@@ -431,7 +431,7 @@ test('extraObjectives: un item referenciado cuenta como uso de la mision', funct
     eq(ns.Classify({ id = 500, quality = 1, price = 5 }, ctx).mark, 'coin')
 end)
 
--- Re-revision: una referencia ilegible en extraObjectives se saltea SOLA; el indice queda listo y
+-- Re-revision: una referencia ilegible en extraObjectives se saltea sola; el indice queda listo y
 -- los demas usos (otras misiones, iniciador repetible) siguen protegiendo.
 test('extraObjectives ilegible: se saltea esa parte y el resto sigue protegiendo', function()
     FAKE.items[99012] = { name = 'Item99012', quality = 1, price = 10, classID = 15, subclassID = 0 }

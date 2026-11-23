@@ -1,8 +1,6 @@
 local _, ns = ...
 
--- /knu junk (alias /knu kj): activar/desactivar las marcas y fijar a mano que guardar o vender.
--- Subcomandos: (vacio) | options abre el panel de opciones | help ayuda | on | off | coin|hammer|loot on|off |
--- keep|sell|clear <enlace o itemID> | rules [food|ammo|knownrecipe] [on|off] | status.
+-- /knu junk (alias /knu kj): activa o desactiva las marcas y fija a mano que guardar o vender. Subcomandos: options | help | on | off | coin|hammer|loot on|off | keep|sell|clear <enlace o itemID> | rules [food|ammo|knownrecipe] [on|off] | status.
 -- Todo cambio pasa por ns.Changed (Core.lua): ensucia el contexto del jugador y pide el repintado.
 local Commands = {}
 ns.Commands = Commands

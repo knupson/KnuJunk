@@ -1,9 +1,7 @@
 local _, ns = ...
 
--- Panel de opciones de KnuJunk (Esc > Opciones > AddOns > KnuJunk, o /knu junk).
--- Interruptores de la DB (enabled, show.*, rules.*), lista de marcas manuales (overrides) con "Quitar" y
--- el estado de los datos. Todo son frames comunes (nada seguro, nada protegido); cada cambio pasa por
--- ns.Changed, el mismo camino que los comandos. Estilo de KnuLib (StylePanel, StyleCheck, StyleButton).
+-- Panel de opciones (Esc > Opciones > AddOns > KnuJunk, o /knu junk): interruptores de la DB (enabled, show.*, rules.*), lista de marcas manuales con «Quitar» y estado de los datos.
+-- Solo frames comunes (nada seguro ni protegido); cada cambio pasa por ns.Changed. Estilo de KnuLib.
 local Options = {}
 ns.Options = Options
 

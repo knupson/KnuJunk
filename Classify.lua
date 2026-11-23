@@ -12,14 +12,8 @@ local _, ns = ...
 --          overrides = {[itemID]='keep'|'sell'}, questLogIncomplete = true|nil }
 -- result = { mark = uno de ns.IconKinds o nil pendiente, reasons = { {kind=...} }, auctionPrice = número|nil }
 -- quest conserva el dato de material de misión; reasonMark conserva la marca de profesión para los motivos.
--- Misiones (decision del user, 2026-11-17): un item de mision solo es util si lo pide una mision que
--- esta AHORA en el diario; si no, monedita 'quest_not_active' (futuras, no tomadas, hechas y
--- repetibles no tomadas no protegen, salvo entregas de reputación R20). Los iniciadores siguen su propia regla: mision no hecha (o
--- sin saberlo) -> util ('quest_starter'); hecha y no repetible CONFIRMADO por QuestieDB (repeatable =
--- false) -> monedita 'quest_done'; hecha sin saber si es repetible -> sin moneda
--- ('quest_starter_done_unknown_repeat').
--- Libros de biblioteca y cajones arrebatados (Data/Special.lua): útiles y sin moneda automática,
--- motivo 'library_book' o 'waylaid_crate' (sealed = true si el cajon ya esta lleno).
+-- Misiones: un item de mision solo es util si lo pide una mision del diario; si no, monedita 'quest_not_active' (salvo entregas de reputación). Iniciadores: no hecha o sin saberlo -> 'quest_starter'; hecha y no repetible según QuestieDB -> 'quest_done'; hecha sin saber -> sin moneda ('quest_starter_done_unknown_repeat').
+-- Libros de biblioteca y cajones arrebatados: útiles y sin moneda automática, motivo 'library_book' o 'waylaid_crate' (sealed = true si el cajón ya está lleno).
 
 local ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR, ITEM_CLASS_QUEST = 2, 4, 12
 
@@ -125,9 +119,7 @@ local function classify(item, ctx)
         return result
     end
 
-    -- Libros de biblioteca y cajones arrebatados de Forever (Data/Special.lua): se guardan hasta
-    -- entregarlos al bibliotecario o al representante de comercio. Nunca moneda automatica, aunque
-    -- sean de clase Mision y ninguna mision del diario los pida; sin marca, motivo para el tooltip.
+    -- Libros de biblioteca y cajones arrebatados de Forever: se guardan hasta entregarlos; nunca moneda automatica, aunque sean de clase Mision y ninguna mision del diario los pida (sin marca, motivo para el tooltip).
     local specialReason
     if ns.Data.libraryBooks and ns.Data.libraryBooks[id] then specialReason = { kind = 'library_book' } end
     local crate = ns.Data.waylaidCrates and ns.Data.waylaidCrates[id]
@@ -197,10 +189,8 @@ local function classify(item, ctx)
         return result
     end
 
-    -- 3. Reactivo o herramienta de profesion (la herramienta se pide pero no se consume: martillo,
-    -- pico, cuchillo). Mismo trato: martillito verde si es de una profesion tuya, naranja si no; nunca
-    -- monedita automatica, aunque el item sea gris. Si es las dos cosas, manda el reactivo salvo que solo la
-    -- herramienta sea de una profesion tuya.
+    -- Reactivo o herramienta de profesion (la herramienta se pide pero no se consume): martillito verde si es de una profesion tuya, naranja si no; nunca monedita automatica, ni siendo gris.
+    -- Si es las dos cosas, manda el reactivo salvo que solo la herramienta sea de una profesion tuya.
     local reagentLines = ns.Data.reagents and ns.Data.reagents[id]
     local toolLines = ns.Data.tools and ns.Data.tools[id]
     local recipe = ns.Data.recipes and ns.Data.recipes[id]
@@ -246,10 +236,7 @@ local function classify(item, ctx)
         -- R14 queda de respaldo incluso si una protección corta antes del bloque opcional.
         recipeReasonIndex = #reasons
     end
-    -- Reactivo o herramienta de un hechizo de clase (Data/ClassReagents.lua: runas del mago, ankh,
-    -- fragmento de alma, venenos...). Sin moneda y sin marca (nunca martillo, que es de profesiones);
-    -- no se exige que el hechizo ya este aprendido. Si ademas es material o herramienta de profesion,
-    -- manda el martillo (verde o amarillo): la clase solo evita la moneda. spells solo para tu clase.
+    -- Reactivo o herramienta de un hechizo de clase: sin moneda y sin marca, aunque el hechizo no este aprendido; si ademas es de profesion manda el martillo (la clase solo evita la moneda).
     local classReagent = ns.Data.classReagents and ns.Data.classReagents[id]
     local classReason
     if type(classReagent) == 'table' then
@@ -346,7 +333,7 @@ local function classify(item, ctx)
         reasons[#reasons + 1] = { kind = 'quest_repeatable', questID = starterRepeatable }
         return result
     end
-    -- Tanda 1, regla 4: mision hecha pero sin confirmar que NO es repetible (sin QuestieDB o sin el
+    -- Tanda 1, regla 4: mision hecha pero sin confirmar que no es repetible (sin QuestieDB o sin el
     -- dato): no se sabe si el item vuelve a servir, asi que ninguna moneda automatica.
     if starterQuest and questDone(ctx, starterQuest) and starterRepeat ~= false then
         reasons[#reasons + 1] = { kind = 'quest_starter_done_unknown_repeat', questID = starterQuest }
@@ -363,17 +350,13 @@ local function classify(item, ctx)
         return result
     end
 
-    -- Efecto de uso/equipar en tres estados (Player.ReadLink): 'yes' (evidencia: GetItemSpell o una
-    -- linea del tooltip), 'no' (tooltip completo sin efecto) o 'unknown'. Sin item.effect (items armados
-    -- a mano) se deriva de hasUseOrEquipSpell: true = 'yes', false/nil = 'no'.
+    -- Efecto de uso/equipar en tres estados (Player.ReadLink): 'yes', 'no' (tooltip completo sin efecto) o 'unknown'; sin item.effect se deriva de hasUseOrEquipSpell (true = 'yes', false/nil = 'no').
     local effect = item.effect
     if effect ~= 'yes' and effect ~= 'no' and effect ~= 'unknown' then
         effect = item.hasUseOrEquipSpell and 'yes' or 'no'
     end
-    -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automatica.
-    -- En recetas (clase 9), el uso que enseña no protege de R12/R13.
-    -- En armas y armaduras, «Equipar:» son estadísticas: las juzga la cadena de equipo (GearQuest,
-    -- Pawn, nivel de objeto), no esta regla. Caso real: Cinturón de equilibrista (16659).
+    -- Un efecto confirmado o una pieza de set conservan utilidad: ninguna moneda automática. En recetas (clase 9), el uso que enseña no protege.
+    -- En armas y armaduras «Equipar:» son estadísticas: las juzga la cadena de equipo, no esta regla (caso real: Cinturón de equilibrista, 16659).
     local isGear = item.classID == ITEM_CLASS_WEAPON or item.classID == ITEM_CLASS_ARMOR
     if (effect == 'yes' and not isGear and item.classID ~= 9 and item.classID ~= ITEM_CLASS_QUEST
         and not classCannotUse(item, ctx) and not (rules.food == true and item.restorationOnly == true
@@ -384,7 +367,7 @@ local function classify(item, ctx)
     -- Efecto desconocido: ninguna moneda automática, tampoco por calidad gris.
     local unknownEffect = effect == 'unknown'
 
-    -- Opcionales: después de TODAS las protecciones; diario incompleto nunca habilita moneda.
+    -- Opcionales: después de todas las protecciones; diario incompleto nunca habilita moneda.
     if not unknownEffect and not ctx.questLogIncomplete and not logUnknown then
         if knownRecipe then
             result.mark = nil
@@ -456,9 +439,7 @@ local function classify(item, ctx)
         -- Item de mision (objetivo, fuente o clase Mision) que ninguna mision del diario pide.
         reasons[#reasons + 1] = { kind = 'quest_not_active' }
     end
-    -- Equipo que tu clase nunca puede usar: moneda SOLO si este ejemplar esta ligado (confirmado por
-    -- la bolsa: item.isBound == true). Sin ligar (se puede subastar o pasar) o sin saberlo (botin,
-    -- enlaces): sin moneda; motivo neutro 'class_cannot_use_tradeable' para el tooltip.
+    -- Equipo que tu clase nunca puede usar: moneda solo si este ejemplar esta ligado (item.isBound == true); sin ligar o sin saberlo (botin, enlaces), sin moneda y motivo neutro 'class_cannot_use_tradeable'.
     local tradeable
     if classCannotUse(item, ctx) then
         local reason = { kind = 'class_cannot_use', classID = item.classID, subclassID = item.subclassID, subclassName = item.subclassName }
@@ -470,9 +451,7 @@ local function classify(item, ctx)
             tradeable = reason
         end
     end
-    -- Diario con misiones sin leer (encabezado plegado en combate, sin API): el item podria ser
-    -- un objetivo de mision, asi que no se da NINGUNA moneda (salvo override_sell, ya resuelto arriba).
-    -- Lo mismo si el diario no supo decir si una mision que usa el item esta tomada.
+    -- Diario con misiones sin leer (encabezado plegado en combate) o sin saber si una mision que usa el item esta tomada: el item podria ser un objetivo, asi que sin moneda (salvo override_sell).
     if #reasons > 0 and (ctx.questLogIncomplete or logUnknown) then
         result.reasons = { { kind = 'quest_log_incomplete' } }
         reasons = result.reasons
@@ -599,14 +578,8 @@ local excludedGearSlots = {
     [''] = true, ['0'] = true, ['4'] = true, ['12'] = true, ['18'] = true, ['19'] = true,
 }
 
--- Sin GearQuest: no puntuado. Con GearQuest en simulación o con error: se trata como puntuado (no se vende).
--- GearQuest Forever se publica como _G.GearQuest (GearQuestForever/Core.lua:11); GQ es su local.
--- Se acepta GQ también por compatibilidad con versiones o pruebas que lo exponían así.
--- Pawn (PawnGetItemData + PawnIsItemAnUpgrade, Pawn.lua:1370 y 3633). Devuelve:
---   nil = Pawn no está o no tiene escalas aplicables; false = no es mejora;
---   'pending' = Pawn no tiene los datos aún;
---   tabla = mejora ({ scale, percent } o { best = true } si ya es tu mejor o segundo mejor).
--- Ranuras del jugador por equipLoc (las mismas que compara Pawn, Pawn.lua:107-160).
+-- Sin GearQuest: no puntuado; con GearQuest en simulación o con error se trata como puntuado (no se vende). GearQuest Forever se publica como _G.GearQuest; GQ también se acepta por compatibilidad.
+-- Pawn (PawnGetItemData + PawnIsItemAnUpgrade) devuelve nil = sin Pawn o sin escalas, false = no es mejora, 'pending' = sin datos aún, tabla = mejora ({ scale, percent } o { best = true }). Ranuras por equipLoc, como las compara Pawn.
 local GEAR_SLOTS = {
     INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 },
     INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 },
@@ -623,10 +596,8 @@ local function foldLabel(label)
 end
 ns.FoldSpecLabel = foldLabel
 
--- Comparte el mismo filtro con los vetos y el diagnóstico.
--- true si la escala de Pawn `name` es de la rama activa (ctx.specIndex) de tu clase: Pawn guarda
--- ClassID y SpecID en cada escala (PawnCommon.Scales) y en Forever SpecID es el orden de la rama de
--- talentos (paladin: 1 Sagrado, 2 Proteccion, 3 Reprension; KnuUI/PawnSpec.lua, probado en el juego).
+-- Comparte el filtro con los vetos y el diagnóstico. true si la escala de Pawn `name` es de la rama activa (ctx.specIndex) de tu clase:
+-- Pawn guarda ClassID y SpecID por escala y en Forever SpecID es el orden de la rama de talentos (probado en el juego).
 local function specIDMatches(name, ctx)
     if not ctx.specIndex or type(name) ~= 'string' then return false end
     local common = rawget(_G, 'PawnCommon')
@@ -821,9 +792,7 @@ local function gearMissText(item, ctx, result)
     if type(root) ~= 'table' then return skip('no_gearquest') end
     if type(root.Data) ~= 'table' or type(root.Data.GearScoreMissText) ~= 'function' then return skip('api') end
     if inEquipmentSet(item.id) then return skip('equipment_set') end
-    -- GearScoreMissText también devuelve texto («not scoring this item», Data.lua:7370-7375) cuando
-    -- el ítem no está en su base o la base no cargó: eso no prueba que no te sirva. Sólo cuenta si
-    -- GearQuest tiene filas para el ítem.
+    -- GearScoreMissText también devuelve texto cuando el ítem no está en su base o la base no cargó: eso no prueba que no te sirva; solo cuenta si GearQuest tiene filas para el ítem.
     if type(root.Data.GetEntriesByItemId) ~= 'function' then return skip('api') end
     local okEntries, entries = pcall(root.Data.GetEntriesByItemId, root.Data, item.id)
     if not okEntries then return skip('error') end
@@ -846,9 +815,7 @@ local function gearMissText(item, ctx, result)
     if not okClass or type(ctx.class) ~= 'string' or class ~= ctx.class then
         return skip('class', { gqClass = okClass and class or nil })
     end
-    -- Mismo criterio que el tooltip de GearQuest (Data.lua:7437-7459): hay puesto sólo si existe la
-    -- fila del enlace (EntryForItemLink) Y GearScoreTooltipLine le da una línea. Una fila sin línea
-    -- es «Sin puesto a tu nivel» (caso real: Fajín de avizor del oso 15528, nivel 28, franja 21-27).
+    -- Mismo criterio que el tooltip de GearQuest: hay puesto solo si existe la fila del enlace (EntryForItemLink) y GearScoreTooltipLine da una línea; sin línea es «Sin puesto a tu nivel» (caso real: Fajón de avizor del oso 15528).
     if type(root.Data.EntryForItemLink) ~= 'function' then return skip('api') end
     local okEntry, entry = pcall(root.Data.EntryForItemLink, root.Data, item.link)
     if not okEntry then return skip('error') end
@@ -879,9 +846,8 @@ local function gearMissText(item, ctx, result)
     return skip(success and 'no_text' or 'error')
 end
 
--- La moneda automatica siempre acredita un precio de venta conocido y positivo.
--- Se conserva el veredicto de utilidad y sus motivos; la venta manual prevalece.
--- withEvidence=false permite contrastar exactamente el mismo decisor sin la segunda pasada.
+-- La moneda automática siempre acredita un precio de venta conocido y positivo; se conservan el veredicto de utilidad y sus motivos, y la venta manual prevalece.
+-- withEvidence=false da el mismo decisor sin la segunda pasada.
 function ns.Classify(item, ctx, withEvidence)
     local result = classify(item, ctx)
     if type(item) ~= 'table' or type(ctx) ~= 'table' or item.id == nil then return result end
@@ -901,10 +867,8 @@ function ns.Classify(item, ctx, withEvidence)
     elseif not manual and result.mark == 'coin' and not (type(item.price) == 'number' and item.price > 0) then
         result.mark = item.price == 0 and 'trash' or 'useful'
     end
-    -- Regla del dueño: gris = basura, siempre, con el mismo criterio que Leatrix Plus (vende todo
-    -- gris con precio: Leatrix_Plus.lua:7988 `Rarity == 0 and ItemPrice ~= 0`). Si KnuJunk dijera
-    -- otra cosa de un gris, el ícono mentiría: otro addon lo vende igual. Sólo el candado lo salva
-    -- (traba el ítem en el vendedor). Con precio: monedita; sin precio: tacho.
+    -- Gris = basura, siempre, con el criterio de Leatrix Plus (vende todo gris con precio): si KnuJunk dijera otra cosa, el ícono mentiría. Solo el candado lo salva.
+    -- Con precio: monedita; sin precio: tacho.
     local isGray = item.quality == 0 and result.mark ~= 'protected'
     if isGray then
         local hasGrayReason = false

@@ -1,18 +1,5 @@
--- Adaptadores por hook de actualizacion y por nombres de frames: Bagnon/Bagnonium, ElvUI, BaudBag,
--- Frames (Combuctor, OneBag3, Inventorian, cargBags_Nivaya, m_Bags, DerpyStuffing, famBags, LUI,
--- RealUI_Inventory) y el generico. Los falsos siguen la FORMA de los fuentes reales:
---   Bagnon (BagBrother 12.1.11): core/classes/item.lua l.123-141 (Item:Update fija self.info),
---     containerItem.lua l.62-63 y l.132-134 (Update llama Super(Item):Update; IsCached = frame:IsCached),
---     parented.lua l.9-12 (button.frame = ventana), api/frames.lua l.8-13 (ids 'inventory','bank',
---     'guild','vault'), classes/frameBase.lua l.222-224 (IsCached = owner.offline).
---   ElvUI v16.01 (Game/Shared/Modules/Bags/Bags.lua): l.703-711 (B:UpdateSlot(frame, bagID, slotID)
---     fija slot.itemID/slot.itemLink), l.2461-2466 (frame.isBank, frame.Bags), l.2798-2800
---     (slot.bagFrame, slot.BagID, slot.SlotID), l.3864 (B.Initialized solo con bolsas activas) y
---     General/Initialize.lua l.78 (E.Bags).
---   Inventorian 12.1.5.1 (Item.lua): l.22 (InventorianItemButton%d), l.57-70 (reusa ContainerFrame%dItem%d),
---     l.83-97 (Set: bag, slot, SetID, SetBagID), l.130-133 (SetItem fija item e itemLink), IsCached.
---   BaudBag y los demas: la forma sale de la competencia (questjunksweeper Bags.lua l.1166-1170,
---     peddler Peddler.lua l.261-594), no de su codigo: SIN VERIFICAR en el juego.
+-- Adaptadores por hook de actualizacion y por nombres de frames (Bagnon/Bagnonium, ElvUI, BaudBag, Frames y el generico). Los falsos siguen la forma de los fuentes reales de Bagnon (BagBrother 12.1.11), ElvUI v16.01 e Inventorian 12.1.5.1;
+-- BaudBag y los demas salen de otros addons, no de su codigo: sin verificar en el juego.
 local function addItem(id, fields)
     local base = { name = 'Item' .. id, quality = 0, price = 10, classID = 15, subclassID = 0 }
     for key, value in pairs(fields or {}) do base[key] = value end
@@ -55,9 +42,7 @@ local function junk(id, bag, slot)
     return FAKE.linkOf(id)
 end
 
--- ---------------------------------------------------------------------------
 -- Bagnon / Bagnonium
--- ---------------------------------------------------------------------------
 
 -- Clase Item del addon `folder` con la forma real: Item.Update(button, info) fija button.info.
 local function fakeBagnon(folder)
@@ -206,9 +191,7 @@ test('Bagnon: item sin datos queda pendiente y se retoma por su revalidacion', f
     ok(marked(button), 'llegaron los datos y Bagnon sigue mostrando ese item')
 end)
 
--- ---------------------------------------------------------------------------
 -- ElvUI
--- ---------------------------------------------------------------------------
 
 -- ElvUI[1].Bags con la forma real: UpdateSlot(B, frame, bagID, slotID) fija slot.itemID/itemLink.
 local function fakeElvUI(initialized)
@@ -296,13 +279,9 @@ test('ElvUI: banco, hueco, item viejo o slot que no coincide -> sin marca', func
     end)
 end)
 
--- ---------------------------------------------------------------------------
 -- BaudBag
--- ---------------------------------------------------------------------------
 
--- BaudBag:ItemSlot_Updated(bagSet, containerId, subContainerId, slotId, button): el boton va 6.o con
--- self (questjunksweeper Bags.lua l.1166-1170); la bolsa es el ID del padre y el slot el del boton.
--- Identidad: solo la que el boton exponga (sin fuente de BaudBag no se captura el slot vivo).
+-- BaudBag:ItemSlot_Updated(bagSet, containerId, subContainerId, slotId, button): el boton va 6.o con self; bolsa = ID del padre, slot = el del boton. Identidad: solo la que el boton exponga.
 local function baudButton(bag, slot, parentName, fields)
     local parent = CreateFrame('Frame', parentName or ('BaudBagSubBag' .. bag), UIParent)
     parent.id = bag
@@ -368,9 +347,7 @@ test('BaudBag sin ItemSlot_Updated -> install false', function()
     ok(ns.BaudBagAdapter.Install() == false, 'sin la funcion')
 end)
 
--- ---------------------------------------------------------------------------
 -- Frames por nombres
--- ---------------------------------------------------------------------------
 
 -- Boton con nombre global `name`, bolsa = ID del padre, slot = su ID, y campos expuestos opcionales.
 local function namedButton(name, bag, slot, fields)
@@ -387,9 +364,7 @@ local function walk()
     ns.Bags.RefreshAll(); FAKE.Advance(1)
 end
 
--- Las entradas sin contenedor conocido no recorren: para probar sus patrones se les asigna un
--- contenedor VISIBLE de prueba (simula un nombre verificado en el juego) y se restaura al terminar.
--- Inventorian ya trae el suyo (InventorianBagFrame, Inventorian.lua l.81), que tambien se crea.
+-- Las entradas sin contenedor conocido no recorren: para probar sus patrones se les asigna un contenedor visible de prueba (simula un nombre verificado en el juego) y se restaura al terminar; Inventorian ya trae el suyo.
 local function withContainers(fn)
     local saved = {}
     for _, entry in ipairs(ns.Frames.Entries) do saved[entry] = entry.frame or false end
@@ -617,9 +592,7 @@ ftest('Frames: un refresco repinta y quita la marca si el slot cambio', function
     ok(not marked(button), 'slot vacio')
 end)
 
--- ---------------------------------------------------------------------------
 -- Generico (adaptador 'GenericHook'; el dueno 'generic' es el valor por defecto de Marks)
--- ---------------------------------------------------------------------------
 
 local GENERIC = 'GenericHook'
 
@@ -799,7 +772,7 @@ test('Generic: lo que el boton expone contradice al enlace -> sin marca; si coin
     local clash = genericButton(0, 3, { itemID = 101 })
     SetItemButtonQuality(clash, 0, link)
     ok(not marked(clash), 'campo 101 vs enlace 100')
-    -- el boton expone 101 (que SI esta en el slot) pero el addon dice que dibuja 100: se contradicen
+    -- el boton expone 101 (que si esta en el slot) pero el addon dice que dibuja 100: se contradicen
     FAKE.bags['0:3'] = 101
     local twisted = genericButton(0, 3, { itemID = 101 })
     SetItemButtonQuality(twisted, 0, link)
@@ -871,9 +844,7 @@ test('Marks: llamada SIN dueno (dueno por defecto generic) se reanuda por la reg
     ok(ns.Bags.Revalidator('generic') == nil, 'ningun adaptador se registra con el dueno por defecto')
 end)
 
--- ---------------------------------------------------------------------------
 -- Registro
--- ---------------------------------------------------------------------------
 
 test('registro: ninguno de los nuevos se instala sin su addon, salvo el generico', function()
     withQuality()
@@ -885,9 +856,7 @@ test('registro: ninguno de los nuevos se instala sin su addon, salvo el generico
     ok(isInstalled('GenericHook'))
 end)
 
--- Item 7 de la ola final: Inventorian. Abrir la ventana pide un refresco agrupado (HookScript
--- OnShow), y un boton del pool (Item.lua l.73-97: Free/Set) que pasa al banco o a una vista
--- cacheada pierde la marca sin esperar otro evento.
+-- Inventorian: abrir la ventana pide un refresco agrupado (HookScript OnShow) y un boton del pool (Free/Set) que pasa al banco o a una vista cacheada pierde la marca sin esperar otro evento.
 local function inventorianButton(index, bag, slot, link)
     local parent = CreateFrame('Frame', nil, InventorianBagFrame); parent.id = bag
     local button = CreateFrame('Button', 'InventorianItemButton' .. index, parent)

@@ -125,9 +125,8 @@ local function reputationNames(ids)
     return #names > 0 and table.concat(names, ', ') or ns.L['unknown faction']
 end
 
--- Líneas {text, r, g, b}, incluidos motivos de protección sin marca. bound = true si el
--- propio tooltip confirma que el ejemplar está ligado (ver boundFromTooltip); nil = no se sabe.
--- Sólo para el botín (gancho de SetLootItem): en las bolsas el ítem se contaría a sí mismo.
+-- Líneas {text, r, g, b}, incluidos motivos de protección sin marca; bound = true si el propio tooltip confirma que el ejemplar está ligado (nil = no se sabe).
+-- Sólo para el botón (gancho de SetLootItem): en las bolsas el ítem se contaría a sí mismo.
 function Tooltip.OwnedLine(link)
     if not enabled() or (ns.DB and type(ns.DB.show) == 'table' and ns.DB.show.owned == false) then return nil end
     local total, inBags, inBank = ns.Marks.OwnedCount(link)
@@ -434,11 +433,8 @@ local function plain(text)
     return text
 end
 
--- Lineas de `lines` que el tooltip aun no tiene, linea por linea (una decoracion parcial se completa
--- al reintentar sin repetir las ya puestas). Las regiones <nombre>TextLeft<i> leibles son la
--- autoridad: si el tooltip las expone, se mira solo lo que dicen. Si no se pueden leer (sin
--- NumLines / nombre / regiones), se usa el registro propio: guard[tooltip] = { link, done[texto] },
--- que OnTooltipCleared borra.
+-- Lineas de `lines` que el tooltip aun no tiene, una por una (una decoracion parcial se completa al reintentar sin repetir). Las regiones <nombre>TextLeft<i> leibles son la autoridad;
+-- si no se pueden leer, se usa el registro propio guard[tooltip] = { link, done[texto] }, que OnTooltipCleared borra.
 local function missingLines(tooltip, link, lines)
     if type(tooltip.NumLines) == 'function' and type(tooltip.GetName) == 'function' then
         local success, count = pcall(tooltip.NumLines, tooltip)
@@ -479,9 +475,7 @@ local function bare(text)
     return (text:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''):gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- true si el tooltip muestra la linea "Ligado" (ITEM_SOULBOUND; sin la global, ingles y castellano):
--- el cliente la pone en los items de la bolsa ya ligados ("Se liga al recogerlo" del botin o de un
--- enlace NO cuenta). nil si no aparece o no se puede leer (= no se sabe).
+-- true si el tooltip muestra la linea «Ligado» (ITEM_SOULBOUND; sin la global, ingles y castellano); «Se liga al recogerlo» no cuenta. nil si no aparece o no se puede leer.
 local function boundFromTooltip(tooltip, data)
     local wanted = {}
     local global = rawget(_G, 'ITEM_SOULBOUND')
@@ -567,9 +561,7 @@ local function hookTooltip(tooltip, withSetItem)
         if self == rawget(_G, 'GameTooltip') then ns.Overrides.hovered = nil end
     end
     pcall(tooltip.HookScript, tooltip, 'OnTooltipCleared', clear)
-    -- El escudo del vendedor NO se oculta con el tooltip: al aparecer, el botón recibe OnLeave
-    -- (el mouse quedó sobre el escudo), la bolsa oculta el tooltip y ocultar el escudo ahí armaba
-    -- un ciclo de parpadeo (visto en el juego con Baganator). El escudo se va con su propio OnLeave.
+    -- El escudo del vendedor no se oculta con el tooltip: al aparecer, el botón recibe OnLeave y la bolsa oculta el tooltip; ocultar el escudo ahí armaba un ciclo de parpadeo (con Baganator). El escudo se va con su propio OnLeave.
     pcall(tooltip.HookScript, tooltip, 'OnHide', clear)
     if type(tooltip.SetBagItem) == 'function' and type(hooksecurefunc) == 'function' then
         pcall(hooksecurefunc, tooltip, 'SetBagItem', function(self, bag, slot) Tooltip.Decorate(self, nil, bag, slot) end)
