@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4-beta
+
+- Otros addons pueden leer la marca de un ítem con `KnuJunkAPI.MarkFor(itemLink, bag, slot)`: devuelve el nombre del ícono (por ejemplo `coin`) o `nil` si no hay datos o KnuJunk está apagado.
+- Textos apagados del panel con más contraste y mensaje de comandos traducido (KnuLib 7).
+- README y página de CurseForge con lo que está probado en el juego y lo que falta probar.
+
 ## 0.1.3-beta
 
 - Equipo que todavía no te podés poner: en las bolsas se ve el nivel que pide, en rojo abajo a la izquierda (mochila de Blizzard y Baganator), y el tooltip dice «Podés usarlo desde nivel N». Opción «Nivel que te falta» en Marcas.

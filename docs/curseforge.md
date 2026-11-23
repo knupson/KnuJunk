@@ -1,6 +1,6 @@
 # CurseForge page
 
-Text to paste into the CurseForge project. Status: 0.1.3-beta. Tested in game: icons on Blizzard's backpack, Baganator and the bank, automatic selling and repair, selling other classes' reagents, the missing level in red, and reading your specialization from talents. Not tested yet: the loot window, dual specialization (unlocked at level 40) and bag addons other than Blizzard and Baganator.
+Text to paste into the CurseForge project. Status: 0.1.4-beta. Tested in game: icons on Blizzard's backpack, Baganator and the bank, automatic selling and repair, selling other classes' reagents, the missing level in red, and reading your specialization from talents. Not tested yet: the loot window, dual specialization (unlocked at level 40) and bag addons other than Blizzard and Baganator.
 
 Summary (max one line):
 
