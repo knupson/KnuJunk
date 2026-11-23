@@ -62,9 +62,7 @@ local function slotButton(name, parent, id, itemID)
     return button
 end
 
--- ---------------------------------------------------------------------------
 -- BetterBags
--- ---------------------------------------------------------------------------
 
 -- AceAddon falso con modulo Events (graba los callbacks) y modulo ItemFrame.
 local function betterBags()
@@ -225,9 +223,7 @@ test('BetterBags: un registro que falla se reintenta sin duplicar el resto', fun
     end)
 end)
 
--- ---------------------------------------------------------------------------
 -- AdiBags
--- ---------------------------------------------------------------------------
 
 local function adiBags()
     local state = { handlers = {}, receivers = {} }
@@ -317,9 +313,7 @@ test('AdiBags: sin ABEvent -> install false; se completa si un registro falla', 
     end)
 end)
 
--- ---------------------------------------------------------------------------
 -- ArkInventory
--- ---------------------------------------------------------------------------
 
 local BAG_LOCATION, VAULT_LOCATION = 1, 4
 
@@ -441,9 +435,7 @@ test('ArkInventory: sin la API completa -> install false; no se engancha dos vec
     end)
 end)
 
--- ---------------------------------------------------------------------------
 -- EllesmereUIBags
--- ---------------------------------------------------------------------------
 
 local function eui()
     local state = { calls = 0 }
@@ -519,9 +511,7 @@ test('EllesmereUIBags: sin EUI_Bags o sin RegisterItemOverlayIcon -> install fal
     ok(ns.EllesmereUIAdapter.Install() == true, 'reintento correcto')
 end)
 
--- ---------------------------------------------------------------------------
 -- LiteBag
--- ---------------------------------------------------------------------------
 
 local function liteBag()
     local state = {}
@@ -593,9 +583,7 @@ test('LiteBag: sin el gancho -> install false y se reintenta', function()
     ok(isInstalled('LiteBag'), 'se instala cuando aparece')
 end)
 
--- ---------------------------------------------------------------------------
 -- tdBag2
--- ---------------------------------------------------------------------------
 
 local function tdBag2Fake()
     local state = { calls = 0 }
@@ -676,14 +664,10 @@ test('tdBag2: sin RegisterPlugin o con registro roto -> install false', function
     ok(ns.TdBag2Adapter.Install() == true, 'reintento correcto')
 end)
 
--- ---------------------------------------------------------------------------
 -- Baggins
--- ---------------------------------------------------------------------------
 
--- Falso de Baggins Forever 5.9.9 segun su codigo: Baggins.lua:280-293 (RegisterSignal(name, handler,
--- arg1) falla sin arg1; FireSignal llama handler(arg1, ...)) y :3643
--- (FireSignal('Baggins_ItemButtonUpdated', bagframe, button, bag, slot)). El boton NO guarda
--- itemID/link (UpdateItemButton los usa como locales): no tiene ningun campo de identidad.
+-- Falso de Baggins Forever 5.9.9 segun su codigo: RegisterSignal(name, handler, arg1) falla sin arg1 y FireSignal('Baggins_ItemButtonUpdated', bagframe, button, bag, slot) llama handler(arg1, ...).
+-- El boton no guarda itemID ni link: no tiene ningun campo de identidad.
 local function bagginsFake()
     local state = { signals = {}, calls = 0 }
     Baggins = {
@@ -762,7 +746,7 @@ test('Baggins: el slot cambia sin nueva senal -> el refresco y BagOpened limpian
     local useful = bagginsButton('u', 0, 5)
     state.update(useful, 0, 5)
     ok(marked(useful)); eq(useful.KnuJunkMark.texture,ns.Marks.TEXTURES.useful)
-    -- slot cambiado a un gris SIN senal: sigue sin moneda tras refrescar
+    -- slot cambiado a un gris sin senal: sigue sin moneda tras refrescar
     FAKE.bags['0:5'] = 101
     ns.Bags.RefreshAll(); FAKE.Advance(1)
     ok(not marked(useful), 'el boton dibujo el 100: no hereda la moneda del 101')
@@ -804,9 +788,7 @@ test('Baggins: sin RegisterSignal o con registro roto -> install false; BagOpene
     ok(ns.BagginsAdapter.Install() == true, 'sin BagOpened alcanza con la del boton')
 end)
 
--- ---------------------------------------------------------------------------
 -- Comunes
--- ---------------------------------------------------------------------------
 
 test('registro: las siete bolsas con API propia usan la carpeta de su addon', function()
     for _, folder in ipairs({ 'BetterBags', 'AdiBags', 'ArkInventory', 'EllesmereUIBags', 'LiteBag', 'tdBag2', 'Baggins' }) do
@@ -838,9 +820,7 @@ test('un fallo del lector o de Marks.Update no rompe al addon de bolsas', functi
     end)
 end)
 
--- ---------------------------------------------------------------------------
 -- Ronda de arreglos 1: identidad del item mostrado, retomar sin pintar a ciegas, ascendencia
--- ---------------------------------------------------------------------------
 
 -- Hace que Player.ReadItem no tenga datos durante fn (el cliente aun no conoce el item).
 local function withoutItemData(fn)

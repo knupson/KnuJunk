@@ -1,10 +1,7 @@
 local _, ns = ...
 
--- Piezas compartidas por los adaptadores de bolsas con API propia (BetterBags, AdiBags, ArkInventory,
--- EllesmereUIBags, LiteBag, tdBag2, Baggins). Nada aqui toca el addon de bolsas: solo traduce
--- "este boton muestra la bolsa X, slot Y" a ns.Marks.Update y recuerda el boton para repintarlo.
--- Regla de oro: si no se puede PROBAR que el boton es una casilla viva de las bolsas 0-4 (o del banco
--- vivo, solo en los adaptadores que lo soportan) del personaje actual, sin marca.
+-- Piezas compartidas por los adaptadores con API propia: traducen "este boton muestra la bolsa X, slot Y" a ns.Marks.Update sin tocar el addon de bolsas.
+-- Sin prueba de que el boton es una casilla viva de las bolsas 0-4 (o del banco vivo) del personaje actual, sin marca.
 local Common = {}
 ns.Bags.Common = Common
 
@@ -40,7 +37,7 @@ function Common.Library(name)
     if success and type(library) == 'table' then return library end
 end
 
--- ID del item que hay AHORA en un slot de bolsa (sin necesitar sus datos), o nil.
+-- ID del item que hay ahora en un slot de bolsa (sin necesitar sus datos), o nil.
 function Common.LiveItemID(bag, slot)
     if type(C_Container) == 'table' and type(C_Container.GetContainerItemInfo) == 'function' then
         local success, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
@@ -62,13 +59,8 @@ local MAX_DEPTH = 16
 
 local BANK_WORD, BANK_FLAG = 'bank', 'isBank'
 
--- true si el boton (o alguno de sus ancestros) es POSITIVAMENTE una vista no portada: banco,
--- hermandad, vault, vista cacheada. Si la ascendencia no se puede recorrer completa (GetParent
--- ausente o que falla, IsCached/GetName que fallan, ciclo, mas de 16 niveles) tambien devuelve
--- true: ante la duda, sin marca. Solo llegar al final de la cadena (padre nil) prueba lo contrario.
--- allowBank: el adaptador acepta el banco del personaje; solo con el banco VIVO (ns.Bank) se
--- ignoran el nombre 'bank' y la bandera isBank. Hermandad ('guild', isGuildBank), vault y cualquier
--- IsCached() == true siguen rechazados siempre.
+-- true si el boton o algun ancestro es positivamente una vista no portada (banco, hermandad, vault, cache) o si la ascendencia no se puede recorrer completa: ante la duda, sin marca.
+-- allowBank: con el banco vivo (ns.Bank) se ignoran el nombre 'bank' y la bandera isBank; hermandad, vault e IsCached() == true se rechazan siempre.
 function Common.NonCarried(button, allowBank)
     allowBank = allowBank and ns.Bank ~= nil and ns.Bank.IsLive() == true
     local object = button
@@ -103,9 +95,7 @@ function Common.NonCarried(button, allowBank)
     return true
 end
 
--- Duenos "genericos": 'generic' es el dueno por defecto de Marks (llamada sin owner) y
--- 'GenericHook' el del adaptador generico por hook. Un adaptador dedicado puede tomar un boton que
--- tenga uno de ellos; los duenos dedicados de otros adaptadores nunca se pisan.
+-- Duenos genericos ('generic' de Marks y 'GenericHook'): un adaptador dedicado puede tomarlos; los duenos dedicados de otros adaptadores nunca se pisan.
 Common.GENERIC_OWNER = 'GenericHook'
 function Common.MayTakeOver(button, owner)
     local current = button.KnuJunkOwner
@@ -116,11 +106,8 @@ local IDENTITY_NUMBERS = { 'itemID', 'itemId' }
 local IDENTITY_LINKS = { 'itemLink', 'hyperlink', 'link' }
 local IDENTITY_SOURCES = { 'info', 'BGR', 'details' }
 
--- ID del item que el boton MUESTRA segun su propia informacion (nunca lo que hay ahora en el slot):
--- campos itemID/itemId/itemLink/hyperlink/link del boton o de su tabla info/BGR/details, o
--- button:GetItemID(). Ninguno: nil. Campos invalidos o que se contradicen: nil, true (el boton dice
--- algo incoherente: sin marca).
--- Los campos y su orden salen de DisplayMatches de questjunksweeper (Bags.lua l.289-340).
+-- ID del item que el boton dice mostrar (itemID/itemLink/hyperlink/link, tablas info/BGR/details o GetItemID), nunca lo que hay ahora en el slot.
+-- Ninguno: nil; campos que se contradicen: nil, true (sin marca).
 function Common.DisplayedID(button)
     if type(button) ~= 'table' then return nil end
     local source = button
@@ -152,14 +139,8 @@ function Common.DisplayedID(button)
     return found
 end
 
--- Para botones cuyo addon NO publica el item que dibuja (SIN VERIFICAR para LiteBag y tdBag2; real
--- en Baggins 5.9.9: UpdateItemButton guarda itemID/link solo en locales): la identidad se toma en
--- el CALLBACK de redibujado, que corre sincrono justo despues de que el addon dibujo ese slot,
--- asi que el slot vivo en ese instante es lo que el addon acaba de dibujar (Common.Capture).
--- En cualquier refresco posterior (sin callback) solo se vuelve a marcar si lo capturado sigue
--- siendo el item vivo del slot; si no, sin marca hasta el proximo callback. Un campo que el boton
--- SI exponga (Common.DisplayedID) manda sobre lo capturado.
--- locate(boton) -> bag, slot, o nil si el boton no es una casilla portada.
+-- Para addons que no publican el item que dibujan: la identidad es el slot vivo capturado en el callback de redibujado, que corre justo despues de que el addon dibujo ese slot (Common.Capture).
+-- Un refresco posterior solo remarca si lo capturado sigue siendo el item del slot; un campo expuesto (Common.DisplayedID) manda. locate(boton) -> bag, slot, o nil.
 function Common.Capture(bag, slot)
     return { bag = bag, slot = slot, id = Common.LiveItemID(bag, slot) }
 end
@@ -178,10 +159,8 @@ function Common.CapturingReader(locate)
     end
 end
 
--- Para botones cuyo addon SI publica el item que dibuja (Bagnon: button.info; ElvUI: slot.itemID y
--- slot.itemLink): la identidad es SOLO el campo expuesto, nunca el slot vivo. Sin campo, o con
--- campos que se contradicen, sin marca. identity(boton) -> itemID, contradictorio (opcional) reemplaza
--- a Common.DisplayedID cuando un addon deja campos viejos que no son de fiar (Inventorian).
+-- Para addons que si publican el item que dibujan (Bagnon: button.info; ElvUI: slot.itemID y slot.itemLink): la identidad es solo el campo expuesto, nunca el slot vivo.
+-- identity(boton) -> itemID, contradictorio (opcional) reemplaza a Common.DisplayedID cuando el addon deja campos viejos (Inventorian).
 function Common.ExposedReader(locate, identity)
     return function(button)
         local bag, slot = locate(button)
@@ -192,12 +171,8 @@ function Common.ExposedReader(locate, identity)
     end
 end
 
--- Seguimiento de botones de UN adaptador. El lector es una funcion SIN capturas
--- reader(boton, contexto) -> bag, slot, itemID MOSTRADO (el que el propio addon de bolsas dice que
--- dibuja en el boton), o nil para "sin marca"; sin itemID mostrado no hay marca. Cada boton recuerda
--- su lector y un contexto minimo (escalares: nunca el propio boton), asi se repinta y se retoma una
--- marca pendiente sin esperar al addon, pero siempre volviendo a leer lo que el addon muestra y
--- contrastandolo con lo que hay AHORA en el slot.
+-- Seguimiento de botones de un adaptador: reader(boton, contexto) -> bag, slot, itemID mostrado (nil = sin marca); cada boton recuerda su lector y un contexto de escalares (nunca el boton).
+-- Asi se repinta y se retoma una marca pendiente sin esperar al addon, releyendo siempre lo que el addon muestra y contrastandolo con el slot actual.
 function Common.NewTracker(owner)
     local tracker = { owner = owner, readers = setmetatable({}, { __mode = 'k' }), contexts = setmetatable({}, { __mode = 'k' }) }
 

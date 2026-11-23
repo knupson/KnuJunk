@@ -1,22 +1,7 @@
 local _, ns = ...
 
--- Baggins por sus senales: Baggins:RegisterSignal(senal, callback, receptor).
--- Contrato VERIFICADO contra el codigo fuente de Baggins Forever 5.9.9 (Baggins/Baggins.lua):
---   * l.280-293: RegisterSignal(name, handler, arg1) falla sin arg1 (usamos un receptor propio);
---     FireSignal llama handler(arg1, ...) con los argumentos de la senal.
---   * l.3357-3409 y 3643: UpdateItemButton lee el item del slot (itemInfo) y lo usa en variables
---     LOCALES (no guarda itemID/link en el boton), fija button:SetID(slot), cuelga el boton de un
---     marco con SetID(bag) (bagframe.bagparents[bag]) y al final dispara, sincronamente,
---     FireSignal('Baggins_ItemButtonUpdated', bagframe, button, bag, slot): el callback recibe
---     (receptor, bagframe, boton, bag, slot).
---   * l.2950: existe 'Baggins_BagOpened' (Peddler la usa; aqui solo revalida lo ya rastreado).
--- Identidad: Baggins no la publica en el boton, asi que se toma en el callback (Common.Capture): el
--- slot vivo en ese instante es lo que Baggins acaba de dibujar. Un refresco posterior solo remarca
--- si lo capturado sigue siendo el item vivo del slot (si no, sin marca hasta la proxima senal).
--- Sin marca ademas: banco/hermandad/vault/cache (Common.NonCarried), bag/slot de la senal distintos
--- de los del boton, bolsas fuera de 0-4 (Marks). SIN VERIFICAR EN EL JUEGO (solo contra el codigo).
--- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1173-1175, peddler Peddler.lua
--- l.261-272 y 663-665.
+-- Baggins por sus senales: Baggins:RegisterSignal(senal, callback, receptor). Contrato leido en Baggins Forever 5.9.9: 'Baggins_ItemButtonUpdated' se dispara sincrono y RegisterSignal falla sin receptor.
+-- Baggins no publica el item en el boton: se captura el slot vivo dentro del callback (Common.Capture). Sin verificar en el juego (solo contra el codigo).
 local OWNER = 'Baggins'
 local Adapter = {}
 ns.BagginsAdapter = Adapter

@@ -1,31 +1,14 @@
 local _, ns = ...
 
--- API oficial: un widget KnuJunk para todas las marcas y dos IDs viejos inertes.
--- Baganator gestiona esquina y autoinserción; no escribimos su configuración.
--- El plugin de basura conserva sólo grises vendibles con veredicto coin. Si ya dibuja
--- su moneda nativa, el widget evita duplicarla.
--- Regla de oro: si un boton no se puede PROBAR como una casilla viva de las bolsas 0-4 (o del banco
--- VIVO, ns.Bank) del personaje actual (vistas guardadas de otros personajes, banco cerrado, hermandad),
--- no se marca.
---   * Corner widget: Baganator pasa los detalles del boton; `itemLocation` solo lo fijan los botones
---     de contenedor VIVOS (ItemViewCommon/ItemButton.lua l.675-682, Layouts.lua l.885 y
---     CategoryViews/BagLayout.lua l.55-71 solo con isLive), asi que ahi esta la prueba (bolsa
---     0-4 o del banco + el item del slot coincide). Para el banco se exige ademas la vista del banco viva.
---   * Junk plugin: el callback solo recibe bagID/slotID/itemID (las vistas guardadas de otro personaje
---     llegan con los mismos numeros), asi que ademas se exige que la vista visible de Baganator que
---     corresponde (mochila para 0-4, banco para el banco) sea la viva del personaje actual.
+-- API oficial de Baganator: un widget KnuJunk para todas las marcas y dos IDs viejos inertes; Baganator gestiona esquina y autoinserción y no escribimos su configuración.
+-- Un botón se marca solo si se prueba casilla viva de las bolsas 0-4 (o del banco vivo) del personaje actual: vistas guardadas, banco cerrado y hermandad, sin marca.
 local Adapter = {}
 ns.BaganatorAdapter = Adapter
 
 local RESCAN_SECONDS = 2
--- Vistas de mochila: "<prefijo><skin>" (ViewManagement/Initialize.lua l.150-151, frameGroup = clave
--- de skin, Skins/Initialize.lua l.43). Claves de las skins que trae Baganator (Skins/*.lua,
--- RegisterSkin). Una skin de otro addon no se conoce: su vista no habilita la marca (fallo seguro).
+-- Vistas de mochila ("<prefijo><skin>"): solo las skins que trae Baganator; la de otro addon no habilita la marca (fallo seguro).
 local VIEW_PREFIXES = { 'Baganator_SingleViewBackpackViewFrame', 'Baganator_CategoryViewBackpackViewFrame' }
--- Vistas del banco (ViewManagement/Initialize.lua l.226-227). Viva solo si Baganator tiene el banco
--- activo (ItemViewCommon/BankView.lua l.144-156: liveBankActive entre BANKFRAME_OPENED y _CLOSED) y su
--- pestana actual es la viva (BankViewCharacterTabsView.lua l.469-485: isLive = liveBankActive y el
--- personaje mostrado es el vivo).
+-- Vistas del banco: viva solo con el banco de Baganator activo (BANKFRAME_OPENED a _CLOSED) y mostrando al personaje actual.
 local BANK_PREFIXES = { 'Baganator_SingleViewBankViewFrame', 'Baganator_CategoryViewBankViewFrame' }
 local SKIN_KEYS = { 'blizzard', 'blizzard_black', 'dark', 'elvui', 'ellesmereui', 'gw2_ui', 'ndui' }
 
@@ -50,9 +33,7 @@ local function api()
     if type(root) == 'table' and type(root.API) == 'table' then return root.API end
 end
 
--- ---------------------------------------------------------------------------
 -- Vista de mochila viva
--- ---------------------------------------------------------------------------
 
 -- Busca por nombre (rawget, sin barrer _G) solo las vistas que aun no aparecieron.
 local function scanInto(prefixes, found)
@@ -82,7 +63,7 @@ local function currentCharacter()
     end
 end
 
--- true solo si hay al menos una vista de mochila visible y TODAS las visibles son la viva del
+-- true solo si hay al menos una vista de mochila visible y todas las visibles son la viva del
 -- personaje actual. Un frame desconocido nunca habilita la marca: solo la bloquea.
 local function liveBackpack()
     if scanDirty or not lastScan or GetTime() - lastScan >= RESCAN_SECONDS then scanViews() end
@@ -99,7 +80,7 @@ local function liveBackpack()
     return live
 end
 
--- true solo con el banco VIVO (ns.Bank), al menos una vista del banco visible y TODAS las visibles
+-- true solo con el banco vivo (ns.Bank), al menos una vista del banco visible y todas las visibles
 -- con liveBankActive, la pestana actual viva y (si se sabe) del personaje actual.
 local function liveBank()
     if not ns.Bank.IsLive() then return false end
@@ -125,9 +106,7 @@ local function liveViewFor(bag)
     return liveBackpack()
 end
 
--- ---------------------------------------------------------------------------
 -- Callbacks
--- ---------------------------------------------------------------------------
 
 -- Pide un refresco cuando lleguen los datos del item (el veredicto quedo pendiente).
 local function await(itemID)
@@ -141,9 +120,7 @@ local function grayJunk(mark, item)
         and type(item.price) == 'number' and item.price > 0
 end
 
--- Solo grises con precio que siguen siendo moneda para nosotros (override_keep, items utiles,
--- reactivos y misiones los salvan): KnuJunk nunca saca de su categoria un item que Baganator no
--- moveria por su cuenta.
+-- Solo grises con precio que siguen siendo moneda para nosotros: nunca saca de su categoria un item que Baganator no moveria por su cuenta.
 local function junkCallback(bagID, slotID, itemID)
     if type(itemID) ~= 'number' or not liveViewFor(bagID) then return nil end
     local mark, pending, _, item = ns.Marks.Verdict(bagID, slotID, itemID)
@@ -192,9 +169,7 @@ local function createWidget(itemButton)
     return ns.Marks.CreateWidget(itemButton)
 end
 
--- ---------------------------------------------------------------------------
 -- Registro
--- ---------------------------------------------------------------------------
 
 -- true cuando el plugin, el widget único y los alias están registrados. Reintentable: registra solo lo que falta.
 function Adapter.Install()
@@ -214,9 +189,7 @@ function Adapter.Install()
     return done[JUNK_PLUGIN.id] == true and done.knujunk_icon == true and done.knujunk_hammer == true and done.knujunk_coin == true
 end
 
--- Repinta: pide a Baganator que vuelva a evaluar sus botones, solo si algo nuestro esta activo.
--- Solo por cambios de veredicto (Registry: bagUpdates = false); widgets y busquedas:
--- Baganator ya redibuja sus botones cuando cambian las bolsas.
+-- Repinta pidiendo a Baganator que reevalue sus botones, solo si algo nuestro esta activo y solo por cambios de veredicto (bagUpdates = false): Baganator ya redibuja cuando cambian las bolsas.
 function Adapter.Refresh()
     scanDirty = true
     local API = api()

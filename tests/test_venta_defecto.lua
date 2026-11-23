@@ -258,13 +258,13 @@ test('libros de clase: tabla poblada, otra clase, ya aprendido y no aprendido', 
         eq(aucOther.reasons[1].kind, 'book_other_class')
         Auctionator = nil
 
-        -- Tu clase, hechizo NO aprendido -> book_unknown (se guarda).
+        -- Tu clase, hechizo no aprendido -> book_unknown (se guarda).
         FAKE.spells = {}
         local unknownBook = ns.Classify(book, context({ class = 'MAGE' }))
         eq(unknownBook.mark, 'useful')
         eq(unknownBook.reasons[1].kind, 'book_unknown')
 
-        -- Tu clase, hechizo YA aprendido -> book_known (se vende o subasta).
+        -- Tu clase, hechizo ya aprendido -> book_known (se vende o subasta).
         FAKE.spells = { [10157] = true }
         local knownBook = ns.Classify(book, context({ class = 'MAGE' }))
         eq(knownBook.mark, 'coin')

@@ -195,9 +195,7 @@ test('el cambio repinta de verdad la bolsa registrada (Bags.RefreshAll real)', f
     ok(refreshed > before, 'el adaptador se repinto')
 end)
 
--- ---------------------------------------------------------------------------------------------
 -- Registro con el despachador real de KnuLib, alias en conflicto, idiomas y argumentos vacios.
--- ---------------------------------------------------------------------------------------------
 
 -- Corre fn con KL.commands / KL.commandAliases vacios y restaura lo anterior pase lo que pase.
 local function withCleanDispatcher(fn)

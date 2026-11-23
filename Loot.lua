@@ -1,18 +1,7 @@
 local _, ns = ...
 
--- Ventana de botin de Blizzard: las mismas marcas que en las bolsas mas el signo de mision.
--- Solo hooksecurefunc / callbacks de la lista: nunca se reemplaza ni se llama a funciones de Blizzard
--- ni se toca un frame protegido (Marks ya difiere lo que no se puede en combate).
--- Forever puede traer dos formas de dibujar el botin y se soportan las dos, detectando cada una
--- (el camino real NO esta verificado en el juego; se infiere de la API publica de Blizzard):
---   * moderna: LootFrame.ScrollBox con filas RECICLADAS (LootFrameElementMixin / LootFrameItemElementMixin).
---     Se engancha con ScrollUtil.AddInitializedFrameCallback(scrollBox, ...) (filas nuevas y las ya
---     existentes); si esa utilidad falta, con hooksecurefunc(<mixin>, 'Init'). El slot sale de
---     row:GetSlotIndex() o de row:GetElementData().slotIndex; el boton del icono es row.Item.
---   * clasica: la global LootFrame_Update y los botones LootButton1..LOOTFRAME_NUMBUTTONS con button.slot;
---     el boton es el propio icono.
--- Las filas se reciclan: cada actualizacion parte de limpio y marca desde el enlace ACTUAL del slot
--- (GetLootSlotLink(slot)); un slot sin enlace (dinero) o con otra cosa que un item queda sin marca.
+-- Ventana de botin de Blizzard: las mismas marcas que en las bolsas mas el signo de mision; solo hooksecurefunc y callbacks de la lista, nunca se toca un frame protegido.
+-- Se soportan las dos formas de dibujar de Forever (moderna: LootFrame.ScrollBox con filas recicladas; clasica: LootFrame_Update y LootButtonN), detectando cada una; el camino real no esta verificado en el juego.
 local Loot = {}
 ns.Loot = Loot
 
@@ -122,10 +111,7 @@ function Loot.ClearAll()
     eachRow(function(row) pcall(clearRow, row) end)
 end
 
--- Fallback por mixin: las filas copian los metodos del mixin al crearse, asi que una fila creada ANTES
--- de enganchar conserva el Init original y reciclarla (row:Init()) no pasaria por el hook global.
--- Se engancha el Init efectivo de cada fila existente (una sola vez por fila). Las filas nacidas despues
--- ya copian el Init enganchado (mixinInit) y no se enganchan de nuevo.
+-- Fallback por mixin: las filas copian los metodos del mixin al crearse, asi que una fila anterior al hook conserva el Init original; se engancha el Init de cada fila existente una sola vez.
 local function hookRow(row)
     if type(row) ~= 'table' or hookedRows[row] then return end
     local init = rawget(row, 'Init')
@@ -159,7 +145,7 @@ function Loot.Hook()
     return hooked.list or hooked.mixin or hooked.classic
 end
 
--- Enlace que la fila de este boton muestra AHORA (Marks lo usa para retomar una marca que esperaba
+-- Enlace que la fila de este boton muestra ahora (Marks lo usa para retomar una marca que esperaba
 -- datos del item): nil si el botin se cerro, la fila se oculto o su slot ya no tiene un item.
 local function revalidate(button)
     local row = rowOfMark[button] or button

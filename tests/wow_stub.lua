@@ -170,7 +170,7 @@ function GetLocale() return FAKE.locale or 'esES' end
 function strtrim(text) return (text:gsub('^%s+', ''):gsub('%s+$', '')) end
 SlashCmdList = setmetatable({}, {__index = {}}); hash_SlashCmdList = {}
 DEFAULT_CHAT_FRAME = {AddMessage = function(_, message) FAKE.messages[#FAKE.messages + 1] = message end}
--- Cliente simulado: estado en FAKE.* y APIs globales. Reset restaura TODO; las pruebas quitan
+-- Cliente simulado: estado en FAKE.* y APIs globales. Reset restaura todo; las pruebas quitan
 -- una API con FAKE.Remove('Nombre') o FAKE.Remove('C_Tabla.Nombre').
 local function installClient()
     FAKE.class = 'MAGE'
@@ -390,8 +390,7 @@ function FAKE.Remove(path)
     local owner, key = path:match('^(.-)%.(.+)$')
     if owner then _G[owner][key] = nil else _G[path] = nil end
 end
--- LibQuestieDB falso (solo pruebas). quests = { [questID] = { campo = valor } } con los nombres
--- de campo reales de Quest.Get. opts.contract = contrato maximo que dice soportar (por defecto 4),
+-- LibQuestieDB falso (solo pruebas): quests = { [questID] = { campo = valor } } con los nombres reales de Quest.Get; opts.contract = contrato maximo que dice soportar (por defecto 4),
 -- opts.throwOn = questID para el que Quest.Get lanza error, opts.throwRequire = RequireContract lanza.
 FAKE.questieCalls = 0
 function FAKE.InstallQuestie(quests, opts)
@@ -425,8 +424,7 @@ function FAKE.InstallQuestie(quests, opts)
     return LibQuestieDB
 end
 -- Baganator falso (solo pruebas): graba lo que se registra y deja a la prueba invocar los callbacks.
--- FAKE.baganator = { junk = {label=, id=, callback=}, widgets = { [id] = {label=, onUpdate=, onInit=} },
--- refreshes = n, activeJunk = id|nil, activeWidgets = { [id] = true } }.
+-- FAKE.baganator = { junk = {label=, id=, callback=}, widgets = { [id] = {label=, onUpdate=, onInit=} }, refreshes = n, activeJunk = id|nil, activeWidgets = { [id] = true } }.
 function FAKE.InstallBaganator()
     local state = { junk = {}, widgets = {}, refreshes = 0, activeWidgets = {} }
     FAKE.baganator = state

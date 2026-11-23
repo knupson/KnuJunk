@@ -1,28 +1,7 @@
 local _, ns = ...
 
--- ArkInventory por su API publica: hooksecurefunc(ArkInventory.API, 'ItemFrameUpdated', ...).
--- Contrato VERIFICADO contra el codigo fuente de ArkInventory 3.12.17 (release de CurseForge, archivo
--- 9215808; leido en un directorio temporal, no se copia codigo). Citas (carpeta ArkInventory/Core/):
---   * ArkInventoryAPI.lua:113-125: ItemFrameUpdated(frame, loc_id, bag_id, slot_id), funcion vacia
---     "called after an item frame is updated", pensada para hooksecurefunc; la llaman
---     ArkInventory.lua:10642 y 10669 (tambien al cambiar solo el bloqueo del item).
---   * ArkInventoryAPI.lua:219-227: ItemFrameItemTableGet(frame) -> tabla del item mostrado (campo h =
---     enlace) o nil si no es un frame de ArkInventory.
---   * ArkInventoryAPI.lua:273-285: LocationIsOffline(loc_id) -> true offline, false online, NIL ubicacion
---     invalida (por eso solo `false` cuenta como online). ArkInventory.lua:4020-4052 la fija: offline
---     si la ventana muestra otro personaje, o banco/vault/correo/vacio sin estar abiertos.
---   * ArkInventoryConst.lua:1066-1090: Const.Location.Bag = 1 (Keyring 2, Bank 3, Vault 4, ... ReagentBag
---     21): la ventana de bolsas del personaje es la ubicacion 1. Vault usa blizzard_id 1000+tab
---     (ArkInventory.lua:2929) y las de reagent ids fuera de 0-4: Marks los descarta.
---   * ArkInventory.lua:7581-7586: frame.ARK_Data = { loc_id, bag_id, blizzard_id, slot_id } con el
---     bag id de Blizzard y el slot (frame:GetID() = slot_id).
---   * Mecanismo y funciones de la referencia: magic-eraser Tint-Junk.lua l.397-420.
--- Banco: Const.Location.Bank (3) se acepta solo con el banco VIVO (ns.Bank), LocationIsOffline(3) ==
--- false (ArkInventory.lua:4020-4052: el banco es offline si no esta abierto o es de otro personaje) y
--- blizzard_id del banco del personaje (ns.Bank.IsBankBag).
--- Sin marca: ubicacion distinta de Const.Location.Bag (o Bank vivo), ARK_Data.loc_id distinto de la
--- ubicacion del callback, LocationIsOffline distinto de false (offline, invalida o con error), item
--- mostrado ausente o distinto del que hay en el slot. SIN VERIFICAR EN EL JUEGO (solo contra el codigo).
+-- ArkInventory por su API publica: hooksecurefunc(ArkInventory.API, 'ItemFrameUpdated', ...). Contrato leido en el codigo de ArkInventory 3.12.17 (CurseForge, archivo 9215808); no se copia codigo.
+-- Solo cuenta la ubicacion Bag (o Bank con el banco vivo) con LocationIsOffline == false (nil es ubicacion invalida). Sin verificar en el juego.
 local OWNER = 'ArkInventory'
 local Adapter = {}
 ns.ArkInventoryAdapter = Adapter

@@ -3,7 +3,7 @@ local _, ns = ...
 ns.Data = ns.Data or {}
 ns.Data.build = "1.60.1.70959"
 -- Reactivos y herramientas de hechizos de clase:
--- item -> { clases..., spells = { CLASE = { hechizos } } }.
+-- item -> { clases..., spells = { clase = { hechizos } } }.
 ns.Data.classReagents = {
     [2928] = { "ROGUE", spells = { ROGUE = { 5763, 8681, 8687, 8694 } } },
     [2930] = { "ROGUE", spells = { ROGUE = { 3420, 5763, 8694, 13220, 13228 } } },

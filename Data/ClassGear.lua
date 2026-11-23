@@ -2,7 +2,7 @@
 local _, ns = ...
 ns.Data = ns.Data or {}
 ns.Data.build = "1.60.1.70959"
--- Lo que cada clase PUEDE LLEGAR A usar (aunque todavia no haya aprendido la habilidad),
+-- Lo que cada clase puede llegar a usar (aunque todavia no haya aprendido la habilidad),
 -- por la ClassMask de SkillLineAbility. Subclases: ver GEAR_SPELLS en tools/build_data.py.
 local function set(list)
     local result = {}

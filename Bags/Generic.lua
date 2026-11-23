@@ -1,30 +1,7 @@
 local _, ns = ...
 
--- Adaptador generico: para cualquier bolsa que dibuje sus botones con las funciones de Blizzard.
--- Hook de SetItemButtonQuality(boton, calidad, itemIDOEnlace, ...): lo llaman, mientras redibujan
--- un slot, Bagnon (item.lua l.149), ElvUI (Bags.lua l.716) e Inventorian (Item.lua l.232), siempre
--- con el item que estan dibujando. Tambien se engancha el METODO homonimo de ItemButtonMixin y de
--- ContainerFrameItemButtonMixin si existen (los botones creados despues lo heredan: profession-mats
--- ProfessionMats.lua l.890-896, loot-triage Bags.lua l.139-179).
--- Se instala siempre (addon = nil) y es la ULTIMA red: reglas, todas de fallo seguro. Su dueno y su
--- spec se llaman 'GenericHook' (el 'generic' por defecto de Marks queda sin revalidador propio).
---   * PRUEBA POSITIVA: solo marca si la ascendencia del boton llega a un contenedor que algun adaptador
---     declaro como ventana viva del personaje actual (ns.Bags.DeclareLiveContainer; hoy lo hace el
---     adaptador de Blizzard con ContainerFrameN y ContainerFrameCombinedBags). Contenedor desconocido,
---     aunque los IDs y el item coincidan: sin marca (ni nombres ni IDs prueban de quien es una vista).
---   * Solo marca si el boton da GetBagID() y GetID() validos (bolsa 0-4, slot >= 1) Y hay identidad:
---     el item que el addon pasa a SetItemButtonQuality o los campos que el boton expone (Common.
---     DisplayedID). Sin identidad, sin marca: el slot vivo no prueba lo que se dibuja. Si el boton
---     dice una cosa y la llamada otra, sin marca.
---   * No dibuja sobre un boton que ya tiene dueno de otro adaptador (button.KnuJunkOwner ~= nil y
---     distinto de 'generic'/'GenericHook'); un adaptador dedicado SI puede tomar un boton nuestro (y
---     entonces dejamos de seguirlo); tampoco lo limpia ni lo repinta en los refrescos.
---   * Los botones de Baganator (llevan la tabla BGR, la fuente de identidad que Common.DisplayedID
---     ya reconoce) los cubre su adaptador oficial con sus propios iconos de esquina: aqui se dejan
---     para no duplicar la marca. SIN VERIFICAR que todos sus botones tengan BGR.
---   * Banco, hermandad, vault y cache: Common.NonCarried; fuera de 0-4: Marks.
--- SIN VERIFICAR EN EL JUEGO (solo contra los fuentes de Bagnon, ElvUI e Inventorian leidos y el
--- hook de la competencia).
+-- Adaptador generico para cualquier bolsa que dibuje con funciones de Blizzard: hook de SetItemButtonQuality(boton, calidad, itemIDOEnlace, ...) y de ItemButtonMixin y ContainerFrameItemButtonMixin si existen.
+-- Ultima red, de fallo seguro: solo marca bajo un contenedor declarado vivo (ns.Bags.DeclareLiveContainer), con GetBagID()/GetID() validos e identidad coherente, y no pisa botones de otro adaptador. Sin verificar en el juego.
 local Adapter = {}
 ns.GenericAdapter = Adapter
 
@@ -35,7 +12,7 @@ local hookedGlobal = false
 local hookedMixins = {}
 local MIXINS = { 'ItemButtonMixin', 'ContainerFrameItemButtonMixin' }
 
--- Dueno de OTRO adaptador dedicado ('generic', el valor por defecto de Marks, no cuenta como ajeno).
+-- Dueno de otro adaptador dedicado ('generic', el valor por defecto de Marks, no cuenta como ajeno).
 local function foreign(button)
     return not Common.MayTakeOver(button, OWNER)
 end

@@ -1,14 +1,7 @@
 local _, ns = ...
 
--- Registro de adaptadores de bolsas. Cada adaptador (Blizzard, Bagnon, ...) se registra con
---   spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh = function()|nil,
---            revalidate = function(boton) -> bag, slot, itemID mostrado | nil (opcional),
---            owner = dueno que el adaptador guarda en los botones, si no es el nombre (opcional),
---            bagUpdates = false: no repintar por cambios de bolsas, solo por cambios de veredicto (opcional),
---            bank = true: el adaptador PRUEBA que sus botones de banco son el banco vivo del personaje actual;
---                         solo entonces Marks acepta bolsas del banco con ese dueno (opcional) }
--- install se llama (hasta tener exito una vez) cuando su addon esta cargado: en PLAYER_LOGIN y en
--- cada ADDON_LOADED; devuelve false si aun no puede engancharse y se reintenta. refresh repinta.
+-- Registro de adaptadores. spec = { addon = 'Carpeta'|nil, install = function() -> bool, refresh, revalidate(boton) -> bag, slot, itemID | nil, owner, bagUpdates = false (repinta solo por veredicto), bank = true (prueba que su banco es el vivo) }; todo opcional salvo install.
+-- install se llama en PLAYER_LOGIN y en cada ADDON_LOADED hasta tener exito; devuelve false si aun no puede engancharse.
 local Bags = {}
 ns.Bags = Bags
 
@@ -20,9 +13,7 @@ local refreshPending = false
 local contextPending = false -- en la rafaga hubo un pedido que no es solo de bolsas
 local baseline         -- cantidad de adaptadores propios del addon (para ResetState)
 
--- Contenedores declarados como ventana VIVA de las bolsas del personaje actual por el adaptador que
--- los conoce (el de Blizzard declara ContainerFrameN y ContainerFrameCombinedBags; los de Frames solo
--- si estan verificados). Los consume el adaptador generico: contenedor no declarado, sin marca.
+-- Contenedores declarados como ventana viva del personaje actual por el adaptador que los conoce; los consume el generico (contenedor no declarado, sin marca).
 local liveContainers = setmetatable({}, { __mode = 'k' })
 
 function Bags.DeclareLiveContainer(frame)
@@ -77,10 +68,7 @@ function Bags.InstallAll()
     if added then Bags.RefreshAll() end
 end
 
--- spec.revalidate(boton) -> bag, slot, itemID mostrado | nil: lo usa Marks para retomar una marca
--- que quedo esperando (datos del item, combate) sin saltarse la lectura del adaptador.
--- Los duenos que marcan por enlace (Loot) devuelven en su lugar el ENLACE que el boton muestra ahora
--- (o nil).
+-- spec.revalidate(boton) -> bag, slot, itemID | nil: Marks lo usa para retomar una marca pendiente; los duenos que marcan por enlace (Loot) devuelven el enlace actual o nil.
 -- `name` es el dueno guardado en el boton: el nombre registrado o, si difiere, spec.owner.
 function Bags.Revalidator(name)
     local entry = find(name)
@@ -118,9 +106,7 @@ local function refreshNow()
     end
 end
 
--- Repinta todos los adaptadores instalados: una sola pasada por rafaga de pedidos. reason = 'bags'
--- cuando solo cambiaron las bolsas: los adaptadores con bagUpdates = false (el addon ya redibuja
--- sus botones) se saltean salvo que en la misma rafaga haya otro pedido.
+-- Repinta todos los adaptadores instalados en una sola pasada por rafaga; con reason = 'bags' se saltean los de bagUpdates = false salvo que haya otro pedido en la rafaga.
 function Bags.RefreshAll(reason)
     if ns.LootAdvisor then ns.LootAdvisor.Invalidate() end
     if reason ~= 'bags' then contextPending = true end

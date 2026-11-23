@@ -1,16 +1,7 @@
 local _, ns = ...
 
--- tdBag2 por su sistema de plugins: tdBag2:RegisterPlugin({ key, text, type = 'Item', init, update }).
--- Mecanismo de la referencia, escrito de cero (SIN VERIFICAR EN EL JUEGO: tdBag2 no esta instalado
--- aqui; se detecta por forma):
---   * init(boton) y update(boton) de un plugin de tipo 'Item': button.bag y button.slot.
---   * tdBag2 puede mostrar a otros personajes y bancos: button.meta debe ser un objeto con
---     meta:IsBag() y meta:IsSelf() verdaderos (bolsa del personaje actual); sin meta o con otra
---     respuesta, sin marca. Ademas Common.NonCarried descarta banco/hermandad/vault/cache.
---   * identidad: si el boton expone el item que muestra (Common.DisplayedID) manda; si no (SIN
---     VERIFICAR), el slot vivo leido DURANTE el callback init/update (Common.Capture); los
---     refrescos posteriores solo remarcan si sigue igual.
--- Referencias leidas (competencia/): questjunksweeper Bags.lua l.1157-1165 (y l.355-361 para meta).
+-- tdBag2 por su sistema de plugins: tdBag2:RegisterPlugin({ key, text, type = 'Item', init, update }); button.bag y button.slot.
+-- Sin verificar en el juego (no instalado aqui): button.meta debe tener IsBag() e IsSelf() verdaderos (muestra otros personajes); identidad como LiteBag (DisplayedID o Common.Capture).
 local OWNER = 'tdBag2'
 local Adapter = {}
 ns.TdBag2Adapter = Adapter

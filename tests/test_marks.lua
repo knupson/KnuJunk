@@ -212,9 +212,7 @@ test('un error del clasificador no rompe y deja sin marca', function()
     ok(not visible(button), 'ante la duda, sin marca')
 end)
 
--- ---------------------------------------------------------------------------
 -- Registro de adaptadores y refrescos
--- ---------------------------------------------------------------------------
 
 local function counted(name, fields)
     local spec
@@ -363,9 +361,7 @@ test('Verdict: marca del slot, pendiente sin datos y nunca lanza', function()
     ok(success and result == nil, 'un error devuelve nil')
 end)
 
--- ---------------------------------------------------------------------------
 -- Retomar lo pendiente sin pintar a ciegas, y combate sobre botones protegidos
--- ---------------------------------------------------------------------------
 
 test('dato pendiente: si el slot cambia de item antes de llegar los datos, sin marca', function()
     addItem(200, { quality = 0 })              -- gris: moneda

@@ -1,5 +1,5 @@
 -- Ejecutar desde la raíz: luajit tools/auditoria_venta.lua entrada.csv salida.csv [ambos]
--- Entrada normalizada por auditoria_venta.py; CSV RFC 4180, incluidos nombres multilínea.
+-- Entrada normalizada por auditoria_venta.py; CSV rfc 4180, incluidos nombres multilínea.
 local input, output, binding = assert(arg[1], 'Falta entrada.csv'), assert(arg[2], 'Falta salida.csv'), arg[3]
 local ns = {}
 _G.ns = ns

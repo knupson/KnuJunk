@@ -279,7 +279,7 @@ test('un error de Baganator al pedir el refresco no se propaga', function()
 end)
 
 -- Item 9 de la ola final: Baganator ya redibuja sus botones con cada cambio de bolsas; solo se le
--- pide refresco cuando cambia NUESTRO veredicto (contexto, Questie, opciones) con widgets y busquedas.
+-- pide refresco cuando cambia nuestro veredicto (contexto, Questie, opciones) con widgets y busquedas.
 test('BAG_UPDATE_DELAYED no pide refresco a Baganator; un cambio de contexto si, con widgets y busquedas', function()
     local state = installed()
     state.activeJunk = 'knujunk'

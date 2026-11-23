@@ -1,9 +1,7 @@
 local _, ns = ...
 local KL = LibStub('KnuLib-1.0')
 ns.KL = KL
--- APIs de item: el cliente de WoW Forever (Interface 16001) sólo trae algunas en C_Item, sin la global
--- de siempre (GearQuest las crea como globales; sin GearQuest no existen). Se busca primero la global
--- (y los tests la reemplazan) y si falta, la de C_Item. Sin escribir globales.
+-- El cliente de Forever (Interface 16001) solo trae algunas APIs de item en C_Item, sin la global (GearQuest las crea): se busca primero la global (los tests la reemplazan) y si falta, la de C_Item. Sin escribir globales.
 local ITEM_ALIASES = { GetItemIcon = "GetItemIconByID" }
 ns.API = setmetatable({}, { __index = function(_, name)
     local global = rawget(_G, name)
@@ -89,9 +87,7 @@ ns.PROFESSIONS = {
     [356] = true, -- Pesca
 }
 
--- Cada cambio de enabled/show/rules/overrides (por comando o por el panel de opciones) pasa por aca:
--- ensucia el contexto del jugador, pide repintar las bolsas (Loot esta registrado en Bags, asi que la
--- ventana de botin abierta tambien se repinta) y, si el panel de opciones esta abierto, lo actualiza.
+-- Cada cambio de enabled/show/rules/overrides (por comando o por el panel) pasa por acá: ensucia el contexto, repinta bolsas y botín, y actualiza el panel si está abierto.
 function ns.Changed()
     if ns.Merchant then pcall(ns.Merchant.Sync) end
     if ns.Player and ns.Player.Invalidate then ns.Player.Invalidate() end
