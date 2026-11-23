@@ -338,6 +338,32 @@ function Marks.Verdict(bag, slot, expectedID)
     return nil, false
 end
 
+-- API publica para otros addons (pedido de WOWCompanion, 2026-11-23): la marca que KnuJunk pintaria
+-- para un objeto, sin efectos secundarios. Con bag/slot y ese objeto en la casilla, lee la casilla
+-- (ligado, recetas conocidas); si no, el link. Devuelve 'trash', 'coin', 'useful', 'quest', 'protected',
+-- 'unruled', 'auction', 'hammer_mine', ... o nil (KnuJunk apagado, datos pendientes, fallo). No aplica
+-- los interruptores de visibilidad (show.*): eso lo decide quien dibuja. Nunca lanza.
+function Marks.MarkFor(itemLink, bag, slot)
+    local success, mark = pcall(function()
+        if not enabled() then return nil end
+        local id = itemIDOf(itemLink)
+        local item
+        if type(bag) == 'number' and type(slot) == 'number' then
+            local live = slotItemID(bag, slot)
+            if live and (id == nil or live == id) then item = ns.Player.ReadItem(bag, slot) end
+        end
+        if not item and itemLink ~= nil then item = ns.Player.ReadLink(itemLink) end
+        if not item then return nil end
+        return markOf(classify(item), false)
+    end)
+    if success and type(mark) == 'string' then return mark end
+    return nil
+end
+
+KnuJunkAPI = KnuJunkAPI or {}
+KnuJunkAPI.Version = 1
+KnuJunkAPI.MarkFor = function(itemLink, bag, slot) return Marks.MarkFor(itemLink, bag, slot) end
+
 -- true si `bag` se puede marcar ahora: 0-4, o del banco con el banco vivo. Para revalidadores (que
 -- ademas son de un adaptador con bank = true).
 function Marks.AllowedBag(bag) return allowedBag(bag) end
