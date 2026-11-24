@@ -108,6 +108,12 @@ If you see a coin on something you needed, please tell us the item and the bag a
 - Requires nothing. Optional: QuestieDB, and any of the bag addons above.
 - Source code and issues: https://github.com/knupson/KnuJunk. MIT license.
 
+### Feedback
+
+- If KnuJunk helps you, add it to your favorites (the star) on [CurseForge](https://www.curseforge.com/wow/addons/knujunk) and leave a comment. That is how other Forever players find it.
+- Found a bug? Open an issue at https://github.com/knupson/KnuJunk/issues or leave a comment with the error text (BugSack copies it) and what you were doing.
+- Ideas and requests go in the comments or in an issue.
+
 ---
 
 ## Descripción (castellano)
@@ -148,6 +154,12 @@ Las tres reglas opcionales (comida y bebida, munición y recetas ya aprendidas) 
 - **knownrecipe:** exige la línea exacta «Already known» / «Ya conocido» del tooltip de ese ejemplar en bolsa. Con ligadura confirmada y precio positivo: moneda, «Ya conocés esta receta». Sin ligadura confirmada: sin moneda, «Ya la conocés; podés pasarla o subastarla». Ausencia de la línea no demuestra conocimiento.
 
 Misión activa, reactivos/herramientas, efectos adicionales o desconocidos, sets, llaves, objetos especiales y demás protecciones conservan precedencia; tus marcas manuales siguen mandando. Sólo la restauración simple identificada se exceptúa de su propio efecto de uso, nunca de otro efecto. Datos de Forever, build 1.60.1.70959: 131 comidas y bebidas y 35 municiones ordinarias (se excluye 19286, Fast Test Ammo). Reiniciá el cliente tras actualizar. Pendiente validar en Forever.
+
+### Opiniones y errores
+
+- Si KnuJunk te sirve, marcalo como favorito (la estrella) en [CurseForge](https://www.curseforge.com/wow/addons/knujunk) y dejá un comentario: así lo encuentran otros jugadores de Forever.
+- Si encontrás un error, abrí un issue en https://github.com/knupson/KnuJunk/issues o dejá un comentario, con el texto del error (BugSack lo copia) y qué estabas haciendo.
+- Las ideas y los pedidos, en los comentarios o como issue.
 
 ## Project settings
 

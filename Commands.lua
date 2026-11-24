@@ -25,6 +25,25 @@ function Commands.Help()
         'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
+    Commands.Invite()
+end
+
+Commands.CURSEFORGE = 'https://www.curseforge.com/wow/addons/knujunk'
+Commands.ISSUES = 'https://github.com/knupson/KnuJunk/issues'
+
+-- Invitación a dejar favorito y comentario y a reportar errores; va al pie de la ayuda.
+function Commands.Invite()
+    say('If KnuJunk helps you, a favorite and a comment on CurseForge help other Forever players find it: %s', Commands.CURSEFORGE)
+    say('Found a bug? Open an issue with the error text (BugSack copies it) and what you were doing: %s', Commands.ISSUES)
+end
+
+-- Una sola vez por cuenta: KnuJunkDB es SavedVariables de cuenta y el flag no está en los defaults.
+function Commands.InviteOnce()
+    local db = ns.DB
+    if type(db) ~= 'table' or db.invited then return false end
+    db.invited = true
+    Commands.Invite()
+    return true
 end
 
 -- itemID de un enlace de item (|Hitem:123:...) o de un numero suelto; nil si no es ninguno.
@@ -125,4 +144,9 @@ function Commands.Register()
     end
 end
 
-ns.OnLogin(function() pcall(Commands.Register) end)
+ns.OnLogin(function()
+    pcall(Commands.Register)
+    if C_Timer and type(C_Timer.After) == 'function' then
+        C_Timer.After(15, function() pcall(Commands.InviteOnce) end)
+    end
+end)
