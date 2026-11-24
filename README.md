@@ -98,11 +98,29 @@ Each item gets one icon, by priority: blue lock (Protected, marked by you), crea
 
 **Known limitations:** without QuestieDB, an item that starts a finished quest gets no coin (repeatability unknown); quests your race or class can never do don't give a coin yet.
 
+**Other KNU addons:**
+
+- [KnuUI](https://www.curseforge.com/wow/addons/knuui): compact amber layout for ElvUI.
+- [KnuMail](https://www.curseforge.com/wow/addons/knumail): a simple, safe mailbox.
+- [KnuCast](https://www.curseforge.com/wow/addons/knucast): marks on your action bars which spells work against your target.
+- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): desktop app plus addon that shows your bags, bank, map and quests on another monitor.
+
+All projects: https://www.curseforge.com/members/knupwns/projects
+
 **Feedback:**
 
 - If KnuJunk helps you, add it to your favorites (the star) on [CurseForge](https://www.curseforge.com/wow/addons/knujunk) and leave a comment. That is how other Forever players find it.
 - Found a bug? Open an issue at https://github.com/knupson/KnuJunk/issues or leave a comment with the error text (BugSack copies it) and what you were doing.
 - Ideas and requests go in the comments or in an issue.
+
+## Otros addons de KNU
+
+- [KnuUI](https://www.curseforge.com/wow/addons/knuui): layout compacto ámbar para ElvUI.
+- [KnuMail](https://www.curseforge.com/wow/addons/knumail): buzón simple y seguro.
+- [KnuCast](https://www.curseforge.com/wow/addons/knucast): marca en las barras qué hechizos sirven contra el objetivo.
+- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): app de escritorio más addon, con bolsas, banco, mapa y misiones en otro monitor.
+
+Todos los proyectos: https://www.curseforge.com/members/knupwns/projects
 
 ## Opiniones y errores
 

@@ -647,7 +647,7 @@ end)
 test('/knu junk help imprime la ayuda, con la linea del panel', function()
     FAKE.messages = {}
     ns.Commands.Handle('help')
-    eq(#FAKE.messages, 8)
+    eq(#FAKE.messages, 9)
     eq(#FAKE.settings.opened, 0)
     local text = table.concat(FAKE.messages, '\n')
     ok(text:find(ns.L['Options panel: /knu junk'], 1, true), 'linea del panel')

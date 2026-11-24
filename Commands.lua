@@ -25,10 +25,12 @@ function Commands.Help()
         'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
+    say('Other KNU addons: %s', Commands.KNU_PROJECTS)
     Commands.Invite()
 end
 
 Commands.CURSEFORGE = 'https://www.curseforge.com/wow/addons/knujunk'
+Commands.KNU_PROJECTS = 'https://www.curseforge.com/members/knupwns/projects'
 Commands.ISSUES = 'https://github.com/knupson/KnuJunk/issues'
 
 -- Invitación a dejar favorito y comentario y a reportar errores; va al pie de la ayuda.

@@ -340,6 +340,7 @@ test('ayuda en castellano (esES y esMX)', function()
                 PREFIX .. 'A mano: /knu junk keep|clear <enlace o ID de ítem>',
                 PREFIX .. 'Reglas opcionales: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Ver el estado: /knu junk status',
+                PREFIX .. 'Otros addons de KNU: https://www.curseforge.com/members/knupwns/projects',
                 PREFIX .. 'Si KnuJunk te sirve, marcalo como favorito y dejá un comentario en CurseForge, así lo encuentran otros jugadores de Forever: https://www.curseforge.com/wow/addons/knujunk',
                 PREFIX .. '¿Encontraste un error? Abrí un issue con el texto del error (BugSack lo copia) y qué estabas haciendo: https://github.com/knupson/KnuJunk/issues',
             }, '\n'), locale)
@@ -358,6 +359,7 @@ test('ayuda en ingles (enUS y cualquier otro idioma)', function()
                 PREFIX .. 'By hand: /knu junk keep|clear <item link or ID>',
                 PREFIX .. 'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
                 PREFIX .. 'Show state: /knu junk status',
+                PREFIX .. 'Other KNU addons: https://www.curseforge.com/members/knupwns/projects',
                 PREFIX .. 'If KnuJunk helps you, a favorite and a comment on CurseForge help other Forever players find it: https://www.curseforge.com/wow/addons/knujunk',
                 PREFIX .. 'Found a bug? Open an issue with the error text (BugSack copies it) and what you were doing: https://github.com/knupson/KnuJunk/issues',
             }, '\n'), locale)
@@ -463,6 +465,6 @@ test('por el despachador real, junk sin argumentos y con blancos abre el panel y
         KL:Dispatch('kj    ')
         eq(#FAKE.settings.opened, 2)
         KL:Dispatch('junk help')
-        eq(#FAKE.messages, 8)
+        eq(#FAKE.messages, 9)
     end)
 end)

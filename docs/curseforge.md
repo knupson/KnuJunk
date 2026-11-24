@@ -108,6 +108,15 @@ If you see a coin on something you needed, please tell us the item and the bag a
 - Requires nothing. Optional: QuestieDB, and any of the bag addons above.
 - Source code and issues: https://github.com/knupson/KnuJunk. MIT license.
 
+### Other KNU addons
+
+- [KnuUI](https://www.curseforge.com/wow/addons/knuui): compact amber layout for ElvUI.
+- [KnuMail](https://www.curseforge.com/wow/addons/knumail): a simple, safe mailbox.
+- [KnuCast](https://www.curseforge.com/wow/addons/knucast): marks on your action bars which spells work against your target.
+- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): desktop app plus addon that shows your bags, bank, map and quests on another monitor.
+
+All projects: https://www.curseforge.com/members/knupwns/projects
+
 ### Feedback
 
 - If KnuJunk helps you, add it to your favorites (the star) on [CurseForge](https://www.curseforge.com/wow/addons/knujunk) and leave a comment. That is how other Forever players find it.
@@ -154,6 +163,15 @@ Las tres reglas opcionales (comida y bebida, munición y recetas ya aprendidas) 
 - **knownrecipe:** exige la línea exacta «Already known» / «Ya conocido» del tooltip de ese ejemplar en bolsa. Con ligadura confirmada y precio positivo: moneda, «Ya conocés esta receta». Sin ligadura confirmada: sin moneda, «Ya la conocés; podés pasarla o subastarla». Ausencia de la línea no demuestra conocimiento.
 
 Misión activa, reactivos/herramientas, efectos adicionales o desconocidos, sets, llaves, objetos especiales y demás protecciones conservan precedencia; tus marcas manuales siguen mandando. Sólo la restauración simple identificada se exceptúa de su propio efecto de uso, nunca de otro efecto. Datos de Forever, build 1.60.1.70959: 131 comidas y bebidas y 35 municiones ordinarias (se excluye 19286, Fast Test Ammo). Reiniciá el cliente tras actualizar. Pendiente validar en Forever.
+
+### Otros addons de KNU
+
+- [KnuUI](https://www.curseforge.com/wow/addons/knuui): layout compacto ámbar para ElvUI.
+- [KnuMail](https://www.curseforge.com/wow/addons/knumail): buzón simple y seguro.
+- [KnuCast](https://www.curseforge.com/wow/addons/knucast): marca en las barras qué hechizos sirven contra el objetivo.
+- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): app de escritorio más addon, con bolsas, banco, mapa y misiones en otro monitor.
+
+Todos los proyectos: https://www.curseforge.com/members/knupwns/projects
 
 ### Opiniones y errores
 
