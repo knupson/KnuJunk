@@ -1,5 +1,9 @@
 # Changelog
 
+## Próxima versión
+
+- Invitación a marcar KnuJunk como favorito, comentar en CurseForge y reportar errores: una línea en el chat una sola vez por cuenta, al pie de `/knu junk help`, en el README y en la página de CurseForge.
+
 ## 0.1.4-beta
 
 - Otros addons pueden leer la marca de un ítem con `KnuJunkAPI.MarkFor(itemLink, bag, slot)`: devuelve el nombre del ícono (por ejemplo `coin`) o `nil` si no hay datos o KnuJunk está apagado.

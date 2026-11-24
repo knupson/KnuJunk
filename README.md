@@ -98,6 +98,18 @@ Each item gets one icon, by priority: blue lock (Protected, marked by you), crea
 
 **Known limitations:** without QuestieDB, an item that starts a finished quest gets no coin (repeatability unknown); quests your race or class can never do don't give a coin yet.
 
+**Feedback:**
+
+- If KnuJunk helps you, add it to your favorites (the star) on [CurseForge](https://www.curseforge.com/wow/addons/knujunk) and leave a comment. That is how other Forever players find it.
+- Found a bug? Open an issue at https://github.com/knupson/KnuJunk/issues or leave a comment with the error text (BugSack copies it) and what you were doing.
+- Ideas and requests go in the comments or in an issue.
+
+## Opiniones y errores
+
+- Si KnuJunk te sirve, marcalo como favorito (la estrella) en [CurseForge](https://www.curseforge.com/wow/addons/knujunk) y dejá un comentario: así lo encuentran otros jugadores de Forever.
+- Si encontrás un error, abrí un issue en https://github.com/knupson/KnuJunk/issues o dejá un comentario, con el texto del error (BugSack lo copia) y qué estabas haciendo.
+- Las ideas y los pedidos, en los comentarios o como issue.
+
 ## Para desarrolladores
 
 - Pruebas: `luajit tests/run.lua` (cliente simulado).
