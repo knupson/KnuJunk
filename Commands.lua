@@ -25,11 +25,12 @@ function Commands.Help()
         'Optional rules: /knu junk rules [food|ammo|knownrecipe] [on|off]',
         'Show state: /knu junk status',
     }) do ns.Print(L(line)) end
-    say('Other KNU addons: %s', Commands.KNU_PROJECTS)
+    say('Other KNU addons: KnuCompanion, your bags, bank, map and quests on your other monitor (%s). All: %s', Commands.COMPANION, Commands.KNU_PROJECTS)
     Commands.Invite()
 end
 
 Commands.CURSEFORGE = 'https://www.curseforge.com/wow/addons/knujunk'
+Commands.COMPANION = 'https://companion.knunet.com'
 Commands.KNU_PROJECTS = 'https://www.curseforge.com/members/knupwns/projects'
 Commands.ISSUES = 'https://github.com/knupson/KnuJunk/issues'
 

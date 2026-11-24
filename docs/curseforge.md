@@ -110,10 +110,11 @@ If you see a coin on something you needed, please tell us the item and the bag a
 
 ### Other KNU addons
 
+**[KnuCompanion](https://companion.knunet.com)**: your bags, bank, map and quests on your other monitor.
+
 - [KnuUI](https://www.curseforge.com/wow/addons/knuui): compact amber layout for ElvUI.
 - [KnuMail](https://www.curseforge.com/wow/addons/knumail): a simple, safe mailbox.
 - [KnuCast](https://www.curseforge.com/wow/addons/knucast): marks on your action bars which spells work against your target.
-- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): desktop app plus addon that shows your bags, bank, map and quests on another monitor.
 
 All projects: https://www.curseforge.com/members/knupwns/projects
 
@@ -166,10 +167,11 @@ Misión activa, reactivos/herramientas, efectos adicionales o desconocidos, sets
 
 ### Otros addons de KNU
 
+**[KnuCompanion](https://companion.knunet.com)**: tus bolsas, el banco, el mapa y las misiones en tu otro monitor.
+
 - [KnuUI](https://www.curseforge.com/wow/addons/knuui): layout compacto ámbar para ElvUI.
 - [KnuMail](https://www.curseforge.com/wow/addons/knumail): buzón simple y seguro.
 - [KnuCast](https://www.curseforge.com/wow/addons/knucast): marca en las barras qué hechizos sirven contra el objetivo.
-- [KnuCompanion](https://www.curseforge.com/wow/addons/knucompanion): app de escritorio más addon, con bolsas, banco, mapa y misiones en otro monitor.
 
 Todos los proyectos: https://www.curseforge.com/members/knupwns/projects
 
