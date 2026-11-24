@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versión
+## 0.1.5-beta
 
 - Invitación a marcar KnuJunk como favorito, comentar en CurseForge y reportar errores: una línea en el chat una sola vez por cuenta, al pie de `/knu junk help`, en el README y en la página de CurseForge.
 - Links a los otros addons de KNU en el README, en la página de CurseForge y al pie de `/knu junk help`.

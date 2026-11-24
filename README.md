@@ -2,7 +2,7 @@
 
 Iconos en las bolsas, el banco y el botín para ver qué se puede vender o tirar y qué material usa una profesión. Para **World of Warcraft: Forever** (1.60.1). Funciona solo: GearQuest, Pawn, QuestieDB, Auctionator y los addons de bolsas son opcionales y sólo suman información.
 
-**Estado:** 0.1.4-beta. Probado en el juego: marcas en la mochila de Blizzard, en Baganator y en el banco, venta y reparación automáticas, venta de reactivos de otra clase, nivel que te falta en rojo y lectura de la especialización por talentos. Falta probar: la ventana de botín, la doble especialización (se obtiene a nivel 40) y los addons de bolsas que no son Blizzard ni Baganator.
+**Estado:** 0.1.5-beta. Probado en el juego: marcas en la mochila de Blizzard, en Baganator y en el banco, venta y reparación automáticas, venta de reactivos de otra clase, nivel que te falta en rojo y lectura de la especialización por talentos. Falta probar: la ventana de botín, la doble especialización (se obtiene a nivel 40) y los addons de bolsas que no son Blizzard ni Baganator.
 
 ## Qué hace
 
@@ -80,7 +80,7 @@ Comida y bebida superadas, munición superada y recetas ya aprendidas se venden 
 
 Icons on your bags, bank and loot window showing what you can sell or drop and which materials a profession uses. For **World of Warcraft: Forever** (1.60.1). Works on its own: GearQuest, Pawn, QuestieDB, Auctionator and bag addons are optional and only add information.
 
-**Status:** 0.1.4-beta. Tested in game: icons on Blizzard's backpack, Baganator and the bank, automatic selling and repair, selling other classes' reagents, the missing level in red, and reading your specialization from talents. Not tested yet: the loot window, dual specialization (unlocked at level 40) and bag addons other than Blizzard and Baganator.
+**Status:** 0.1.5-beta. Tested in game: icons on Blizzard's backpack, Baganator and the bank, automatic selling and repair, selling other classes' reagents, the missing level in red, and reading your specialization from talents. Not tested yet: the loot window, dual specialization (unlocked at level 40) and bag addons other than Blizzard and Baganator.
 
 Each item gets one icon, by priority: blue lock (Protected, marked by you), cream scroll (a quest in your log needs it), green/orange hammer (material or tool for one of your professions / another one), purple scale (worth auctioning, needs Auctionator), gold coin (sell), red bin (drop, no vendor price), green tick (useful, keep) and grey question mark (the game has not sent the item data yet). The tooltip gives the reason. When in doubt, it keeps the item.
 
